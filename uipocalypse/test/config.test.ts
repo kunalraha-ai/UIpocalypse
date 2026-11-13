@@ -7,17 +7,27 @@ const tmp = mkdtempSync('/tmp/opencode/uip-cfg-');
 
 describe('config loader (zod, TRD §7)', () => {
   it('falls back to safe defaults when no file exists', () => {
-    const { config, source } = loadConfig(join(tmp, 'does-not-exist.yaml'));
-    expect(source).toBe('defaults');
-    expect(config.target).toBe('http://localhost:3000');
-    expect(config.allowHosts).toEqual(['localhost', '127.0.0.1', '*.local', '*.vercel.app', '*.netlify.app']);
-    expect(config.agents).toBe(30);
-    expect(config.budgetSeconds).toBe(60);
-    expect(config.destructiveOptIn).toBe(false);
-    expect(config.externalOptIn).toBe(false);
-    expect(config.db.allowedHosts).toEqual(['localhost', '127.0.0.1']);
-    expect(config.maxRps).toBe(50);
-    expect(config.invariants).toEqual([]);
+    const cwd = process.cwd();
+    process.chdir(tmp);
+    try {
+      const { config, source } = loadConfig();
+      expect(source).toBe('defaults');
+      expect(config.target).toBe('http://localhost:3000');
+      expect(config.allowHosts).toEqual(['localhost', '127.0.0.1', '*.local', '*.vercel.app', '*.netlify.app']);
+      expect(config.agents).toBe(30);
+      expect(config.budgetSeconds).toBe(60);
+      expect(config.destructiveOptIn).toBe(false);
+      expect(config.externalOptIn).toBe(false);
+      expect(config.db.allowedHosts).toEqual(['localhost', '127.0.0.1']);
+      expect(config.maxRps).toBe(50);
+      expect(config.invariants).toEqual([]);
+    } finally {
+      process.chdir(cwd);
+    }
+  });
+
+  it('fails loudly when an explicitly requested config file is missing', () => {
+    expect(() => loadConfig(join(tmp, 'does-not-exist.yaml'))).toThrow(/not found/i);
   });
 
   it('loads and validates a yaml file', () => {

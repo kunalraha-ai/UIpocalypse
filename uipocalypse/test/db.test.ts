@@ -10,6 +10,7 @@ import {
   finishRun,
   addFinding,
   listRuns,
+  listFindings,
 } from '../src/db/index.js';
 
 let dir: string;
@@ -50,7 +51,7 @@ describe('SQLite state graph DAL (TRD §4 schema)', () => {
     const action = getOrCreateAction(db, { stateId: from.id, locator: 'a', kind: 'click', label: 'go', riskClass: 'safe' });
     recordTransition(db, { fromState: from.id, actionId: action.id, toState: to.id, ms: 100, error: false });
     recordTransition(db, { fromState: from.id, actionId: action.id, toState: to.id, ms: 200, error: true });
-    const t = getTransition(db, { fromState: from.id, actionId: action.id, toState: to.id });
+    const t = getTransition(db, { fromState: from.id, actionId: action.id, toState: to.id })!;
     expect(t.count).toBe(2);
     expect(t.avg_ms).toBeCloseTo(150);
     expect(t.error_count).toBe(1);
@@ -86,6 +87,6 @@ describe('SQLite state graph DAL (TRD §4 schema)', () => {
     const findings = listFindings(db, runId);
     expect(findings).toHaveLength(1);
     expect(findings[0].type).toBe('dead_click');
-    expect(JSON.parse(findings[0].evidence_json).reasons).toContain('no mutation');
+    expect(JSON.parse(findings[0].evidence_json!).reasons).toContain('no mutation');
   });
 });

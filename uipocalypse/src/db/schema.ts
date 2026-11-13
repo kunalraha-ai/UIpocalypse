@@ -1,0 +1,63 @@
+/**
+ * State graph + runs + findings schema (TRD §4).
+ * Kept as a string constant so the bundled CJS CLI has no runtime file reads.
+ */
+
+export const SCHEMA_SQL = `
+CREATE TABLE IF NOT EXISTS states (
+  id INTEGER PRIMARY KEY,
+  hash TEXT UNIQUE NOT NULL,
+  route TEXT,
+  signature_json TEXT,
+  first_run INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS actions (
+  id INTEGER PRIMARY KEY,
+  state_id INTEGER NOT NULL REFERENCES states(id),
+  locator TEXT NOT NULL,
+  kind TEXT,
+  label TEXT,
+  risk_class TEXT,            -- safe | write | destructive | external
+  UNIQUE(state_id, locator)
+);
+
+CREATE TABLE IF NOT EXISTS transitions (
+  from_state INTEGER NOT NULL REFERENCES states(id),
+  action_id INTEGER NOT NULL REFERENCES actions(id),
+  to_state INTEGER NOT NULL REFERENCES states(id),
+  count INTEGER NOT NULL DEFAULT 0,
+  avg_ms REAL NOT NULL DEFAULT 0,
+  error_count INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY(from_state, action_id, to_state)
+);
+
+CREATE TABLE IF NOT EXISTS runs (
+  id INTEGER PRIMARY KEY,
+  started_at TEXT NOT NULL,
+  target_url TEXT NOT NULL,
+  agents INTEGER NOT NULL,
+  duration_ms INTEGER,
+  llm_calls INTEGER,
+  coverage REAL
+);
+
+CREATE TABLE IF NOT EXISTS findings (
+  id INTEGER PRIMARY KEY,
+  run_id INTEGER NOT NULL REFERENCES runs(id),
+  type TEXT NOT NULL,
+  severity TEXT,
+  confidence TEXT,
+  persona TEXT,
+  state_id INTEGER REFERENCES states(id),
+  action_id INTEGER REFERENCES actions(id),
+  cluster_id TEXT,
+  evidence_json TEXT,
+  screenshot TEXT,
+  trace TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_actions_state ON actions(state_id);
+CREATE INDEX IF NOT EXISTS idx_findings_run ON findings(run_id);
+CREATE INDEX IF NOT EXISTS idx_transitions_from ON transitions(from_state);
+`;

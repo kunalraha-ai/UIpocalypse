@@ -51,7 +51,7 @@ describe('SAFETY.md §6 acceptance tests', () => {
 
     // token present and matching → allowed
     const guard3 = createGuard(
-      cfg({ allowHosts: ['example.com'], ownershipToken: 'secret-token' }),
+      cfg({ allowHosts: ['*.example.com'], ownershipToken: 'secret-token' }),
       { fetchToken: goodToken('secret-token') },
     );
     const d3 = await guard3.checkTarget('https://staging.example.com');
@@ -72,7 +72,7 @@ describe('SAFETY.md §6 acceptance tests', () => {
   it('2. refuses prod-like targets, especially with live Stripe keys', async () => {
     // live Stripe key → hard refuse (G6), even with a valid token
     const guard = createGuard(
-      cfg({ allowHosts: ['shop.example.com'], ownershipToken: 'tok' }),
+      cfg({ allowHosts: ['*.example.com'], ownershipToken: 'tok' }),
       { fetchToken: goodToken('tok'), env: { STRIPE_SECRET_KEY: 'sk_live_51HardRefuse' } },
     );
     const d = await guard.checkTarget('https://staging.shop.example.com');
