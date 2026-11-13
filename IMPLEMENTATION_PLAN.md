@@ -36,6 +36,7 @@ The plan front-loads the riskiest assumptions (state hashing, swarm speed, false
 - App map JSON schema
 - First 10 static rules (dead-handler, unwired-form, missing-endpoint, missing-rls, service-key-in-client, undefined-env, unverified-stripe-webhook, no-error-state, no-loading-state, exposed-secret)
 - Rule test fixtures
+- **Swap the sample app's mock store for real local Supabase (Docker); re-verify planted bugs #4/#5 against real transactions, row locks and pooling. The race detector is unproven until this lands (Phase 0 was mock-only).**
 
 **Deliverable:** `scan_codebase` returns real issues on the sample app in ≤ 3 s. Detects its planted static bugs.
 
@@ -49,6 +50,7 @@ The plan front-loads the riskiest assumptions (state hashing, swarm speed, false
 
 **Deliverable:** one scout + one wanderer explore the sample app and write a graph; findings recorded with evidence.
 **Gate (kill criteria check):** Does run 2 need ≥ 50% fewer LLM calls than run 1?
+**Gate (hash validity, before Phase 3 relies on the graph):** the state hash must also pass ≥ 90% collision / ≥ 95% separation on a **second, structurally different held-out app** (different framework, messier UI — not the app the normalization was tuned on). Keep that app as a permanent fixture. Phase 0's 100%/100% was measured on one app and may be overfit.
 
 ## Phase 4: Swarm + personas + race mode (Week 4)
 
@@ -58,7 +60,7 @@ The plan front-loads the riskiest assumptions (state hashing, swarm speed, false
 - Escalation path with global LLM cap
 - Concurrency ramp and "app collapsed at N" reporting
 
-**Deliverable:** 30-50 agent run on the sample app in ≤ 60 s (post-scouting); detects double-submit and race bugs.
+**Deliverable:** 30-50 agent run on the sample app in ≤ 120 s (post-scouting; Phase 0 measured 109.7-118.0 s at 50 × 100 — the old ≤ 60 s target was ~2× off, see PHASE0_RESULTS.md); detects double-submit and race bugs.
 
 ## Phase 5: Collector, reviewer, report (Week 5)
 
@@ -97,6 +99,7 @@ The plan front-loads the riskiest assumptions (state hashing, swarm speed, false
 - Additional stacks (SvelteKit, Firebase, Nuxt)
 - k6 handoff for true load tests
 - Lightpanda fast pre-pass; UX-judgment LLM mode
+- Swarm transport optimizations if the ~2-min capacity becomes a bottleneck: independent (non-lockstep) agent stepping, sharding across multiple Chromium processes
 
 ---
 
@@ -108,7 +111,7 @@ The plan front-loads the riskiest assumptions (state hashing, swarm speed, false
 | 1 | MCP + safety skeleton | |
 | 2 | Real static scan | ≤ 3 s |
 | 3 | Single agent + graph | Run-2 LLM calls ≤ 50% of run 1 |
-| 4 | 50-agent swarm + races | ≤ 60 s swarm phase |
+| 4 | 50-agent swarm + races | ≤ 120 s swarm phase |
 | 5 | Full report | End-to-end demo |
 | 6 | Benchmark + real repos | ≥ 80% detection, ≤ 20% FP |
 | 7 | Public beta | |

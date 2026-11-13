@@ -50,6 +50,7 @@ Technical spec for the MVP: a local MCP server that (a) statically analyzes a Ne
 Injected into every page. Responsibilities:
 - Enumerate actionable elements (role, accessible name, bounding visibility, enabled state, `data-testid` if present) and produce a normalized **state signature**.
 - Observe DOM mutations (`MutationObserver`), `fetch`/XHR activity (wrap), console errors, unhandled rejections, and long-pending spinners.
+- **Install defensively:** `addInitScript` can run before `document.documentElement` exists, which silently kills eager `MutationObserver` setup — defer observation via `readystatechange` and never let init failure break the whole runtime (Phase 0 S4 finding).
 - Expose a small API to the runner: `getState()`, `getActions()`, `perform(actionId)`, `drainEvents()`.
 - Keep payloads small: send diffs and hashes to the runner, not full DOMs.
 
@@ -58,11 +59,11 @@ Injected into every page. Responsibilities:
 |---|---|
 | `console_error` / `page_error` | `console.error`, `pageerror`, unhandled rejection |
 | `failed_request` | HTTP 4xx/5xx or network failure on app-origin requests (ignoring known benign: favicon, analytics) |
-| `dead_click` | Click on enabled visible element produces no DOM mutation, no network request, no URL/hash change, and no focus or ARIA state change within 500 ms |
+| `dead_click` | Click on enabled visible element produces no DOM mutation, no network request, no URL/hash change, and no focus or ARIA state change within 500 ms. **State-saturated controls are excluded** (an already-selected radio cannot produce feedback by design) — Phase 0 S4 found them as a false-positive class |
 | `infinite_spinner` | Element matching loading heuristics (role=progressbar, `aria-busy`, common spinner classes) persists > 10 s |
 | `duplicate_write` | Same write request observed ≥ 2 times within 1 s from a single agent after double-click, or DB invariant shows duplicate rows |
-| `race_violation` | After race mode, invariant check fails (e.g., balance negative, duplicate unique-intent rows). Invariants come from the Planner's expectations or user config |
-| `navigation_error` | Navigation to 404/500 or blank page after an in-app action |
+| `race_violation` | After race mode, invariant check fails (e.g., balance negative, duplicate unique-intent rows). Invariants come from the Planner's expectations or user config. **Proven only against a mock DB so far (Phase 0); must be re-verified against real Supabase/Postgres before it counts as demonstrated** |
+| `navigation_error` | Navigation to 404/500 or a blank page **or a framework error UI (e.g., Next.js "This page couldn't load")** after an in-app action; the `pageerror` signal counts too — Next 16 does not blank the page on client crashes (Phase 0 finding) |
 | `unreachable_action` | Action present in code map but never reachable by any agent (reported in coverage, not as a bug) |
 
 Every finding carries: type, severity, confidence (high/med/low), persona, state ID, action ID, steps to reproduce (the agent's recent action history), evidence (console text, request/response summary), screenshot path, trace path.
@@ -75,6 +76,8 @@ Every finding carries: type, severity, confidence (high/med/low), persona, state
 ## 4. State graph and hashing
 
 **Goal:** two visits to "the same screen" must hash identically even when content differs; different screens must hash differently.
+
+**Extraction method (decided in Phase 0):** Playwright `ariaSnapshot` — 100% same-screen collision and 100% different-screen separation on the sample app, 73 ms / 0.9 KB per capture. CDP `DOMSnapshot` was rejected: it captures the DOM regardless of visibility (closed dialogs still hash), needs a `layout` join to fix that, and costs 17× the payload. See PHASE0_RESULTS.md. **Open risk:** validated on one app; must also pass on a second, structurally different held-out app before Phase 3 leans on it.
 
 **Normalization pipeline**
 1. Route template: strip dynamic segments (`/orders/123` → `/orders/:id`) using the app map's route list.
@@ -181,18 +184,20 @@ invariants:
 
 ## 9. Performance targets
 
-| Metric | Target | Environment |
-|---|---|---|
-| Static scan | ≤ 3 s / 500 files | any laptop |
-| Context spin-up | ≤ 100 ms each | |
-| Swarm step time (excluding app latency) | ≤ 150 ms median | |
-| 50 agents × 100 steps | ≤ 30 s (excluding scouting) | 8 cores, 16 GB |
-| Memory per context | ≤ 150 MB | |
-| First run total | ≤ 4 min | mid-size app |
-| Rerun total | ≤ 90 s | cached graph |
-| LLM calls per rerun | ≤ 20 | |
+Measured numbers from Phase 0 (PHASE0_RESULTS.md) replace the original estimates; the original "50 agents × 100 steps ≤ 30 s" was ~4× off — per-step CDP transport under 50-way contention costs ~160 ms regardless of app speed, and lockstep rounds are gated by stragglers (post-navigation recoveries average ~1.5 s).
 
-These are targets, not measurements. Week 0 spikes replace them with real numbers.
+| Metric | Target | Phase 0 measurement |
+|---|---|---|
+| Static scan | ≤ 3 s / 500 files | Phase 2 measures |
+| Context spin-up | ≤ 100 ms | 83–95 ms avg ✅ |
+| Swarm step time | ≤ 200 ms median | p50 155–167 ms (50 contexts, one Chromium; avg concurrency only ~11 agents — CDP channel serialization) |
+| 50 agents × 100 steps | ≤ 2 min (capacity) | 109.7–118.0 s — **a couple of minutes**, gate headroom < 10% |
+| Memory per context | ≤ 160 MB incl. shared browser overhead | ~157–160 MB |
+| First run total | ≤ 4 min | Phase 5 measures |
+| Rerun total | ≤ 90 s | Phase 5 measures — runs are capped by `budgetSeconds` (default 60 s), so the swarm phase's ~2-min *capacity* is not the run *duration* |
+| LLM calls per rerun | ≤ 20 | Phase 3 measures |
+
+Optimization levers if the swarm phase must get faster (not needed for current gates): step agents independently instead of lockstep rounds (removes straggler gating); shard across multiple Chromium processes for > 50 agents.
 
 ## 10. LLM usage budget
 
@@ -215,7 +220,7 @@ These are targets, not measurements. Week 0 spikes replace them with real number
 
 ## 13. Open technical questions
 
-1. `ariaSnapshot` vs CDP `DOMSnapshot` for stable, fast state extraction.
+1. **RESOLVED (Phase 0 S2):** `ariaSnapshot` — 100% collision / 100% separation on the sample app at 73 ms and 0.9 KB per capture. CDP `DOMSnapshot` rejected (visibility-blind: closed dialogs still hash; 17× payload). See PHASE0_RESULTS.md. Remaining risk: single-app validation; a second held-out app is a Phase 3 gate.
 2. How to detect "write" vs "destructive" actions reliably (labels, HTTP method, handler analysis).
 3. Barrier-synchronized race firing: in-page `fetch` loop vs Playwright `request` API: which better reproduces real browser concurrency?
 4. Handling apps that use websockets/realtime heavily.

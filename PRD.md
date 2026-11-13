@@ -86,7 +86,7 @@ A **local MCP server** (plus CLI) exposing tools an AI coding agent calls:
 
 | Metric | Target |
 |---|---|
-| Time-to-report, first run / rerun | ≤ 4 min / ≤ 90 s |
+| Time-to-report, first run / rerun | ≤ 4 min / ≤ 90 s (swarm-phase *capacity* measured in Phase 0 at ~2 min for 50 agents × 100 steps; actual run duration is capped by `budgetSeconds`, default 60 s — see PHASE0_RESULTS.md) |
 | Real bugs found per repo (median, on 10 test repos) | ≥ 3 |
 | False-positive rate | ≤ 20% |
 | LLM calls per rerun | ≤ 20 |
@@ -119,7 +119,7 @@ A **local MCP server** (plus CLI) exposing tools an AI coding agent calls:
 
 ## 11. Kill criteria (decide at end of Phase 0 and Phase 3)
 
-- 50-agent swarm run > 2 min on a mid-size sample app → rethink architecture.
+- 50-agent swarm run > 2 min on a mid-size sample app → rethink architecture. (Phase 0 measured 109.7–118.0 s at 50 × 100 on the sample app: the criterion holds, but with < 10% headroom — swarm-transport optimizations are on the backlog if it tightens.)
 - > 1/3 of reported findings are false positives → pause and fix detectors before adding features.
 - State graph reuse saves < 50% of LLM calls from run 1 to run 2 → the speed thesis is wrong.
 - Fewer than 5 of 10 real repos yield a real bug → the value prop is weak.

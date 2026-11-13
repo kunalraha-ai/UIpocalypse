@@ -2,13 +2,14 @@
   "appUrl": "http://localhost:3123",
   "contexts": 50,
   "stepsPerAgent": 100,
+  "prodBuild": true,
   "mainPhase": {
-    "wallSec": 109.70217356999999,
+    "wallSec": 118.03659658900001,
     "stepsCompleted": 5900,
-    "stepsPerSec": 53.781979043790436,
-    "stepLatencyMsP50": 167.00747699999192,
-    "stepLatencyMsP95": 500.8830340000004,
-    "stepLatencyMsP99": 1646.8149459999986,
+    "stepsPerSec": 49.984497778630704,
+    "stepLatencyMsP50": 155.37378999999783,
+    "stepLatencyMsP95": 301.65440300000046,
+    "stepLatencyMsP99": 1896.3800309999933,
     "gateSec": 120,
     "gatePass": true
   },
@@ -16,105 +17,227 @@
     {
       "level": 5,
       "steps": 50,
-      "sec": 3.683217728999998,
-      "stepsPerSec": 13.5750866983297
+      "sec": 1.062793581,
+      "stepsPerSec": 47.045824225767504
     },
     {
       "level": 10,
       "steps": 100,
-      "sec": 2.751424711,
-      "stepsPerSec": 36.34480696499058
+      "sec": 1.8163059630000007,
+      "stepsPerSec": 55.05680322429243
     },
     {
       "level": 25,
       "steps": 250,
-      "sec": 7.848348393,
-      "stepsPerSec": 31.853835671079132
+      "sec": 4.8706909419999995,
+      "stepsPerSec": 51.32742006770505
     },
     {
       "level": 50,
       "steps": 500,
-      "sec": 13.288964248999998,
-      "stepsPerSec": 37.625204690999546
+      "sec": 15.141261369,
+      "stepsPerSec": 33.02234786222585
     }
   ],
   "resources": {
-    "contextSpinupMsAvg": 94.8374521200001,
-    "contextSpinupMsMax": 169.41790600000058,
-    "initialNavMsAvg": 152.75948360000012,
-    "chromiumRssMbBefore": 293.2890625,
-    "chromiumRssMbAfterSpawn": 6683.05078125,
-    "chromiumRssMbEnd": 8288.94921875,
-    "mbPerContext": 159.913203125,
-    "appRssMb": 425.390625,
-    "cpuCoresUsedAvg": 5.598157083078478,
-    "cpuPctOfMachine": 46.65130902565398,
+    "contextSpinupMsAvg": 83.04346905999999,
+    "contextSpinupMsMax": 111.92750799999885,
+    "initialNavMsAvg": 105.14763942000005,
+    "chromiumRssMbBefore": 290.09375,
+    "chromiumRssMbAfterSpawn": 6658.45703125,
+    "chromiumRssMbEnd": 8220.4609375,
+    "mbPerContext": 158.60734375,
+    "appRssMb": 413.484375,
+    "cpuCoresUsedAvg": 5.677730630725885,
+    "cpuPctOfMachine": 47.31442192271571,
     "cores": 12
   },
   "reliability": {
-    "noopSteps": 31,
+    "noopSteps": 0,
     "respawns": 0
+  },
+  "whereTimeWent": {
+    "byOutcome": {
+      "click": {
+        "count": 5664,
+        "totalS": 909.8134110800007,
+        "avgMs": 160.63089884887017,
+        "p95Ms": 266.6374250000008,
+        "maxMs": 359.365471000001
+      },
+      "recovered": {
+        "count": 236,
+        "totalS": 360.0065694090001,
+        "avgMs": 1525.4515652923733,
+        "p95Ms": 2552.0210970000007,
+        "maxMs": 3118.0867880000005
+      }
+    },
+    "topLabelsByTotalTime": [
+      {
+        "label": "Orders",
+        "count": 622,
+        "totalS": 119.81648687100024,
+        "avgMs": 192.6310078311901,
+        "p95Ms": 290.01997100000153,
+        "maxMs": 2894.526709000005
+      },
+      {
+        "label": "Store",
+        "count": 602,
+        "totalS": 114.35497412299979,
+        "avgMs": 189.95842877574717,
+        "p95Ms": 284.9003229999944,
+        "maxMs": 1697.9663180000061
+      },
+      {
+        "label": "Credits",
+        "count": 591,
+        "totalS": 108.22699631199973,
+        "avgMs": 183.12520526565098,
+        "p95Ms": 290.74497699999483,
+        "maxMs": 1622.0786090000183
+      },
+      {
+        "label": "Settings",
+        "count": 599,
+        "totalS": 107.56251180999999,
+        "avgMs": 179.57013657762937,
+        "p95Ms": 283.8109789999944,
+        "maxMs": 1939.3726259999967
+      },
+      {
+        "label": "Profile",
+        "count": 601,
+        "totalS": 107.08447138800013,
+        "avgMs": 178.1771570515809,
+        "p95Ms": 269.1068290000039,
+        "maxMs": 2661.575496999998
+      },
+      {
+        "label": "Sign in",
+        "count": 571,
+        "totalS": 102.19294915400002,
+        "avgMs": 178.97188993695275,
+        "p95Ms": 288.023368999995,
+        "maxMs": 1704.049165000004
+      },
+      {
+        "label": "Checkout",
+        "count": 551,
+        "totalS": 91.37014378499993,
+        "avgMs": 165.8260322776768,
+        "p95Ms": 285.8090119999979,
+        "maxMs": 1072.2151529999974
+      },
+      {
+        "label": "Sign out",
+        "count": 283,
+        "totalS": 45.51030746499992,
+        "avgMs": 160.8138072968195,
+        "p95Ms": 245.08467999999993,
+        "maxMs": 303.939613999999
+      },
+      {
+        "label": "See today's promo",
+        "count": 210,
+        "totalS": 42.59319633799988,
+        "avgMs": 202.8247444666661,
+        "p95Ms": 329.8821219999991,
+        "maxMs": 1150.87486
+      },
+      {
+        "label": "Load recommendations",
+        "count": 202,
+        "totalS": 40.66388925600001,
+        "avgMs": 201.3063824554456,
+        "p95Ms": 322.9484289999964,
+        "maxMs": 1419.2076649999944
+      },
+      {
+        "label": "Search",
+        "count": 208,
+        "totalS": 39.798503835999945,
+        "avgMs": 191.33896074999973,
+        "p95Ms": 320.58781199999794,
+        "maxMs": 1591.885810000007
+      },
+      {
+        "label": "Sign in as Alice",
+        "count": 200,
+        "totalS": 38.14533140099997,
+        "avgMs": 190.72665700499988,
+        "p95Ms": 286.0336449999995,
+        "maxMs": 1779.1801450000057
+      }
+    ],
+    "avgConcurrentActiveAgents": 10.757849829493729,
+    "agentActiveSeconds": 1269.819980488994,
+    "roundMsP50": 1050.2715360000147,
+    "roundMsP95": 2670.7362310000026,
+    "roundsOver1500ms": 43,
+    "appCoresUsed": 5.677730630725885
   },
   "topLabels": [
     [
-      "Profile",
-      643
-    ],
-    [
-      "Settings",
-      631
-    ],
-    [
-      "Credits",
-      626
-    ],
-    [
       "Orders",
-      595
+      622
     ],
     [
       "Store",
-      588
+      602
+    ],
+    [
+      "Profile",
+      601
+    ],
+    [
+      "Settings",
+      599
+    ],
+    [
+      "Credits",
+      591
     ],
     [
       "Sign in",
-      587
+      571
     ],
     [
       "Checkout",
-      550
+      551
     ],
     [
       "Sign out",
-      236
-    ],
-    [
-      "Sign in as Alice",
-      207
-    ],
-    [
-      "Search",
-      172
-    ],
-    [
-      "Sign in as Bob",
-      165
-    ],
-    [
-      "Load recommendations",
-      160
-    ],
-    [
-      "Subscribe",
-      156
+      283
     ],
     [
       "See today's promo",
-      151
+      210
     ],
     [
-      "Save profile",
-      35
+      "Search",
+      208
+    ],
+    [
+      "Load recommendations",
+      202
+    ],
+    [
+      "Sign in as Alice",
+      200
+    ],
+    [
+      "Subscribe",
+      179
+    ],
+    [
+      "Sign in as Bob",
+      176
+    ],
+    [
+      "Place order",
+      37
     ]
   ]
 }

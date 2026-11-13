@@ -30,6 +30,7 @@ const STEPS = arg('steps', 100);
 const CLK_TCK = 100; // Linux USER_HZ; verified below against os module if possible
 
 type Agent = { id: number; page: Page; steps: number; respawns: number; noopSteps: number };
+type StepRecord = { label: string; outcome: 'click' | 'noop' | 'recovered' | 'respawn'; ms: number };
 
 /**
  * In-page random clicker — one CDP round trip per step (the "in-page runtime +
@@ -60,28 +61,40 @@ function picker() {
 
 const latencies: number[] = [];
 const labelCounts = new Map<string, number>();
+const stepRecords: StepRecord[] = [];
 
-async function step(a: Agent): Promise<void> {
+async function step(a: Agent): Promise<StepRecord> {
   const t0 = performance.now();
+  let outcome: StepRecord['outcome'] = 'click';
+  let label = '';
   try {
     const r = await a.page.evaluate(picker);
-    if (r.action === 'click' && r.label) labelCounts.set(r.label, (labelCounts.get(r.label) ?? 0) + 1);
-    if (r.action === 'noop') {
-      a.noopSteps++;
+    if (r.action === 'click') label = r.label;
+    else {
+      outcome = 'noop';
       await a.page.goto(APP_URL, { timeout: 8000 }).catch(() => {});
     }
   } catch {
     // likely a navigation destroyed the execution context (form submit / crash) — recover
     try {
       await a.page.waitForLoadState('load', { timeout: 4000 }).catch(() => {});
-      await a.page.evaluate(picker);
+      const r = await a.page.evaluate(picker);
+      outcome = 'recovered';
+      if (r.action === 'click') label = r.label;
+      else await a.page.goto(APP_URL, { timeout: 8000 }).catch(() => {});
     } catch {
+      outcome = 'respawn';
       a.respawns++;
       await a.page.goto(APP_URL, { timeout: 8000 }).catch(() => {});
     }
   }
   a.steps++;
-  latencies.push(performance.now() - t0);
+  if (outcome === 'noop') a.noopSteps++;
+  const rec: StepRecord = { label, outcome, ms: performance.now() - t0 };
+  stepRecords.push(rec);
+  if (label) labelCounts.set(label, (labelCounts.get(label) ?? 0) + 1);
+  latencies.push(rec.ms);
+  return rec;
 }
 
 async function run() {
@@ -115,10 +128,13 @@ async function run() {
   }
 
   // ---- main phase: CONTEXTS × STEPS
+  const roundMs: number[] = [];
   const j0 = chromeCpuJiffies();
   const t0 = performance.now();
   for (let s = 0; s < STEPS; s++) {
+    const rt0 = performance.now();
     await Promise.all(agents.map((a) => step(a)));
+    roundMs.push(performance.now() - rt0);
   }
   const wallSec = (performance.now() - t0) / 1000;
   const j1 = chromeCpuJiffies();
@@ -130,10 +146,37 @@ async function run() {
   const cpuCoresUsed = (j1 - j0) / (wallSec * CLK_TCK);
   const totalSteps = agents.reduce((s, a) => s + a.steps, 0);
 
+  // ---- where did the time go? (per-outcome, per-label, per-round, concurrency)
+  const agg = (recs: StepRecord[]) => {
+    const ms = recs.map((r) => r.ms).sort((a, b) => a - b);
+    return {
+      count: recs.length,
+      totalS: ms.reduce((s, v) => s + v, 0) / 1000,
+      avgMs: ms.length ? ms.reduce((s, v) => s + v, 0) / ms.length : 0,
+      p95Ms: percentile(ms, 95),
+      maxMs: ms.length ? ms[ms.length - 1]! : 0,
+    };
+  };
+  const byOutcome: Record<string, ReturnType<typeof agg>> = {};
+  for (const outcome of ['click', 'noop', 'recovered', 'respawn'] as const) {
+    const recs = stepRecords.filter((r) => r.outcome === outcome);
+    if (recs.length) byOutcome[outcome] = agg(recs);
+  }
+  const byLabel = new Map<string, StepRecord[]>();
+  for (const r of stepRecords) if (r.label) byLabel.set(r.label, [...(byLabel.get(r.label) ?? []), r]);
+  const topLabels = [...byLabel.entries()]
+    .map(([label, recs]) => ({ label, ...agg(recs) }))
+    .sort((a, b) => b.totalS - a.totalS)
+    .slice(0, 12);
+  const agentActiveS = stepRecords.reduce((s, r) => s + r.ms, 0) / 1000;
+  const concurrency = agentActiveS / wallSec; // avg simultaneously-active agents
+  const roundsSorted = [...roundMs].sort((a, b) => a - b);
+
   const result = {
     appUrl: APP_URL,
     contexts: CONTEXTS,
     stepsPerAgent: STEPS,
+    prodBuild: true,
     mainPhase: {
       wallSec,
       stepsCompleted: totalSteps,
@@ -162,6 +205,16 @@ async function run() {
       noopSteps: agents.reduce((s, a) => s + a.noopSteps, 0),
       respawns: agents.reduce((s, a) => s + a.respawns, 0),
     },
+    whereTimeWent: {
+      byOutcome,
+      topLabelsByTotalTime: topLabels,
+      avgConcurrentActiveAgents: concurrency,
+      agentActiveSeconds: agentActiveS,
+      roundMsP50: percentile(roundsSorted, 50),
+      roundMsP95: percentile(roundsSorted, 95),
+      roundsOver1500ms: roundMs.filter((r) => r > 1500).length,
+      appCoresUsed: cpuCoresUsed,
+    },
     topLabels: [...labelCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 15),
   };
 
@@ -180,6 +233,17 @@ async function run() {
   console.log('  ramp:');
   for (const r of ramp) console.log(`    ${String(r.level).padStart(3)} agents → ${r.stepsPerSec.toFixed(1)} steps/s (${r.sec.toFixed(1)} s)`);
   console.log(`  top clicked: ${result.topLabels.map(([l, n]) => `${l} (${n})`).join(', ')}`);
+  console.log('\n  --- where the time went ---');
+  console.log(`  avg concurrent active agents: ${concurrency.toFixed(1)} of ${CONTEXTS} (agent-active ${agentActiveS.toFixed(0)}s over ${wallSec.toFixed(0)}s wall)`);
+  console.log(`  rounds: p50 ${percentile(roundsSorted, 50).toFixed(0)} ms, p95 ${percentile(roundsSorted, 95).toFixed(0)} ms, >1.5s: ${roundMs.filter((r) => r > 1500).length} of ${roundMs.length}`);
+  console.log('  by outcome:');
+  for (const [o, s] of Object.entries(byOutcome)) {
+    console.log(`    ${o.padEnd(10)} ${String(s.count).padStart(5)} steps, avg ${s.avgMs.toFixed(0)} ms, p95 ${s.p95Ms.toFixed(0)} ms, total ${s.totalS.toFixed(1)} s`);
+  }
+  console.log('  slowest actions by total time:');
+  for (const l of topLabels.slice(0, 8)) {
+    console.log(`    ${l.label.slice(0, 30).padEnd(30)} ${String(l.count).padStart(4)}×, avg ${l.avgMs.toFixed(0)} ms, total ${l.totalS.toFixed(1)} s`);
+  }
 }
 
 run().catch((e) => {

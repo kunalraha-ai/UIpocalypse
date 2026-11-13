@@ -6,7 +6,7 @@
 
 | Exit criterion (IMPLEMENTATION_PLAN.md) | Gate | Measured | Result |
 |---|---|---|---|
-| 50 agents × 100 steps in one Chromium | ≤ 2 min | **109.7 s** (also 114.6 s on first run) | ✅ PASS |
+| 50 agents × 100 steps in one Chromium | ≤ 2 min | **109.7 s** (3 runs: 109.7 / 114.6 / 118.0 s — the gate has < 10% headroom) | ✅ PASS |
 | State-hash separation (same-screen collide / diff-screen separate) | ≥ 90% / ≥ 95% | **100% / 100%** (ariaSnapshot) | ✅ PASS |
 | Dead-click false-positive rate | < 20% | **0%** (1 TP, 0 FP) after one detector fix | ✅ PASS |
 
@@ -81,6 +81,30 @@ One Chromium, 50 isolated contexts, one CDP round trip per step (in-page random 
 | Crash isolation | — | 31 noop steps auto-recovered, **0 hard respawns** | agents crashed into the broken success page and recovered via re-navigation |
 
 Ramp: 13.6 → 36.3 → 31.9 → 37.6 steps/s at 5/10/25/50 agents (a cold-start dip at 5 agents, then contention-bound). No app collapse: the Next.js prod server absorbed 50 concurrent sessions.
+
+### S3 follow-up: where the time went (post-review)
+
+The review asked whether the app (not the swarm) was the bottleneck, and whether a production build changes the number. The app **was already a production build** in all runs (`next build` + `next start`; `next start` refuses to boot without `.next/BUILD_ID`), so the number did not drop — the rerun with per-step telemetry showed the cost lives in the swarm's transport layer, not the app:
+
+| Measurement (50 × 100, prod build) | Value |
+|---|---|
+| Avg **concurrently active agents** | **10.8 of 50** — the single Chromium's CDP channel serializes evaluate calls |
+| Per-step transport cost | ~160 ms average *regardless of action type* (bare evaluate on an idle browser: ~1–5 ms) |
+| Nav-link clicks (no DB, client router) vs DB actions | 178–193 ms vs ~160–190 ms — **statistically indistinguishable**: app speed is not the driver |
+| Lockstep rounds | p50 1.05 s, p95 2.67 s; 43/100 rounds > 1.5 s — one straggler gates 49 other agents |
+| Straggler source | post-navigation recovery steps (full page loads from form submits like "Subscribe"/"Sign out") average **1.53 s**, p95 2.55 s — 236 such steps |
+| Chromium CPU | ~5.7 of 12 cores; app 413 MB RSS, no degradation |
+
+Implications:
+- The original TRD §9 estimate ("50 × 100 ≤ 30 s") was ~4× off because it assumed near-zero per-step transport. Corrected in TRD §9.
+- Capacity claim is "**a couple of minutes**" at 50×100 uncapped, with < 10% headroom on the 2-min gate. Real runs are bounded by `budgetSeconds` (default 60 s), so time-to-report targets are governed by the budget, not this ceiling.
+- Optimization backlog (not needed for the gate, but the known levers): (a) step agents independently instead of in lockstep rounds — removes straggler gating; (b) shard across multiple Chromium processes (TRD §8 anticipated this for > 50 agents); (c) keep per-step CDP round trips at one (already the case).
+
+### Caveats and follow-up tasks (post-review)
+
+1. **The race results come from a mock.** The 9-of-20 coupon race demonstrates the *detector and persona mechanics* work, but an in-memory store with an injected latency window is not Postgres — real transactions, row locks and pooling change which races occur. **The race detector is unproven until it runs against a real DB.** Swapping `sample-app/lib/store.ts` for real local Supabase (Docker) is scheduled as an early Phase 2 task, with bugs #4/#5 re-verified against it.
+2. **Sample sizes are small and possibly overfit.** 100%/100% hash separation was measured on the one app the normalization was tuned on; 0% FP rests on a single true positive. Before Phase 3 relies on the state graph, the hash must pass ≥ 90%/95% on a **second, structurally different held-out app** (different framework, messier UI) — added as a Phase 3 gate in the implementation plan.
+3. Spike findings have been folded into the specs: TRD §3.5 (deferred MutationObserver), §3.6 (Next.js error-UI matching, state-saturated controls), §4/§13 (ariaSnapshot chosen, open question 1 closed), §9 (measured numbers replace estimates).
 
 ## S4 — Dead-click detector (`spikes/src/s4-dead-click.ts`, runtime in `spikes/src/runtime/deadclick-runtime.js`, results in `spikes/results/s4-dead-click.json`)
 
