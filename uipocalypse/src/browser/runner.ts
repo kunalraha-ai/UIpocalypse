@@ -237,7 +237,11 @@ export async function explore(opts: ExploreOptions): Promise<ExploreResult> {
           log.info('scout step', { step: info.step, action: info.action.slice(0, 40), newState: info.new }),
       });
       scoutOutcome = result.stopped;
-      if (result.stopped === 'error') break;
+      if (result.stopped === 'error') {
+        // one seed failing must not kill the rest — log and move on
+        log.warn('scout seed failed', { seed, error: result.error });
+        continue;
+      }
     }
 
     // ---------------------------------------------------------- wanderer (code policy, no LLM)

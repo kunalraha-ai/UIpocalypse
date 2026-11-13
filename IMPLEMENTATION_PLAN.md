@@ -49,7 +49,7 @@ The plan front-loads the riskiest assumptions (state hashing, swarm speed, false
 - Planner (LLM call #1) + Scouts (LLM, accessibility-text based)
 
 **Deliverable:** one scout + one wanderer explore the sample app and write a graph; findings recorded with evidence.
-**Gate (kill criteria check):** Does run 2 need ≥ 50% fewer LLM calls than run 1?
+**Gate (kill criteria check):** Does run 2 need ≥ 50% fewer LLM calls than run 1? **PASS (Phase 3): 25 → 5 calls = 80% reduction on the real sample app with a real LLM** (PHASE3_RESULTS.md).
 **Gate (hash validity, before Phase 3 relies on the graph):** the state hash must also pass ≥ 90% collision / ≥ 95% separation on a **second, structurally different held-out app** (different framework, messier UI — not the app the normalization was tuned on). Keep that app as a permanent fixture. Phase 0's 100%/100% was measured on one app and may be overfit. **CLEARED in Phase 2:** Messy Mart (`held-out-app/`, Vite SPA) passed 100%/100% with no normalization changes — after the held-out run itself exposed and fixed a DOM-extractor dialog bug. See PHASE2_RESULTS.md.
 
 ## Phase 4: Swarm + personas + race mode (Week 4)

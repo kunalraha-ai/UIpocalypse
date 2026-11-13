@@ -32,6 +32,7 @@ export type ScoutResult = {
   steps: number;
   llmCalls: number;
   stopped: 'saturated' | 'budget' | 'done' | 'no-actions' | 'error';
+  error?: string;
 };
 
 export async function runScout(opts: {
@@ -51,7 +52,6 @@ export async function runScout(opts: {
   const { page, graph, llm } = opts;
   const history: string[] = [];
   let steps = 0;
-  let llmCalls = 0;
   const llmCallsAtStart = llm.calls;
 
   for (; steps < opts.maxSteps; steps++) {
@@ -70,34 +70,41 @@ export async function runScout(opts: {
       return { steps, llmCalls: llm.calls - llmCallsAtStart, stopped: 'saturated' };
     }
 
-    let decision: ScoutDecision;
+    let decision: ScoutDecision | null = null;
+    let lastError: string | null = null;
     const offered = safe.map((a) => ({
       id: a.id,
       role: a.role,
       name: a.name.slice(0, 60),
       visited: visitsFor(a.id),
     }));
-    try {
-      const payload = redactForLlm({
-        url: page.url(),
-        step: steps + 1,
-        history: history.slice(-6),
-        actions: offered,
-        hint: opts.plan.goals.length ? opts.plan.goals[0]!.description : 'explore broadly',
-      });
-      decision = await llm.completeJSON({
-        system: SCOUT_SYSTEM,
-        user: JSON.stringify(payload, null, 2) + '\n\nJSON shape: { "actionId": number, "input"?: string, "reason"?: string, "done"?: boolean }',
-        schema: ScoutDecisionSchema,
-        maxTokens: 300,
-        label: 'scout',
-      });
-      llmCalls = llm.calls - llmCallsAtStart;
-    } catch {
-      return { steps, llmCalls: llm.calls - llmCallsAtStart, stopped: 'error' };
+    for (let attempt = 0; attempt < 2 && !decision; attempt++) {
+      try {
+        const payload = redactForLlm({
+          url: page.url(),
+          step: steps + 1,
+          history: history.slice(-6),
+          actions: offered,
+          hint: opts.plan.goals.length ? opts.plan.goals[0]!.description : 'explore broadly',
+        });
+        decision = await llm.completeJSON({
+          system: SCOUT_SYSTEM,
+          user:
+            JSON.stringify(payload, null, 2) +
+            '\n\nJSON shape: { "actionId": number, "input"?: string, "reason"?: string, "done"?: boolean }',
+          schema: ScoutDecisionSchema,
+          maxTokens: 1500, // reasoning models spend tokens on reasoning first — leave room
+          label: `scout${attempt ? '-retry' : ''}`,
+        });
+      } catch (e) {
+        lastError = String(e).slice(0, 200);
+      }
+    }
+    if (!decision) {
+      return { steps, llmCalls: llm.calls - llmCallsAtStart, stopped: 'error', error: lastError ?? 'unknown' };
     }
 
-    if (decision.done) return { steps, llmCalls, stopped: 'done' };
+    if (decision.done) return { steps, llmCalls: llm.calls - llmCallsAtStart, stopped: 'done' };
 
     const chosen = safe.find((a) => a.id === Number(decision.actionId));
     if (!chosen) {
@@ -136,5 +143,5 @@ export async function runScout(opts: {
     }
   }
 
-  return { steps, llmCalls, stopped: 'budget' };
+  return { steps, llmCalls: llm.calls - llmCallsAtStart, stopped: 'budget' };
 }

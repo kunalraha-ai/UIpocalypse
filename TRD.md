@@ -203,6 +203,7 @@ Optimization levers if the swarm phase must get faster (not needed for current g
 
 - Planner: 1 call (cached). Reviewer: 1 call. Scouts: 3-5 agents × ≤ 30 steps on first run, mostly reused later. Escalations: global cap (default 15/run).
 - Use accessibility-tree text as input; screenshots only on failure/ambiguity.
+- **Reasoning-model note (Phase 3 finding): `reasoning_content` tokens count against `max_tokens` — leave headroom (scouts use 1500) and count *calls*, not tokens, against the rerun budget.**
 - Provider-agnostic interface, cost estimate shown before run, and a `--no-llm` mode that runs static scan + graph-only swarm (degraded but free).
 
 ## 11. Error handling and resilience
