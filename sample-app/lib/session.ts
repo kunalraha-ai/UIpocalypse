@@ -29,5 +29,5 @@ export async function getSessionUser() {
   const jar = await cookies();
   const userId = verifySession(jar.get('session')?.value);
   if (!userId) return null;
-  return findUserById(userId) ?? null;
+  return findUserById(userId);
 }

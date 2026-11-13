@@ -37,6 +37,10 @@ export type AppMap = {
   elements: ElementInfo[];
   apiCalls: ApiCallInfo[];
   envVars: EnvVarInfo[];
+  /** resolved relative import edges: file -> imported files (project-internal only) */
+  imports: Record<string, string[]>;
+  /** files starting with the 'use client' directive */
+  clientEntryFiles: string[];
   supabase: { tables: string[]; clientFiles: string[]; migrations: string[] };
   fileCount: number;
   extractedAt: string;

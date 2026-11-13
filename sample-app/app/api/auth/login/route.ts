@@ -4,7 +4,7 @@ import { signSession } from '@/lib/session';
 
 export async function POST(req: NextRequest) {
   const { email, password } = await req.json().catch(() => ({}));
-  const user = typeof email === 'string' ? findUserByEmail(email) : undefined;
+  const user = typeof email === 'string' ? await findUserByEmail(email) : null;
   await new Promise((r) => setTimeout(r, 120)); // auth round trip
   if (!user || user.password !== password) {
     return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 });

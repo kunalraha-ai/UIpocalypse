@@ -31,13 +31,29 @@ export function extractAppMap(root: string): AppMap {
   const envVars: EnvVarInfo[] = [];
   const supabaseTables = new Set<string>();
   const clientFiles = new Set<string>();
+  const imports: Record<string, string[]> = {};
+  const clientEntryFiles: string[] = [];
+  const knownFiles = new Set(files.map((f) => f.replaceAll('\\', '/')));
 
   for (const sourceFile of project.getSourceFiles()) {
-    const rel = sourceFile.getFilePath().slice(root.length + 1);
+    const rel = sourceFile.getFilePath().slice(root.length + 1).replaceAll('\\', '/');
     const text = sourceFile.getFullText();
 
     // ---------------- routes (file-based, framework-specific)
     routes.push(...fileRoutes(rel, framework));
+
+    // ---------------- client entry detection + import graph
+    if (/^\s*['"]use client['"]/.test(text)) clientEntryFiles.push(rel);
+    imports[rel] = [];
+    for (const decl of sourceFile.getImportDeclarations()) {
+      const spec = decl.getModuleSpecifierValue();
+      const resolved = spec.startsWith('@/')
+        ? resolveWithin(spec.slice(2), knownFiles)
+        : spec.startsWith('.')
+          ? resolveWithin(join(dirnamePosix(rel), spec), knownFiles)
+          : null;
+      if (resolved) imports[rel]!.push(resolved);
+    }
 
     // ---------------- JSX elements
     for (const node of sourceFile.getDescendantsOfKind(SyntaxKind.JsxElement)) {
@@ -98,6 +114,8 @@ export function extractAppMap(root: string): AppMap {
     elements,
     apiCalls,
     envVars,
+    imports,
+    clientEntryFiles,
     supabase: {
       tables: [...supabaseTables],
       clientFiles: [...clientFiles],
@@ -299,6 +317,31 @@ export function readEnvFileKeys(root: string): Set<string> {
 }
 
 // ------------------------------------------------------------------ utils
+
+function dirnamePosix(p: string): string {
+  const i = p.lastIndexOf('/');
+  return i === -1 ? '' : p.slice(0, i);
+}
+
+function normalizePosix(p: string): string {
+  const parts: string[] = [];
+  for (const seg of p.split('/')) {
+    if (seg === '' || seg === '.') continue;
+    if (seg === '..') parts.pop();
+    else parts.push(seg);
+  }
+  return parts.join('/');
+}
+
+/** Resolve an import specifier to a known project file (relative to repo root). */
+function resolveWithin(base: string, knownFiles: Set<string>): string | null {
+  const norm = normalizePosix(base);
+  for (const suffix of ['', '.ts', '.tsx', '.js', '.jsx', '/index.ts', '/index.tsx']) {
+    const candidate = `${norm}${suffix}`;
+    if (knownFiles.has(candidate)) return candidate;
+  }
+  return null;
+}
 
 function lineStartIndexes(text: string): number[] {
   const starts = [0];

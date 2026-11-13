@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { getSessionUser } from '@/lib/session';
+import { updateUserName } from '@/lib/store';
 
 export async function GET() {
   const user = await getSessionUser();
@@ -14,6 +15,6 @@ export async function PUT(req: NextRequest) {
   if (typeof body.name !== 'string' || !body.name.trim()) {
     return Response.json({ error: 'Name is required' }, { status: 400 });
   }
-  user.name = body.name;
-  return Response.json({ ok: true, name: user.name });
+  await updateUserName(user.id, body.name);
+  return Response.json({ ok: true, name: body.name });
 }

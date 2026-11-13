@@ -1,24 +1,29 @@
-// Phase 0 stand-in for the Supabase data layer.
-// The real schema lives in supabase/migrations/0001_init.sql; swap this module for
-// the supabase client when running against a real local Supabase stack.
-// All operations are async with simulated latency so that race windows behave
-// like real database round trips.
+// Real Supabase data layer (service-role, server-side only — never import from
+// client components). This replaced the Phase 0 in-memory mock; the SQL schema
+// lives in supabase/migrations/ and the fixtures in supabase/seed.sql.
+//
+// Planted bugs #4/#5 are preserved against the real database: no idempotency
+// on buys, and the coupon check/write are separate round trips (TOCTOU).
 
-export type User = { id: string; email: string; name: string; password: string; credits: number };
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+
+export type User = { id: string; email: string; name: string; password: string | null; credits: number };
 export type Product = { id: string; name: string; price: number };
 export type Pack = { id: string; dollars: number; credits: number };
-export type Transaction = { id: string; userId: string; packId: string; credits: number; at: number };
-export type Coupon = { code: string; discount: number; used: boolean; redeemedBy: string | null };
-export type Redemption = { code: string; userId: string; at: number };
-export type Order = { id: string; userId: string; total: number; couponCode: string | null; at: number };
+export type Coupon = { code: string; discount: number; used: boolean; redeemed_by: string | null };
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-const dbLatency = () => sleep(40 + Math.random() * 40); // simulated Supabase round trip
+let _db: SupabaseClient | null = null;
 
-const users: User[] = [
-  { id: 'u_alice', email: 'alice@example.com', name: 'Alice Anderson', password: 'secret123', credits: 500 },
-  { id: 'u_bob', email: 'bob@example.com', name: 'Bob Brown', password: 'secret123', credits: 300 },
-];
+function db(): SupabaseClient {
+  if (!_db) {
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!key) {
+      throw new Error('SUPABASE_SERVICE_ROLE_KEY is not set — copy .env.example to .env.local and fill in the keys `supabase start` prints.');
+    }
+    _db = createClient(process.env.SUPABASE_URL ?? 'http://127.0.0.1:54321', key);
+  }
+  return _db;
+}
 
 export const products: Product[] = [
   { id: 'p1', name: 'Desk Lamp', price: 12 },
@@ -35,69 +40,90 @@ export const packs: Pack[] = [
   { id: 'p20', dollars: 20, credits: 2400 },
 ];
 
-const coupons: Coupon[] = [{ code: 'WELCOME10', discount: 5, used: false, redeemedBy: null }];
-const transactions: Transaction[] = [];
-const redemptions: Redemption[] = [];
-const orders: Order[] = [];
-let txCounter = 0;
-let orderCounter = 0;
-
-export function findUserByEmail(email: string) {
-  return users.find((u) => u.email.toLowerCase() === email.toLowerCase());
+export async function findUserByEmail(email: string): Promise<User | null> {
+  const { data } = await db().from('profiles').select('*').eq('email', email).maybeSingle();
+  return (data as User) ?? null;
 }
 
-export function findUserById(id: string) {
-  return users.find((u) => u.id === id);
+export async function findUserById(id: string): Promise<User | null> {
+  const { data } = await db().from('profiles').select('*').eq('id', id).maybeSingle();
+  return (data as User) ?? null;
+}
+
+export async function updateUserName(id: string, name: string): Promise<void> {
+  await db().from('profiles').update({ name }).eq('id', id);
 }
 
 export async function buyCredits(userId: string, packId: string) {
   const pack = packs.find((p) => p.id === packId);
-  const user = findUserById(userId);
-  if (!user) return { status: 401 as const, error: 'Not signed in' };
   if (!pack) return { status: 400 as const, error: 'Unknown pack' };
-  await dbLatency();
-  // Planted bug #4: no idempotency key and no server-side double-submit guard,
-  // so two rapid POSTs create two transactions (duplicate_write).
-  const tx: Transaction = { id: `tx_${++txCounter}`, userId, packId, credits: pack.credits, at: Date.now() };
-  transactions.push(tx);
-  user.credits += pack.credits;
-  return { status: 200 as const, balance: user.credits, tx };
+  const { data: user, error: userErr } = await db()
+    .from('profiles')
+    .select('id, credits')
+    .eq('id', userId)
+    .maybeSingle();
+  if (userErr) return { status: 500 as const, error: userErr.message };
+  if (!user) return { status: 401 as const, error: 'Not signed in' };
+
+  // Planted bug #4: no idempotency key and no server-side double-submit guard —
+  // two rapid POSTs insert two transactions (and can even lose the update).
+  const txId = `tx_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const { error: txErr } = await db()
+    .from('transactions')
+    .insert({ id: txId, user_id: userId, pack_id: packId, credits: pack.credits });
+  if (txErr) return { status: 500 as const, error: txErr.message };
+
+  // read-modify-write — concurrent buys can drop each other's update
+  const { data: updated, error: updErr } = await db()
+    .from('profiles')
+    .update({ credits: user.credits + pack.credits })
+    .eq('id', userId)
+    .select('credits')
+    .maybeSingle();
+  if (updErr) return { status: 500 as const, error: updErr.message };
+  return { status: 200 as const, balance: updated?.credits ?? user.credits };
 }
 
 export async function redeemCoupon(code: string, userId: string) {
-  await dbLatency();
-  const coupon = coupons.find((c) => c.code === code.trim().toUpperCase());
+  const { data: coupon, error: readErr } = await db()
+    .from('coupons')
+    .select('*')
+    .eq('code', code.trim().toUpperCase())
+    .maybeSingle();
+  if (readErr) return { status: 500 as const, error: readErr.message };
   if (!coupon) return { status: 404 as const, error: 'Coupon not found' };
   if (coupon.used) return { status: 409 as const, error: 'Coupon already redeemed' };
-  await sleep(90); // write round trip — planted bug #5: the check and the write are not one transaction
-  coupon.used = true;
-  coupon.redeemedBy = userId;
-  redemptions.push({ code: coupon.code, userId, at: Date.now() });
+
+  // Planted bug #5: the check and the write are separate round trips — no
+  // transaction, no row lock, no conditional update. Concurrent redeemers all
+  // pass the check above before the first write lands.
+  const { error: updErr } = await db()
+    .from('coupons')
+    .update({ used: true, redeemed_by: userId })
+    .eq('code', coupon.code);
+  if (updErr) return { status: 500 as const, error: updErr.message };
+
+  await db().from('coupon_redemptions').insert({ code: coupon.code, user_id: userId });
   return { status: 200 as const, discount: coupon.discount };
 }
 
-export function couponStats() {
-  return {
-    coupons: coupons.map((c) => ({ ...c })),
-    redemptions: redemptions.filter((r) => r.code === 'WELCOME10').length,
-  };
-}
-
 export async function placeOrder(userId: string, total: number, couponCode: string | null) {
-  await dbLatency();
-  const order: Order = { id: `ord_${++orderCounter}`, userId, total, couponCode, at: Date.now() };
-  orders.push(order);
-  return order;
+  const id = `ord_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+  const { error } = await db()
+    .from('orders')
+    .insert({ id, user_id: userId, total, coupon_code: couponCode });
+  if (error) throw new Error(error.message);
+  return { id, total };
 }
 
-export async function deleteAccount(userId: string) {
-  await dbLatency();
-  const idx = users.findIndex((u) => u.id === userId);
-  if (idx >= 0) users.splice(idx, 1); // destructive for real — the swarm must never trigger this
-  return idx >= 0;
+export async function deleteAccount(userId: string): Promise<boolean> {
+  const { data, error } = await db().from('profiles').delete().eq('id', userId).select('id');
+  if (error) throw new Error(error.message);
+  return (data?.length ?? 0) > 0; // destructive for real — the swarm must never trigger this
 }
 
-export function grantWebhookCredits(userId: string, credits: number) {
-  const user = findUserById(userId);
-  if (user && credits > 0) user.credits += credits;
+export async function grantWebhookCredits(userId: string, credits: number): Promise<void> {
+  const { data: user } = await db().from('profiles').select('credits').eq('id', userId).maybeSingle();
+  if (!user) return;
+  await db().from('profiles').update({ credits: user.credits + credits }).eq('id', userId);
 }

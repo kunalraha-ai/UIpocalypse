@@ -145,13 +145,35 @@ export function missingRls(ctx: RuleContext): Issue[] {
   return issues;
 }
 
+/**
+ * Files a client bundle can actually reach: BFS from 'use client' entries over
+ * project-internal imports. Server-only modules (used by app/api routes and
+ * server components) are excluded — the service-role key is legitimate there.
+ */
+export function clientReachableFiles(appMap: AppMap): Set<string> {
+  const seen = new Set(appMap.clientEntryFiles);
+  const queue = [...seen];
+  while (queue.length) {
+    const file = queue.pop()!;
+    for (const dep of appMap.imports[file] ?? []) {
+      if (!seen.has(dep)) {
+        seen.add(dep);
+        queue.push(dep);
+      }
+    }
+  }
+  return seen;
+}
+
 // ---------------------------------------------------------------- 5. service-key-in-client
 
 export function serviceKeyInClient(ctx: RuleContext): Issue[] {
   const issues: Issue[] = [];
+  const reachable = clientReachableFiles(ctx.appMap);
   for (const env of ctx.appMap.envVars) {
     if (!/SERVICE_ROLE|SERVICE_KEY/i.test(env.name)) continue;
     if (isServerFile(env.file)) continue;
+    if (!reachable.has(env.file.replaceAll('\\', '/'))) continue; // server-only module — fine
     issues.push({
       rule: 'service-key-in-client',
       severity: 'high',

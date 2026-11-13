@@ -7,7 +7,7 @@ export async function POST(req: Request) {
   if (event?.type === 'checkout.session.completed') {
     const credits = Number(event.data?.object?.metadata?.credits ?? 0);
     const userId = event.data?.object?.metadata?.userId;
-    if (userId) grantWebhookCredits(String(userId), credits);
+    if (userId) await grantWebhookCredits(String(userId), credits);
   }
   return Response.json({ received: true });
 }

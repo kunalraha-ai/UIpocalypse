@@ -1,26 +1,25 @@
-# CreditCraft — UIpocalypse sample app (Phase 0, Spike S1)
+# CreditCraft — UIpocalypse sample app (S1)
 
-Small Next.js (App Router) store/credits app used to benchmark UIpocalypse
-(BENCHMARK.md §1). Phase 0 runs it against a **mock** of the Supabase data
-layer (`lib/store.ts`) because the local Supabase stack (Docker) is not
-available in this environment. The SQL schema still lives in
-`supabase/migrations/` so static rules (`missing-rls`, …) can be tested
-against a realistic layout. Swapping in real Supabase later only touches
-`lib/store.ts`.
+Small Next.js (App Router) + **real local Supabase** store/credits app used to benchmark UIpocalypse (BENCHMARK.md §1). The SQL schema lives in `supabase/migrations/` (with the planted missing-RLS bug on `profiles`); fixture data is seeded from `supabase/seed.sql`.
 
 ## Run
 
 ```bash
+npx supabase start -x logflare,vector   # local Supabase stack (prints the env keys)
+npx supabase db reset                   # apply migrations + seed
+cp .env.example .env.local              # fill in the keys supabase printed
 npm install
 npm run build
 npm start   # http://localhost:3123 (prod build — spikes must not run against dev)
 ```
 
-## Seeded data (in-memory, resets on server restart)
+## Seeded data (`supabase/seed.sql`)
 
 - `alice@example.com` / `secret123` — Alice Anderson, 500 credits
 - `bob@example.com` / `secret123` — Bob Brown, 300 credits
 - Coupon: `WELCOME10` — single use, −$5
+
+Login is a deliberately naive email/password check against `profiles` (real auth is out of scope; see migration `0002_password_fixture.sql`).
 
 ## Planted bugs (ground truth, BENCHMARK.md §2)
 
@@ -51,4 +50,11 @@ npm start   # http://localhost:3123 (prod build — spikes must not run against 
 
 - `app/api/orders/route.ts` reads `process.env.ORDERS_API_KEY`, defined nowhere (`undefined-env` fixture)
 - "Buy credits" has no in-flight disable (`missing-submit-guard` fixture)
-- `lib/supabase.ts` is a placeholder Supabase client (stack-detection fixture)
+- `lib/supabase.ts` is a placeholder client (stack-detection fixture)
+
+## Real-database verification (Phase 2)
+
+The Phase 0 mock was swapped for real local Supabase in Phase 2; bugs #4/#5 were re-verified against real Postgres:
+
+- **Bug #4**: a double-click produced **2 transaction rows AND a lost update** (balance 500 → 1000 instead of 1500 — the read-modify-write race drops one increment under concurrency).
+- **Bug #5**: 20 concurrent redeems on the single-use coupon → **2 succeeded** (genuine TOCTOU window between the REST read and write), and `coupon_redemptions` contains **2 rows** where the invariant allows 1.
