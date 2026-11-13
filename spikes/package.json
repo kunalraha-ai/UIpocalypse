@@ -1,0 +1,17 @@
+{
+  "name": "uipocalypse-spikes",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "s2": "tsx src/s2-state-hash.ts",
+    "s3": "tsx src/s3-context-scale.ts",
+    "s4": "tsx src/s4-dead-click.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "playwright": "^1.65.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}

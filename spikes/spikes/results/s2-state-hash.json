@@ -1,0 +1,178 @@
+{
+  "appUrl": "http://localhost:3123",
+  "captured": {
+    "home1": {
+      "aria": "47d54ee3c2803f0f",
+      "dom": "7fc4aa6296187768"
+    },
+    "home2": {
+      "aria": "47d54ee3c2803f0f",
+      "dom": "7fc4aa6296187768"
+    },
+    "home3": {
+      "aria": "47d54ee3c2803f0f",
+      "dom": "7fc4aa6296187768"
+    },
+    "searchLamp": {
+      "aria": "47d54ee3c2803f0f",
+      "dom": "7fc4aa6296187768"
+    },
+    "searchChair": {
+      "aria": "47d54ee3c2803f0f",
+      "dom": "7fc4aa6296187768"
+    },
+    "homeFresh": {
+      "aria": "47d54ee3c2803f0f",
+      "dom": "7fc4aa6296187768"
+    },
+    "homeAfterRecs": {
+      "aria": "47d54ee3c2803f0f",
+      "dom": "7fc4aa6296187768"
+    },
+    "login": {
+      "aria": "84e70d6fca3b600e",
+      "dom": "344fab533150d561"
+    },
+    "profileAlice": {
+      "aria": "70ca7a2ed9163d70",
+      "dom": "cecbd6a947c2a631"
+    },
+    "creditsAlice": {
+      "aria": "aa50ea9176590db2",
+      "dom": "b57b9a3fdc178719"
+    },
+    "checkoutPre": {
+      "aria": "de5adb75d15e5c5d",
+      "dom": "57c020eaeb05f7b5"
+    },
+    "checkoutPost": {
+      "aria": "de5adb75d15e5c5d",
+      "dom": "57c020eaeb05f7b5"
+    },
+    "orders1": {
+      "aria": "59b1f10b60a78610",
+      "dom": "59b1f10b60a78610"
+    },
+    "orders2": {
+      "aria": "59b1f10b60a78610",
+      "dom": "59b1f10b60a78610"
+    },
+    "settingsClosed": {
+      "aria": "594062a0b9b886d2",
+      "dom": "670fa7b54128af92"
+    },
+    "settingsDialog": {
+      "aria": "670fa7b54128af92",
+      "dom": "670fa7b54128af92"
+    },
+    "profileBob": {
+      "aria": "70ca7a2ed9163d70",
+      "dom": "cecbd6a947c2a631"
+    },
+    "creditsBob": {
+      "aria": "aa50ea9176590db2",
+      "dom": "b57b9a3fdc178719"
+    },
+    "successA": {
+      "aria": "1bef0f1f0436cc8d",
+      "dom": "1bef0f1f0436cc8d"
+    },
+    "successB": {
+      "aria": "1bef0f1f0436cc8d",
+      "dom": "1bef0f1f0436cc8d"
+    }
+  },
+  "samePairs": [
+    [
+      "home1",
+      "home2"
+    ],
+    [
+      "home1",
+      "home3"
+    ],
+    [
+      "home2",
+      "home3"
+    ],
+    [
+      "profileAlice",
+      "profileBob"
+    ],
+    [
+      "creditsAlice",
+      "creditsBob"
+    ],
+    [
+      "checkoutPre",
+      "checkoutPost"
+    ],
+    [
+      "orders1",
+      "orders2"
+    ],
+    [
+      "searchLamp",
+      "searchChair"
+    ],
+    [
+      "homeFresh",
+      "homeAfterRecs"
+    ],
+    [
+      "successA",
+      "successB"
+    ]
+  ],
+  "diffPairs": [
+    "home1",
+    "login",
+    "profileAlice",
+    "creditsAlice",
+    "checkoutPre",
+    "orders1",
+    "settingsClosed",
+    "settingsDialog",
+    "successA"
+  ],
+  "aria": {
+    "sameScreenCollisionRate": 1,
+    "diffScreenSeparationRate": 1,
+    "sameScreenCollided": [
+      "home1==home2",
+      "home1==home3",
+      "home2==home3",
+      "profileAlice==profileBob",
+      "creditsAlice==creditsBob",
+      "checkoutPre==checkoutPost",
+      "orders1==orders2",
+      "searchLamp==searchChair",
+      "homeFresh==homeAfterRecs",
+      "successA==successB"
+    ],
+    "diffScreenCollidedBadly": [],
+    "captureMsAvg": 73.37650760000017,
+    "captureBytesAvg": 887.05
+  },
+  "dom": {
+    "sameScreenCollisionRate": 1,
+    "diffScreenSeparationRate": 0.9722222222222222,
+    "sameScreenCollided": [
+      "home1==home2",
+      "home1==home3",
+      "home2==home3",
+      "profileAlice==profileBob",
+      "creditsAlice==creditsBob",
+      "checkoutPre==checkoutPost",
+      "orders1==orders2",
+      "searchLamp==searchChair",
+      "homeFresh==homeAfterRecs",
+      "successA==successB"
+    ],
+    "diffScreenCollidedBadly": [
+      "settingsClosed==settingsDialog"
+    ],
+    "captureMsAvg": 11.994141250000258,
+    "captureBytesAvg": 16192.7
+  }
+}

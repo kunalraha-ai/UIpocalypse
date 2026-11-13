@@ -1,0 +1,575 @@
+{
+  "appUrl": "http://localhost:3123",
+  "totalClicks": 53,
+  "saturatedControls": [
+    "$5 — 500 credits"
+  ],
+  "flaggedDead": [
+    {
+      "page": "/profile",
+      "name": "Save profile",
+      "dead": true,
+      "reasons": []
+    }
+  ],
+  "truePositives": 1,
+  "falsePositives": [],
+  "missedDead": [],
+  "fpRate": 0,
+  "gatePass": true,
+  "skipped": [
+    {
+      "page": "/",
+      "name": "Sign out",
+      "dead": false,
+      "reasons": [],
+      "skipped": true
+    },
+    {
+      "page": "/credits",
+      "name": "Sign out",
+      "dead": false,
+      "reasons": [],
+      "skipped": true
+    },
+    {
+      "page": "/checkout",
+      "name": "Sign out",
+      "dead": false,
+      "reasons": [],
+      "skipped": true
+    },
+    {
+      "page": "/orders",
+      "name": "Sign out",
+      "dead": false,
+      "reasons": [],
+      "skipped": true
+    },
+    {
+      "page": "/profile",
+      "name": "Sign out",
+      "dead": false,
+      "reasons": [],
+      "skipped": true
+    },
+    {
+      "page": "/settings",
+      "name": "Sign out",
+      "dead": false,
+      "reasons": [],
+      "skipped": true
+    },
+    {
+      "page": "/settings",
+      "name": "Delete account",
+      "dead": false,
+      "reasons": [],
+      "skipped": true
+    }
+  ],
+  "bonus": {
+    "promo404Detected": true,
+    "orders500Detected": true,
+    "infiniteSpinnerDetected": true
+  },
+  "allClicks": [
+    {
+      "page": "/",
+      "name": "e.g. lamp",
+      "dead": false,
+      "reasons": [
+        "focus"
+      ]
+    },
+    {
+      "page": "/",
+      "name": "Search",
+      "dead": false,
+      "reasons": [
+        "mutation",
+        "request"
+      ]
+    },
+    {
+      "page": "/",
+      "name": "See today's promo",
+      "dead": false,
+      "reasons": [
+        "mutation",
+        "request"
+      ]
+    },
+    {
+      "page": "/",
+      "name": "Load recommendations",
+      "dead": false,
+      "reasons": [
+        "mutation",
+        "request"
+      ]
+    },
+    {
+      "page": "/",
+      "name": "you@example.com",
+      "dead": false,
+      "reasons": [
+        "focus"
+      ]
+    },
+    {
+      "page": "/",
+      "name": "Subscribe",
+      "dead": false,
+      "reasons": [
+        "nav"
+      ]
+    },
+    {
+      "page": "/",
+      "name": "Store",
+      "dead": false,
+      "reasons": [
+        "mutation",
+        "request"
+      ]
+    },
+    {
+      "page": "/",
+      "name": "Credits",
+      "dead": false,
+      "reasons": [
+        "mutation",
+        "request",
+        "nav"
+      ]
+    },
+    {
+      "page": "/",
+      "name": "Checkout",
+      "dead": false,
+      "reasons": [
+        "mutation",
+        "request",
+        "nav"
+      ]
+    },
+    {
+      "page": "/",
+      "name": "Orders",
+      "dead": false,
+      "reasons": [
+        "mutation",
+        "request",
+        "nav"
+      ]
+    },
+    {
+      "page": "/",
+      "name": "Profile",
+      "dead": false,
+      "reasons": [
+        "mutation",
+        "request",
+        "nav"
+      ]
+    },
+    {
+      "page": "/",
+      "name": "Settings",
+      "dead": false,
+      "reasons": [
+        "mutation",
+        "request",
+        "nav"
+      ]
+    },
+    {
+      "page": "/credits",
+      "name": "$5 — 500 credits",
+      "dead": false,
+      "reasons": [
+        "already-selected"
+      ],
+      "saturated": true
+    },
+    {
+      "page": "/credits",
+      "name": "$10 — 1100 credits",
+      "dead": false,
+      "reasons": [
+        "mutation",
+        "aria"
+      ]
+    },
+    {
+      "page": "/credits",
+      "name": "$20 — 2400 credits",
+      "dead": false,
+      "reasons": [
+        "mutation",
+        "aria"
+      ]
+    },
+    {
+      "page": "/credits",
+      "name": "Buy credits",
+      "dead": false,
+      "reasons": [
+        "mutation",
+        "request"
+      ]
+    },
+    {
+      "page": "/credits",
+      "name": "Store",
+      "dead": false,
+      "reasons": [
+        "mutation",
+        "request",
+        "nav"
+      ]
+    },
+    {
+      "page": "/credits",
+      "name": "Credits",
+      "dead": false,
+      "reasons": [
+        "mutation",
+        "request"
+      ]
+    },
+    {
+      "page": "/credits",
+      "name": "Checkout",
+      "dead": false,
+      "reasons": [
+        "mutation",
+        "request",
+        "nav"
+      ]
+    },
+    {
+      "page": "/credits",
+      "name": "Orders",
+      "dead": false,
+      "reasons": [
+        "mutation",
+        "request",
+        "nav"
+      ]
+    },
+    {
+      "page": "/credits",
+      "name": "Profile",
+      "dead": false,
+      "reasons": [
+        "mutation",
+        "request",
+        "nav"
+      ]
+    },
+    {
+      "page": "/credits",
+      "name": "Settings",
+      "dead": false,
+      "reasons": [
+        "mutation",
+        "request",
+        "nav"
+      ]
+    },
+    {
+      "page": "/checkout",
+      "name": "WELCOME10",
+      "dead": false,
+      "reasons": [
+        "focus"
+      ]
+    },
+    {
+      "page": "/checkout",
+      "name": "Redeem coupon",
+      "dead": false,
+      "reasons": [
+        "mutation",
+        "request"
+      ]
+    },
+    {
+      "page": "/checkout",
+      "name": "Place order",
+      "dead": false,
+      "reasons": [
+        "mutation",
+        "request",
+        "nav"
+      ]
+    },
+    {
+      "page": "/checkout",
+      "name": "Store",
+      "dead": false,
+      "reasons": [
+        "mutation",
+        "request",
+        "nav"
+      ]
+    },
+    {
+      "page": "/checkout",
+      "name": "Credits",
+      "dead": false,
+      "reasons": [
+        "mutation",
+        "request",
+        "nav"
+      ]
+    },
+    {
+      "page": "/checkout",
+      "name": "Checkout",
+      "dead": false,
+      "reasons": [
+        "mutation",
+        "request"
+      ]
+    },
+    {
+      "page": "/checkout",
+      "name": "Orders",
+      "dead": false,
+      "reasons": [
+        "mutation",
+        "request",
+        "nav"
+      ]
+    },
+    {
+      "page": "/checkout",
+      "name": "Profile",
+      "dead": false,
+      "reasons": [
+        "mutation",
+        "request",
+        "nav"
+      ]
+    },
+    {
+      "page": "/checkout",
+      "name": "Settings",
+      "dead": false,
+      "reasons": [
+        "mutation",
+        "request",
+        "nav"
+      ]
+    },
+    {
+      "page": "/orders",
+      "name": "Store",
+      "dead": false,
+      "reasons": [
+        "mutation",
+        "request",
+        "nav"
+      ]
+    },
+    {
+      "page": "/orders",
+      "name": "Credits",
+      "dead": false,
+      "reasons": [
+        "mutation",
+        "request",
+        "nav"
+      ]
+    },
+    {
+      "page": "/orders",
+      "name": "Checkout",
+      "dead": false,
+      "reasons": [
+        "mutation",
+        "request",
+        "nav"
+      ]
+    },
+    {
+      "page": "/orders",
+      "name": "Orders",
+      "dead": false,
+      "reasons": [
+        "request"
+      ]
+    },
+    {
+      "page": "/orders",
+      "name": "Profile",
+      "dead": false,
+      "reasons": [
+        "mutation",
+        "request",
+        "nav"
+      ]
+    },
+    {
+      "page": "/orders",
+      "name": "Settings",
+      "dead": false,
+      "reasons": [
+        "mutation",
+        "request",
+        "nav"
+      ]
+    },
+    {
+      "page": "/profile",
+      "name": "input",
+      "dead": false,
+      "reasons": [
+        "focus"
+      ]
+    },
+    {
+      "page": "/profile",
+      "name": "Save profile",
+      "dead": true,
+      "reasons": []
+    },
+    {
+      "page": "/profile",
+      "name": "Store",
+      "dead": false,
+      "reasons": [
+        "mutation",
+        "request",
+        "nav"
+      ]
+    },
+    {
+      "page": "/profile",
+      "name": "Credits",
+      "dead": false,
+      "reasons": [
+        "mutation",
+        "request",
+        "nav"
+      ]
+    },
+    {
+      "page": "/profile",
+      "name": "Checkout",
+      "dead": false,
+      "reasons": [
+        "mutation",
+        "request",
+        "nav"
+      ]
+    },
+    {
+      "page": "/profile",
+      "name": "Orders",
+      "dead": false,
+      "reasons": [
+        "mutation",
+        "request",
+        "nav"
+      ]
+    },
+    {
+      "page": "/profile",
+      "name": "Profile",
+      "dead": false,
+      "reasons": [
+        "mutation",
+        "request"
+      ]
+    },
+    {
+      "page": "/profile",
+      "name": "Settings",
+      "dead": false,
+      "reasons": [
+        "mutation",
+        "request",
+        "nav"
+      ]
+    },
+    {
+      "page": "/settings",
+      "name": "Shipping FAQ",
+      "dead": false,
+      "reasons": [
+        "mutation",
+        "aria"
+      ]
+    },
+    {
+      "page": "/settings",
+      "name": "Notification preferences",
+      "dead": false,
+      "reasons": [
+        "mutation"
+      ]
+    },
+    {
+      "page": "/settings",
+      "name": "Store",
+      "dead": false,
+      "reasons": [
+        "mutation",
+        "request",
+        "nav"
+      ]
+    },
+    {
+      "page": "/settings",
+      "name": "Credits",
+      "dead": false,
+      "reasons": [
+        "mutation",
+        "request",
+        "nav"
+      ]
+    },
+    {
+      "page": "/settings",
+      "name": "Checkout",
+      "dead": false,
+      "reasons": [
+        "mutation",
+        "request",
+        "nav"
+      ]
+    },
+    {
+      "page": "/settings",
+      "name": "Orders",
+      "dead": false,
+      "reasons": [
+        "mutation",
+        "request",
+        "nav"
+      ]
+    },
+    {
+      "page": "/settings",
+      "name": "Profile",
+      "dead": false,
+      "reasons": [
+        "mutation",
+        "request",
+        "nav"
+      ]
+    },
+    {
+      "page": "/settings",
+      "name": "Settings",
+      "dead": false,
+      "reasons": [
+        "request"
+      ]
+    }
+  ]
+}

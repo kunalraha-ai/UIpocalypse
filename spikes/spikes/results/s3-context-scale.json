@@ -1,0 +1,120 @@
+{
+  "appUrl": "http://localhost:3123",
+  "contexts": 50,
+  "stepsPerAgent": 100,
+  "mainPhase": {
+    "wallSec": 109.70217356999999,
+    "stepsCompleted": 5900,
+    "stepsPerSec": 53.781979043790436,
+    "stepLatencyMsP50": 167.00747699999192,
+    "stepLatencyMsP95": 500.8830340000004,
+    "stepLatencyMsP99": 1646.8149459999986,
+    "gateSec": 120,
+    "gatePass": true
+  },
+  "ramp": [
+    {
+      "level": 5,
+      "steps": 50,
+      "sec": 3.683217728999998,
+      "stepsPerSec": 13.5750866983297
+    },
+    {
+      "level": 10,
+      "steps": 100,
+      "sec": 2.751424711,
+      "stepsPerSec": 36.34480696499058
+    },
+    {
+      "level": 25,
+      "steps": 250,
+      "sec": 7.848348393,
+      "stepsPerSec": 31.853835671079132
+    },
+    {
+      "level": 50,
+      "steps": 500,
+      "sec": 13.288964248999998,
+      "stepsPerSec": 37.625204690999546
+    }
+  ],
+  "resources": {
+    "contextSpinupMsAvg": 94.8374521200001,
+    "contextSpinupMsMax": 169.41790600000058,
+    "initialNavMsAvg": 152.75948360000012,
+    "chromiumRssMbBefore": 293.2890625,
+    "chromiumRssMbAfterSpawn": 6683.05078125,
+    "chromiumRssMbEnd": 8288.94921875,
+    "mbPerContext": 159.913203125,
+    "appRssMb": 425.390625,
+    "cpuCoresUsedAvg": 5.598157083078478,
+    "cpuPctOfMachine": 46.65130902565398,
+    "cores": 12
+  },
+  "reliability": {
+    "noopSteps": 31,
+    "respawns": 0
+  },
+  "topLabels": [
+    [
+      "Profile",
+      643
+    ],
+    [
+      "Settings",
+      631
+    ],
+    [
+      "Credits",
+      626
+    ],
+    [
+      "Orders",
+      595
+    ],
+    [
+      "Store",
+      588
+    ],
+    [
+      "Sign in",
+      587
+    ],
+    [
+      "Checkout",
+      550
+    ],
+    [
+      "Sign out",
+      236
+    ],
+    [
+      "Sign in as Alice",
+      207
+    ],
+    [
+      "Search",
+      172
+    ],
+    [
+      "Sign in as Bob",
+      165
+    ],
+    [
+      "Load recommendations",
+      160
+    ],
+    [
+      "Subscribe",
+      156
+    ],
+    [
+      "See today's promo",
+      151
+    ],
+    [
+      "Save profile",
+      35
+    ]
+  ]
+}
