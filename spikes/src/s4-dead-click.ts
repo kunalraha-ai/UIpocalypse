@@ -16,9 +16,12 @@
 import { chromium } from 'playwright';
 import { readFileSync } from 'node:fs';
 import { mkdirSync, writeFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
 import { APP_URL, ALICE, loginContext } from './lib/app.js';
 
 const RUNTIME = readFileSync(new URL('./runtime/deadclick-runtime.js', import.meta.url), 'utf8');
+const RESULTS_DIR = fileURLToPath(new URL('../results/', import.meta.url));
 
 // The injected runtime (deadclick-runtime.js) exposes window.__uip.
 declare global {
@@ -167,8 +170,8 @@ async function run() {
     allClicks: clicks,
   };
 
-  mkdirSync('spikes/results', { recursive: true });
-  writeFileSync('spikes/results/s4-dead-click.json', JSON.stringify(result, null, 2));
+  mkdirSync(RESULTS_DIR, { recursive: true });
+  writeFileSync(path.join(RESULTS_DIR, 's4-dead-click.json'), JSON.stringify(result, null, 2));
 
   console.log('=== Spike S4: dead-click detector ===');
   console.log(`  actions performed:  ${clicks.length}`);

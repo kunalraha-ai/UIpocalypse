@@ -12,9 +12,13 @@
 
 import { chromium, type Page } from 'playwright';
 import { mkdirSync, writeFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
 import os from 'node:os';
 import { chromiumRssMb, appRssMb, chromeCpuJiffies } from './lib/proc.js';
 import { APP_URL, percentile } from './lib/app.js';
+
+const RESULTS_DIR = fileURLToPath(new URL('../results/', import.meta.url));
 
 function arg(name: string, def: number): number {
   const i = process.argv.indexOf(`--${name}`);
@@ -161,8 +165,8 @@ async function run() {
     topLabels: [...labelCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 15),
   };
 
-  mkdirSync('spikes/results', { recursive: true });
-  writeFileSync('spikes/results/s3-context-scale.json', JSON.stringify(result, null, 2));
+  mkdirSync(RESULTS_DIR, { recursive: true });
+  writeFileSync(path.join(RESULTS_DIR, 's3-context-scale.json'), JSON.stringify(result, null, 2));
 
   console.log('=== Spike S3: context scale ===');
   console.log(`  ${CONTEXTS} contexts × ${STEPS} steps:`);

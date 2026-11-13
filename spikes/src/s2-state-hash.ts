@@ -13,7 +13,11 @@
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
 import { createHash } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
 import { APP_URL, ALICE, BOB, loginContext } from './lib/app.js';
+
+const RESULTS_DIR = fileURLToPath(new URL('../results/', import.meta.url));
 
 type Entry = { role: string; name: string };
 type Flags = { dialog: boolean; loading: boolean; auth: boolean };
@@ -349,8 +353,8 @@ async function run() {
     };
   }
 
-  mkdirSync('spikes/results', { recursive: true });
-  writeFileSync('spikes/results/s2-state-hash.json', JSON.stringify(result, null, 2));
+  mkdirSync(RESULTS_DIR, { recursive: true });
+  writeFileSync(path.join(RESULTS_DIR, 's2-state-hash.json'), JSON.stringify(result, null, 2));
 
   console.log('=== Spike S2: state hashing ===');
   for (const method of methods) {
