@@ -1,0 +1,34 @@
+{
+  "name": "uipocalypse",
+  "version": "0.0.1",
+  "description": "50 chaotic users try to break your app in a couple of minutes — local MCP server + CLI for vibecoded-app QA",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "uipocalypse": "dist/index.cjs"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src test build.mjs vitest.config.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "better-sqlite3": "^13.1.1",
+    "yaml": "^2.9.1",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.10.0",
+    "esbuild": "^0.28.2",
+    "eslint": "^10.14.0",
+    "typescript": "^5.6.0",
+    "typescript-eslint": "^8.72.2",
+    "vitest": "^5.1.0"
+  }
+}
