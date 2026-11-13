@@ -20,6 +20,7 @@ create table if not exists transactions (
   credits integer not null,
   created_at timestamptz not null default now()
 );
+alter table transactions enable row level security;
 
 create table if not exists coupons (
   code text primary key,
@@ -27,12 +28,14 @@ create table if not exists coupons (
   used boolean not null default false,
   redeemed_by uuid references profiles (id)
 );
+alter table coupons enable row level security;
 
 create table if not exists coupon_redemptions (
   code text not null references coupons (code),
   user_id uuid not null references profiles (id),
   at timestamptz not null default now()
 );
+alter table coupon_redemptions enable row level security;
 
 create table if not exists orders (
   id text primary key,
@@ -41,3 +44,4 @@ create table if not exists orders (
   coupon_code text references coupons (code),
   created_at timestamptz not null default now()
 );
+alter table orders enable row level security;

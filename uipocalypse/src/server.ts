@@ -36,9 +36,9 @@ export function createServer(opts: { workspaceRoot?: string } = {}): ServerConte
   server.registerTool(
     'scan_codebase',
     {
-      title: 'Scan codebase (stub)',
+      title: 'Scan codebase',
       description:
-        'Statically scan a Next.js/Vite + Supabase codebase for vibecoder bugs (dead handlers, unwired forms, missing endpoints, safety holes). Phase 1 stub — real rules land in Phase 2.',
+        'Statically scan a Next.js/Vite + Supabase codebase for vibecoder bugs and launch-safety holes: dead handlers, unwired forms, missing endpoints, missing RLS, service keys in client code, undefined env vars, unverified Stripe webhooks, missing error/loading states, exposed secrets.',
       inputSchema: { path: z.string().describe('Path to the repo root to scan') },
     },
     async ({ path }) => {
