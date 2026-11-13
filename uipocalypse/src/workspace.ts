@@ -11,6 +11,7 @@ export type Workspace = {
   root: string;
   db: string;
   logs: string;
+  plans: string;
   runs: string;
   screenshots: string;
   traces: string;
@@ -23,6 +24,7 @@ export function initWorkspace(explicitRoot?: string): Workspace {
     root: base,
     db: base,
     logs: join(base, 'logs'),
+    plans: join(base, 'plans'),
     runs: join(base, 'runs'),
     screenshots: join(base, 'screenshots'),
     traces: join(base, 'traces'),

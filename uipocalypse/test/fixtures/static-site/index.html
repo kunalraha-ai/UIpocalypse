@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Fixture Home</title>
+  </head>
+  <body>
+    <h1>Fixture Home</h1>
+    <button id="dead">Dead button</button>
+    <button id="alive" onclick="window.n = (window.n || 0) + 1; document.title = 'clicked ' + window.n">Alive button</button>
+    <button id="boom" onclick="notAFunction()">Boom button</button>
+    <a href="page2.html">Page 2</a>
+    <input id="name" placeholder="your name" />
+    <form onsubmit="event.preventDefault(); document.title = 'subscribed'">
+      <input type="email" name="email" placeholder="you@example.com" />
+      <button type="submit">Subscribe</button>
+    </form>
+  </body>
+</html>

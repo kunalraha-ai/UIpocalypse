@@ -38,6 +38,14 @@ export const ConfigSchema = z.object({
     .default([]),
   /** Per-host request ceiling (SAFETY.md G7). */
   maxRps: z.number().int().min(1).default(50),
+  llm: z
+    .object({
+      baseURL: z.string().optional(),
+      model: z.string().optional(),
+      /** Global cap on LLM calls per run (TRD §10). */
+      maxCallsPerRun: z.number().int().min(1).default(40),
+    })
+    .default({ maxCallsPerRun: 40 }),
 });
 
 export type UiConfig = z.infer<typeof ConfigSchema>;
