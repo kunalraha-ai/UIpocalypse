@@ -1,4 +1,5 @@
 {
+  "app": "sample-app (CreditCraft)",
   "appUrl": "http://localhost:3123",
   "captured": {
     "home1": {
@@ -59,7 +60,7 @@
     },
     "settingsClosed": {
       "aria": "594062a0b9b886d2",
-      "dom": "670fa7b54128af92"
+      "dom": "d2998e029dffaa5c"
     },
     "settingsDialog": {
       "aria": "670fa7b54128af92",
@@ -125,15 +126,150 @@
     ]
   ],
   "diffPairs": [
-    "home1",
-    "login",
-    "profileAlice",
-    "creditsAlice",
-    "checkoutPre",
-    "orders1",
-    "settingsClosed",
-    "settingsDialog",
-    "successA"
+    [
+      "home1",
+      "login"
+    ],
+    [
+      "home1",
+      "profileAlice"
+    ],
+    [
+      "home1",
+      "creditsAlice"
+    ],
+    [
+      "home1",
+      "checkoutPre"
+    ],
+    [
+      "home1",
+      "orders1"
+    ],
+    [
+      "home1",
+      "settingsClosed"
+    ],
+    [
+      "home1",
+      "settingsDialog"
+    ],
+    [
+      "home1",
+      "successA"
+    ],
+    [
+      "login",
+      "profileAlice"
+    ],
+    [
+      "login",
+      "creditsAlice"
+    ],
+    [
+      "login",
+      "checkoutPre"
+    ],
+    [
+      "login",
+      "orders1"
+    ],
+    [
+      "login",
+      "settingsClosed"
+    ],
+    [
+      "login",
+      "settingsDialog"
+    ],
+    [
+      "login",
+      "successA"
+    ],
+    [
+      "profileAlice",
+      "creditsAlice"
+    ],
+    [
+      "profileAlice",
+      "checkoutPre"
+    ],
+    [
+      "profileAlice",
+      "orders1"
+    ],
+    [
+      "profileAlice",
+      "settingsClosed"
+    ],
+    [
+      "profileAlice",
+      "settingsDialog"
+    ],
+    [
+      "profileAlice",
+      "successA"
+    ],
+    [
+      "creditsAlice",
+      "checkoutPre"
+    ],
+    [
+      "creditsAlice",
+      "orders1"
+    ],
+    [
+      "creditsAlice",
+      "settingsClosed"
+    ],
+    [
+      "creditsAlice",
+      "settingsDialog"
+    ],
+    [
+      "creditsAlice",
+      "successA"
+    ],
+    [
+      "checkoutPre",
+      "orders1"
+    ],
+    [
+      "checkoutPre",
+      "settingsClosed"
+    ],
+    [
+      "checkoutPre",
+      "settingsDialog"
+    ],
+    [
+      "checkoutPre",
+      "successA"
+    ],
+    [
+      "orders1",
+      "settingsClosed"
+    ],
+    [
+      "orders1",
+      "settingsDialog"
+    ],
+    [
+      "orders1",
+      "successA"
+    ],
+    [
+      "settingsClosed",
+      "settingsDialog"
+    ],
+    [
+      "settingsClosed",
+      "successA"
+    ],
+    [
+      "settingsDialog",
+      "successA"
+    ]
   ],
   "aria": {
     "sameScreenCollisionRate": 1,
@@ -151,12 +287,12 @@
       "successA==successB"
     ],
     "diffScreenCollidedBadly": [],
-    "captureMsAvg": 73.37650760000017,
-    "captureBytesAvg": 887.05
+    "captureMsAvg": 85.41016934999996,
+    "captureBytesAvg": 888.75
   },
   "dom": {
     "sameScreenCollisionRate": 1,
-    "diffScreenSeparationRate": 0.9722222222222222,
+    "diffScreenSeparationRate": 1,
     "sameScreenCollided": [
       "home1==home2",
       "home1==home3",
@@ -169,10 +305,8 @@
       "homeFresh==homeAfterRecs",
       "successA==successB"
     ],
-    "diffScreenCollidedBadly": [
-      "settingsClosed==settingsDialog"
-    ],
-    "captureMsAvg": 11.994141250000258,
-    "captureBytesAvg": 16192.7
+    "diffScreenCollidedBadly": [],
+    "captureMsAvg": 14.289384849999943,
+    "captureBytesAvg": 16195.85
   }
 }

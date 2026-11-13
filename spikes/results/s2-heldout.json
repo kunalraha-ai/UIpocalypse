@@ -1,0 +1,176 @@
+{
+  "app": "held-out-app (Messy Mart)",
+  "appUrl": "http://localhost:4173",
+  "captured": {
+    "home1": {
+      "aria": "200f35b37aa44ab5",
+      "dom": "200f35b37aa44ab5"
+    },
+    "home2": {
+      "aria": "200f35b37aa44ab5",
+      "dom": "200f35b37aa44ab5"
+    },
+    "homeGadgets": {
+      "aria": "200f35b37aa44ab5",
+      "dom": "200f35b37aa44ab5"
+    },
+    "homeSnacks": {
+      "aria": "200f35b37aa44ab5",
+      "dom": "200f35b37aa44ab5"
+    },
+    "homeMore": {
+      "aria": "200f35b37aa44ab5",
+      "dom": "200f35b37aa44ab5"
+    },
+    "itemA": {
+      "aria": "da26a51e8a11d175",
+      "dom": "da26a51e8a11d175"
+    },
+    "itemB": {
+      "aria": "da26a51e8a11d175",
+      "dom": "da26a51e8a11d175"
+    },
+    "about": {
+      "aria": "6bf7f5c96d0aad3e",
+      "dom": "6bf7f5c96d0aad3e"
+    },
+    "settingsAlice": {
+      "aria": "8fcc857938fd8377",
+      "dom": "de0c96f4234c1a5b"
+    },
+    "settingsBob": {
+      "aria": "8fcc857938fd8377",
+      "dom": "de0c96f4234c1a5b"
+    },
+    "settingsLoading1": {
+      "aria": "7b344ea67d60156b",
+      "dom": "7ee8943c3e491cd8"
+    },
+    "settingsLoading2": {
+      "aria": "7b344ea67d60156b",
+      "dom": "7ee8943c3e491cd8"
+    },
+    "settingsDialog": {
+      "aria": "af1be86e374433bf",
+      "dom": "af1be86e374433bf"
+    }
+  },
+  "samePairs": [
+    [
+      "home1",
+      "home2"
+    ],
+    [
+      "homeGadgets",
+      "homeSnacks"
+    ],
+    [
+      "home1",
+      "homeMore"
+    ],
+    [
+      "itemA",
+      "itemB"
+    ],
+    [
+      "settingsAlice",
+      "settingsBob"
+    ],
+    [
+      "settingsLoading1",
+      "settingsLoading2"
+    ]
+  ],
+  "diffPairs": [
+    [
+      "home1",
+      "itemA"
+    ],
+    [
+      "home1",
+      "about"
+    ],
+    [
+      "home1",
+      "settingsAlice"
+    ],
+    [
+      "home1",
+      "settingsLoading1"
+    ],
+    [
+      "home1",
+      "settingsDialog"
+    ],
+    [
+      "itemA",
+      "about"
+    ],
+    [
+      "itemA",
+      "settingsAlice"
+    ],
+    [
+      "itemA",
+      "settingsLoading1"
+    ],
+    [
+      "itemA",
+      "settingsDialog"
+    ],
+    [
+      "about",
+      "settingsAlice"
+    ],
+    [
+      "about",
+      "settingsLoading1"
+    ],
+    [
+      "about",
+      "settingsDialog"
+    ],
+    [
+      "settingsAlice",
+      "settingsLoading1"
+    ],
+    [
+      "settingsAlice",
+      "settingsDialog"
+    ],
+    [
+      "settingsLoading1",
+      "settingsDialog"
+    ]
+  ],
+  "aria": {
+    "sameScreenCollisionRate": 1,
+    "diffScreenSeparationRate": 1,
+    "sameScreenCollided": [
+      "home1==home2",
+      "homeGadgets==homeSnacks",
+      "home1==homeMore",
+      "itemA==itemB",
+      "settingsAlice==settingsBob",
+      "settingsLoading1==settingsLoading2"
+    ],
+    "diffScreenCollidedBadly": [],
+    "captureMsAvg": 63.46204392307691,
+    "captureBytesAvg": 614.1538461538462
+  },
+  "dom": {
+    "sameScreenCollisionRate": 1,
+    "diffScreenSeparationRate": 1,
+    "sameScreenCollided": [
+      "home1==home2",
+      "homeGadgets==homeSnacks",
+      "home1==homeMore",
+      "itemA==itemB",
+      "settingsAlice==settingsBob",
+      "settingsLoading1==settingsLoading2"
+    ],
+    "diffScreenCollidedBadly": [],
+    "captureMsAvg": 9.498962307692356,
+    "captureBytesAvg": 6076.461538461538
+  }
+}
