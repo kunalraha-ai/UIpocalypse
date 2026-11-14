@@ -147,7 +147,7 @@ export const RUNTIME_SOURCE = String.raw`
       pressed: el.getAttribute('aria-pressed'),
       selected: el.getAttribute('aria-selected'),
       checked: el instanceof HTMLInputElement ? el.checked : null,
-      value: isTextLike(el) ? el.value.length : null,
+      value: isTextLike(el) ? el.value : null,
     });
   }
   function setValue(el, value) {
@@ -207,6 +207,19 @@ export const RUNTIME_SOURCE = String.raw`
       if (isSaturated(el)) return { dead: false, reasons: ['already-selected'], saturated: true };
       const textLike = isTextLike(el);
 
+      // A submit control in an invalid form is blocked by the browser BEFORE any
+      // app handler runs — no app feedback is possible and the browser shows its
+      // own validation bubble. Same exclusion class as saturated controls
+      // (Phase 0 S4): not a dead click, or every garbage-input submit is an FP.
+      const blocked =
+        !textLike && el.type === 'submit' && el.form && !el.form.noValidate
+          ? !el.form.checkValidity()
+          : false;
+      // pre-fill value: a re-paste of an identical value is a no-op by design
+      // (React bails on identical state) — same exclusion class as saturated
+      // controls. Same for "clicking" a focused field without typing.
+      const prevValue = textLike ? el.value : null;
+
       const before = {
         mutations: M.count,
         requests: N.count,
@@ -246,10 +259,19 @@ export const RUNTIME_SOURCE = String.raw`
       if (!before.focusOn && after.focusOn) reasons.push('focus');
       if (after.aria !== before.aria) reasons.push('aria');
       if (after.dialog && !before.dialog) reasons.push('dialog');
+      if (blocked && reasons.length === 0) reasons.push('validation-blocked');
+      if (textLike && reasons.length === 0) {
+        if (typeof opts.input === 'string') {
+          if (prevValue === opts.input) reasons.push('already-filled');
+        } else if (before.focusOn) {
+          reasons.push('already-focused');
+        }
+      }
       snapshotSpinners();
       return {
         dead: reasons.length === 0,
         reasons: reasons,
+        blocked: blocked,
         nav: after.url !== before.url,
         url: after.url,
       };

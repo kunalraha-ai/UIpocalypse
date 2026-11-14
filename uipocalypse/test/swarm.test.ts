@@ -79,8 +79,12 @@ describe('swarm orchestrator (Phase 4)', () => {
     expect(result.findingCounts.dead_click).toBeGreaterThanOrEqual(1);
 
     const rows = listFindings(ws.db, result.runId);
-    const dead = rows.find((r) => r.type === 'dead_click');
-    expect(JSON.parse(dead!.evidence_json!).action).toBe('Dead button');
+    const deadActions = rows
+      .filter((r) => r.type === 'dead_click')
+      .map((r) => (JSON.parse(r.evidence_json!) as { action: string }).action);
+    // the fixture has exactly ONE dead control — every dead_click finding must
+    // be on it (guards both detection and false positives)
+    expect(new Set(deadActions)).toEqual(new Set(['Dead button']));
   }, 120_000);
 
   it('abort mid-run: partial report written, aborted: true (SAFETY.md §6 row 7)', async () => {

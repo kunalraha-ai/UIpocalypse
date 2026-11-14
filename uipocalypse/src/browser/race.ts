@@ -35,6 +35,8 @@ export type RaceOptions = {
   config: UiConfig;
   logger: Logger;
   abort?: AbortSignal;
+  /** per-context setup (e.g. log in) before navigating to the race URL */
+  setup?: (ctx: BrowserContext) => Promise<void>;
 };
 
 export type RaceResult = {
@@ -61,6 +63,9 @@ export async function runRace(
       const ctx = await browser.newContext();
       await ctx.addInitScript(RUNTIME_SOURCE);
       contexts.push(ctx);
+      if (opts.setup) {
+        await opts.setup(ctx).catch((e) => log.warn('race setup failed', { i, error: String(e).slice(0, 120) }));
+      }
       const page = await ctx.newPage();
       pages.push(page);
       await page.goto(opts.url, { waitUntil: 'domcontentloaded', timeout: 15000 }).catch(() => {});
@@ -103,6 +108,13 @@ export async function runRace(
     );
     const fired = ready.length;
     await new Promise((r) => setTimeout(r, 4000)); // let the volley land
+
+    // invariants are only meaningful if the volley actually happened —
+    // a race that never fired must not be misread as a violation
+    if (fired < 2) {
+      log.warn('race did not fire — skipping invariant checks', { fired });
+      return { fired, invariants: [], violations: [] };
+    }
 
     // invariant checks
     const invariants: InvariantResult[] = [];

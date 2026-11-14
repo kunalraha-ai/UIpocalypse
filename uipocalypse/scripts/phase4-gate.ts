@@ -65,7 +65,7 @@ console.log(
 );
 
 // ---------------------------------------------------------------- swarm (timed)
-console.log('\n=== SWARM: 50 agents, 100 steps each, 120 s budget, race on Redeem coupon ===');
+console.log('\n=== SWARM: 50 agents, 100 steps each, 105 s budget (headroom for straggler waves), race on Redeem coupon ===');
 const swarmResult = await swarm({
   url,
   config,
@@ -75,9 +75,21 @@ const swarmResult = await swarm({
   llm: llms.scout,
   logger,
   agents: 50,
-  budgetSeconds: 120,
+  budgetSeconds: 105,
   perAgentSteps: 100,
-  raceTarget: { url: `${url}/checkout`, actionLabel: 'Redeem coupon', input: 'WELCOME10', contexts: 20 },
+  personas: ['wanderer', 'double-clicker', 'garbage-paster', 'abandoner', 'race-runner'],
+  raceTarget: {
+    url: `${url}/checkout`,
+    actionLabel: 'Redeem coupon',
+    input: 'WELCOME10',
+    contexts: 20,
+    // /checkout requires a session — sign each race context in as Alice first
+    setup: async (ctx) => {
+      await ctx.request.post(`${url}/api/auth/login`, {
+        data: { email: 'alice@example.com', password: 'secret123' },
+      });
+    },
+  },
 });
 console.log(JSON.stringify(swarmResult, null, 2));
 
@@ -85,6 +97,19 @@ console.log(JSON.stringify(swarmResult, null, 2));
 const allFindings = listFindings(db, swarmResult.runId);
 const types = new Map<string, number>();
 for (const f of allFindings) types.set(f.type, (types.get(f.type) ?? 0) + 1);
+
+const ev = (f: (typeof allFindings)[number]) => JSON.parse(f.evidence_json ?? '{}') as Record<string, unknown>;
+const hist = (type: string, key: (f: (typeof allFindings)[number]) => string) => {
+  const m = new Map<string, number>();
+  for (const f of allFindings.filter((x) => x.type === type)) m.set(key(f), (m.get(key(f)) ?? 0) + 1);
+  return [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k, n]) => `${k} ×${n}`).join('; ');
+};
+const clean = (u: unknown) => String(u ?? '?').replace('http://localhost:3123', '');
+console.log('\n=== finding breakdown (raw observations, pre-cluster) ===');
+console.log(`dead_click:      ${hist('dead_click', (f) => String(ev(f).action ?? '?'))}`);
+console.log(`duplicate_write: ${hist('duplicate_write', (f) => clean(ev(f).url))}`);
+console.log(`failed_request:  ${hist('failed_request', (f) => `${clean(ev(f).url)} [${ev(f).status}]`)}`);
+console.log(`page_error:      ${hist('page_error', (f) => String(ev(f).message ?? '?').slice(0, 70))}`);
 
 const has = (type: string) => (types.get(type) ?? 0) > 0;
 const evidenceOf = (type: string) =>

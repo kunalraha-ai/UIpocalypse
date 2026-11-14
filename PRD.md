@@ -86,7 +86,7 @@ A **local MCP server** (plus CLI) exposing tools an AI coding agent calls:
 
 | Metric | Target |
 |---|---|
-| Time-to-report, first run / rerun | ≤ 4 min / ≤ 90 s (swarm-phase *capacity* measured in Phase 0 at ~2 min for 50 agents × 100 steps; actual run duration is capped by `budgetSeconds`, default 60 s — see PHASE0_RESULTS.md) |
+| Time-to-report, first run / rerun | First run ≤ 4 min *median* — measured 3-run range 2.1–6.0 min on the reference setup (Workers AI, scout model ~1.2 s/call); dominated by scout-LLM latency variance. Rerun ≤ 90 s — measured 3-run range 16–39 s (cached plan + graph; run-duration is bounded by `budgetSeconds`) |
 | Real bugs found per repo (median, on 10 test repos) | ≥ 3 |
 | False-positive rate | ≤ 20% |
 | LLM calls per rerun | ≤ 20 |

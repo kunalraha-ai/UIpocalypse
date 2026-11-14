@@ -74,6 +74,63 @@ describe('in-page runtime (TRD §3.5) on the static fixture', () => {
     expect(value).toBe('hello world');
   });
 
+  it('does not flag a validation-blocked submit as a dead click (browser supplies its own feedback)', async () => {
+    const actions = await page.evaluate(() => window.__uip.getActions());
+    const email = actions.find((a: { name: string }) => a.name === 'you@example.com')!;
+    // garbage-paster behavior: garbage in the field, then hit the submit button
+    await page.evaluate(
+      ({ id, value }) => window.__uip.perform(id, { input: value, waitMs: 100 }),
+      { id: email.id, value: 'not-an-email 🎉' },
+    );
+    const sub = actions.find((a: { name: string }) => a.name === 'Subscribe')!;
+    const result = await page.evaluate(
+      (id) => window.__uip.perform(id, { doubleClick: true, interClickDelayMs: 50 }),
+      sub.id,
+    );
+    expect(result.blocked).toBe(true);
+    expect(result.dead).toBe(false);
+    expect(result.reasons).toContain('validation-blocked');
+    // and with a valid email the submit runs its handler again (title mutation)
+    await page.evaluate(
+      ({ id, value }) => window.__uip.perform(id, { input: value, waitMs: 100 }),
+      { id: email.id, value: 'a@b.co' },
+    );
+    const alive = await page.evaluate((id) => window.__uip.perform(id), sub.id);
+    expect(alive.dead).toBe(false);
+    expect(alive.blocked).toBe(false);
+    expect(alive.reasons).toContain('mutation');
+    await page.goto(server.url); // restore the shared page for the tests below
+  });
+
+  it('does not flag no-op text actions (identical refill, refocus) as dead clicks', async () => {
+    const actions = await page.evaluate(() => window.__uip.getActions());
+    const name = actions.find((a: { name: string }) => a.name === 'your name')!;
+    // first fill is alive (focus + value change)
+    const first = await page.evaluate(
+      ({ id, v }) => window.__uip.perform(id, { input: v }),
+      { id: name.id, v: 'same value' },
+    );
+    expect(first.dead).toBe(false);
+    // re-pasting the identical value into the still-focused field cannot change anything
+    const refill = await page.evaluate(
+      ({ id, v }) => window.__uip.perform(id, { input: v }),
+      { id: name.id, v: 'same value' },
+    );
+    expect(refill.dead).toBe(false);
+    expect(refill.reasons).toContain('already-filled');
+    // clicking the already-focused field without typing is also a no-op
+    const refocus = await page.evaluate((id) => window.__uip.perform(id), name.id);
+    expect(refocus.dead).toBe(false);
+    expect(refocus.reasons).toContain('already-focused');
+    // typing a DIFFERENT value is still alive via the value change
+    const other = await page.evaluate(
+      ({ id, v }) => window.__uip.perform(id, { input: v }),
+      { id: name.id, v: 'different value' },
+    );
+    expect(other.dead).toBe(false);
+    expect(other.reasons).toContain('aria');
+  });
+
   it('detects navigation as a liveness signal (context destroyed mid-perform -> nav)', async () => {
     const actions = await page.evaluate(() => window.__uip.getActions());
     const link = actions.find((a: { name: string }) => a.name === 'Page 2')!;

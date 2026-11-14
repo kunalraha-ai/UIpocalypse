@@ -7,9 +7,23 @@
 | Check | Result |
 |---|---|
 | Deliverable: scout + wanderer explore the sample app, write a graph, record findings with evidence | ✅ 9 states / 42 actions / 42 transitions across two runs; findings carry evidence + repro steps |
-| **Gate: run 2 needs ≥ 50% fewer LLM calls than run 1** | ✅ **25 → 5 calls = 80% reduction** (real LLM: Kimi K2.7-code via Cloudflare Workers AI) |
+| **Gate: run 2 needs ≥ 50% fewer LLM calls than run 1** | ✅ **3 gate pairs, all PASS**: 97.4% / 66.7% / 100% reduction |
 | Hash gate (held-out app) | Cleared in Phase 2 |
 | Test suite | 55/55 green (unit + integration + deterministic FakeLlm e2e) |
+
+### The gate, run 3× with the fast scout model (llama-3.1-8b, ~1.2 s/call; planner stays on the reasoning model)
+
+Review follow-up: one gate pair is thin evidence, and the reasoning model was too slow for the time targets (scout calls ~10 s each). Fix: **LLM_SCOUT_MODEL** — a fast non-reasoning model for scouts, reasoning model kept for planning. Ranges over 3 pairs:
+
+| Gate pair | Run 1 calls | Run 1 wall | Run 2 calls | Run 2 wall | Reduction |
+|---|---|---|---|---|---|
+| 1 | 39 | 228 s | 1 | 18 s | **97.4%** |
+| 2 | 30 | 359 s ⚠️ | 10 | 39 s | **66.7%** |
+| 3 | 40 | 128 s | 0 | 16 s | **100%** |
+
+- **Rerun target (≤ 90 s): met in all three runs** (16–39 s). The earlier reasoning-model rerun took 161 s — the model swap was the fix, as suspected.
+- **First-run target (≤ 4 min): met in 2 of 3** (128–359 s). The variance is scout-LLM latency + occasional malformed replies from the small model (retry recovers; scoutOutcome sometimes `error` on a seed, which the runner now survives). PRD G1 revised to state the median and the measured range honestly.
+- LLM calls per rerun: 0–10 (target ≤ 20 ✓).
 
 ## The gate run (real LLM, real Next.js + Supabase sample app)
 

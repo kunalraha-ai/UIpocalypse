@@ -41,7 +41,14 @@ export type SwarmOptions = {
   /** reuse a run row created by the scout phase */
   runId?: number;
   optIn?: { destructive?: boolean; externalSideEffects?: boolean };
-  raceTarget?: { url: string; actionLabel: string; input?: string; contexts?: number };
+  raceTarget?: {
+    url: string;
+    actionLabel: string;
+    input?: string;
+    contexts?: number;
+    /** per-context setup (e.g. log in) before the race URL */
+    setup?: (ctx: import('playwright').BrowserContext) => Promise<void>;
+  };
 };
 
 export type SwarmResult = {
@@ -56,6 +63,9 @@ export type SwarmResult = {
   ramp: RampReport & { degradedAtLevel?: number };
   llmCalls: number;
   raceFired?: number;
+  raceWallMs: number;
+  /** why race mode did not run (G4 refusal, no invariants, or an error) */
+  raceSkipReason?: string;
   aborted: boolean;
   warnings: string[];
 };
@@ -320,8 +330,7 @@ export async function swarm(opts: SwarmOptions): Promise<SwarmResult> {
       if (ramp.shouldStop && degradedAtLevel === undefined) {
         degradedAtLevel = activeLevel;
         log.warn('ramp stopped — app degraded', { level: activeLevel, reason: ramp.stopReason });
-      } else if (ramp.canStepUp() && stepsCounter.n - lastStepUpAt >= 20 && activeLevel < agentsWanted) {
-        ramp.stepUp();
+      } else if (!ramp.shouldStop && activeLevel < agentsWanted && stepsCounter.n - lastStepUpAt >= 20) {
         activeLevel = Math.min(agentsWanted, activeLevel + 5);
         lastStepUpAt = stepsCounter.n;
       }
@@ -369,18 +378,23 @@ export async function swarm(opts: SwarmOptions): Promise<SwarmResult> {
   }
 
   const abortedBeforeStart = opts.abort?.aborted;
+  const agentPhaseStart = Date.now();
   if (!abortedBeforeStart) {
     await Promise.all(agents.map((a) => agentLoop(a)));
   }
+  const agentWallMs = Date.now() - agentPhaseStart;
 
   // ------------------------------------------------------------ race mode (G4-gated)
   let raceFired: number | undefined;
+  let raceWallMs = 0;
+  let raceSkipReason: string | undefined;
   if (opts.raceTarget && !opts.abort?.aborted) {
     const dbUrl = dbUrlFromEnv();
     const dbHost = dbUrl ? dbHostFromUrl(dbUrl) : null;
     const modeOk = dbUrl && dbHost ? guard.checkModes({ dbHost, modes: ['race'] }) : { allowed: false, reasons: ['no DATABASE_URL/SUPABASE_DB_URL resolved'] };
     if (modeOk.allowed && effectiveConfig.invariants.length) {
       try {
+        const raceStart = Date.now();
         const race = await runRace(
           browser,
           {
@@ -390,19 +404,25 @@ export async function swarm(opts: SwarmOptions): Promise<SwarmResult> {
             contexts: opts.raceTarget.contexts,
             config: effectiveConfig,
             logger: opts.logger,
+            setup: opts.raceTarget.setup,
           },
           { runInvariants: pgInvariantRunner(dbUrl!) },
         );
         raceFired = race.fired;
+        raceWallMs = Date.now() - raceStart;
         findings.push(...race.violations);
         for (const inv of race.invariants) {
           log.info('invariant', { name: inv.name, actual: inv.actual, expect: inv.expect, pass: inv.pass });
         }
       } catch (e) {
+        raceSkipReason = `race error: ${String(e).slice(0, 300)}`;
         log.warn('race mode failed', { error: String(e).slice(0, 200) });
       }
     } else {
-      log.warn('race mode skipped', { reasons: modeOk.allowed ? ['no invariants configured'] : modeOk.reasons });
+      raceSkipReason = modeOk.allowed
+        ? 'no invariants configured'
+        : `G4 refused: ${modeOk.reasons.join(' | ')}`;
+      log.warn('race mode skipped', { reason: raceSkipReason });
     }
   }
 
@@ -448,11 +468,10 @@ export async function swarm(opts: SwarmOptions): Promise<SwarmResult> {
   }
 
   const stats = graph.stats();
-  const wallMs = Date.now() - started;
   const aborted = !!opts.abort?.aborted;
   finishRun(opts.db, {
     id: runId,
-    durationMs: wallMs,
+    durationMs: agentWallMs + raceWallMs,
     llmCalls: opts.llm.calls - llmCallsAtStart,
     coverage: stats.coverage,
   });
@@ -462,7 +481,8 @@ export async function swarm(opts: SwarmOptions): Promise<SwarmResult> {
   log.info('swarm complete', {
     agents: agentsWanted,
     steps: stepsCounter.n,
-    wallMs,
+    agentWallMs,
+    raceWallMs,
     findings: findings.length,
     respawns: agents.reduce((s, a) => s + a.respawns, 0),
     aborted,
@@ -473,14 +493,26 @@ export async function swarm(opts: SwarmOptions): Promise<SwarmResult> {
     runId,
     agents: agentsWanted,
     steps: stepsCounter.n,
-    stepsPerSec: wallMs > 0 ? stepsCounter.n / (wallMs / 1000) : 0,
-    wallMs,
+    stepsPerSec: agentWallMs > 0 ? stepsCounter.n / (agentWallMs / 1000) : 0,
+    wallMs: agentWallMs,
     coverage: stats.coverage,
     findingCounts: counts,
     graph: { states: stats.states, actions: stats.actions, transitions: stats.transitions },
-    ramp: { ...ramp.report(), degradedAtLevel },
+    ramp: {
+      level: activeLevel,
+      maxAgents: agentsWanted,
+      stopped: ramp.shouldStop,
+      stopReason: ramp.stopReason
+        ? `degraded at ${degradedAtLevel ?? activeLevel} agents: ${ramp.stopReason.split(': ').slice(1).join(': ')}`
+        : null,
+      currentErrorRate: ramp.report().currentErrorRate,
+      p95LatencyMs: ramp.report().p95LatencyMs,
+      degradedAtLevel,
+    },
     llmCalls: opts.llm.calls - llmCallsAtStart,
     raceFired,
+    raceWallMs,
+    raceSkipReason,
     aborted,
     warnings: decision.warnings,
   };

@@ -36,6 +36,8 @@ export type PerformResult = {
   nav: boolean;
   url: string;
   saturated?: boolean;
+  /** browser validation blocked the submit before any app handler could run */
+  blocked?: boolean;
 };
 
 export type ExploreOptions = {

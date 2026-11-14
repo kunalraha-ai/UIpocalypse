@@ -34,7 +34,7 @@ export interface Persona {
   decide(ctx: PersonaContext): PersonaDecision;
 }
 
-const SUBMIT_LIKE = /submit|buy|place order|redeem|apply|save|send|checkout|pay|confirm|book|order/i;
+const SUBMIT_LIKE = /submit|buy|place order|redeem|apply|save|send|checkout|pay|confirm|book|order|search|subscribe/i;
 
 // ------------------------------------------------------------------ Wanderer (adapter)
 
