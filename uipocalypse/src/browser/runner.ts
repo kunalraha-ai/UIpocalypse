@@ -26,6 +26,8 @@ export type RuntimeAction = {
   name: string;
   risky: boolean;
   textLike: boolean;
+  /** stable graph locator: role|name#occurrence — immune to DOM-index shifts */
+  locator: string;
 };
 
 export type PerformResult = {
@@ -42,7 +44,10 @@ export type ExploreOptions = {
   plan: Plan;
   db: Db;
   routes: string[];
+  /** planner/review LLM — also the budget counter for the whole run */
   llm: LLM;
+  /** fast model for scout steps (shares the budget counter when from createLlmSet) */
+  scoutLlm?: LLM;
   logger: Logger;
   budgetSeconds?: number;
   scoutSteps?: number;
@@ -117,7 +122,17 @@ export async function explore(opts: ExploreOptions): Promise<ExploreResult> {
   }
 
   async function getActions(): Promise<RuntimeAction[]> {
-    const actions = await page.evaluate(() => window.__uip.getActions());
+    const raw = await page.evaluate(() => window.__uip.getActions());
+    // stable locator: role|name#occurrence — non-interactive DOM changes (alerts,
+    // spinners) shift enumeration indices but never reorder same-signature
+    // elements, so this identity is stable across visits (graph-growth probe)
+    const seen = new Map<string, number>();
+    const actions: RuntimeAction[] = raw.map((a) => {
+      const sig = `${a.role ?? 'unknown'}|${a.name}`;
+      const n = seen.get(sig) ?? 0;
+      seen.set(sig, n + 1);
+      return { ...a, locator: `${sig}#${n}` };
+    });
     // Safety Guard G5: risky-labelled actions never run without opt-in
     const { allowed, skipped } = guard.filterActions(
       actions.map((a) => ({ id: a.id, label: a.name })),
@@ -146,7 +161,7 @@ export async function explore(opts: ExploreOptions): Promise<ExploreResult> {
     const label = action?.name ?? `action#${id}`;
     const graphAction = graph.getOrCreateAction({
       stateId: graphFrom.id,
-      locator: `rt:${id}`,
+      locator: action?.locator ?? `rt:${id}`,
       kind: action?.role ?? 'unknown',
       label: label.slice(0, 80),
       riskClass: action?.risky ? 'destructive' : 'safe',
@@ -226,7 +241,7 @@ export async function explore(opts: ExploreOptions): Promise<ExploreResult> {
       const result = await runScout({
         page,
         graph,
-        llm: opts.llm,
+        llm: opts.scoutLlm ?? opts.llm,
         plan: opts.plan,
         seedUrl: seed,
         maxSteps: Math.min(scoutBudget, 12),
@@ -258,9 +273,9 @@ export async function explore(opts: ExploreOptions): Promise<ExploreResult> {
         maxSteps: maxWandererSteps,
         actions: actions.map((a) => ({
           runtimeId: a.id,
-          graphId: dbActions.find((d) => d.locator === `rt:${a.id}`)?.id ?? -1,
+          graphId: dbActions.find((d) => d.locator === a.locator)?.id ?? -1,
           label: a.name,
-          visits: dbActions.find((d) => d.locator === `rt:${a.id}`)?.visits ?? 0,
+          visits: dbActions.find((d) => d.locator === a.locator)?.visits ?? 0,
           textLike: a.textLike,
           risky: a.risky,
         })),

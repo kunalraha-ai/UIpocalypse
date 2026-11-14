@@ -24,16 +24,45 @@ export interface LLM {
 }
 
 export function createLlm(envOverrides?: Record<string, string>): LLM {
-  const env = {
-    ...loadDotEnv([`${process.cwd()}/.env`, `${process.cwd()}/uipocalypse/.env`]),
-    ...process.env,
-    ...(envOverrides ?? {}),
-  };
+  const env = mergedEnv(envOverrides);
   const apiKey = env.LLM_API_KEY;
   if (!apiKey) return new NullLlm();
   const baseURL = (env.LLM_BASE_URL ?? 'https://api.openai.com/v1').replace(/\/+$/, '');
   const model = env.LLM_MODEL ?? 'gpt-4o-mini';
   return new OpenAICompatLlm({ apiKey, baseURL, model });
+}
+
+/**
+ * Planner + scout LLMs sharing one call counter (budgets and the Phase 3 gate
+ * measure total calls). Scouts default to LLM_SCOUT_MODEL — use a fast
+ * non-reasoning model there; reasoning models spend their token budget on
+ * reasoning and are slow per call (PHASE3_RESULTS.md).
+ */
+export type LlmSet = { planner: LLM; scout: LLM };
+
+export function createLlmSet(envOverrides?: Record<string, string>): LlmSet {
+  const env = mergedEnv(envOverrides);
+  const apiKey = env.LLM_API_KEY;
+  if (!apiKey) {
+    const nullLlm = new NullLlm();
+    return { planner: nullLlm, scout: nullLlm };
+  }
+  const baseURL = (env.LLM_BASE_URL ?? 'https://api.openai.com/v1').replace(/\/+$/, '');
+  const counter = { calls: 0 };
+  const plannerModel = env.LLM_MODEL ?? 'gpt-4o-mini';
+  const scoutModel = env.LLM_SCOUT_MODEL ?? plannerModel;
+  return {
+    planner: new OpenAICompatLlm({ apiKey, baseURL, model: plannerModel, counter }),
+    scout: new OpenAICompatLlm({ apiKey, baseURL, model: scoutModel, counter }),
+  };
+}
+
+function mergedEnv(envOverrides?: Record<string, string>): Record<string, string | undefined> {
+  return {
+    ...loadDotEnv([`${process.cwd()}/.env`, `${process.cwd()}/uipocalypse/.env`]),
+    ...process.env,
+    ...(envOverrides ?? {}),
+  };
 }
 
 class NullLlm implements LLM {
@@ -47,14 +76,29 @@ class NullLlm implements LLM {
 }
 
 class OpenAICompatLlm implements LLM {
-  calls = 0;
+  private readonly shared: { calls: number };
   maxCalls = Infinity;
-  constructor(private readonly opts: { apiKey: string; baseURL: string; model: string }) {}
+  constructor(
+    private readonly opts: {
+      apiKey: string;
+      baseURL: string;
+      model: string;
+      counter?: { calls: number };
+    },
+  ) {
+    this.shared = opts.counter ?? { calls: 0 };
+  }
   get model(): string {
     return this.opts.model;
   }
   get configured(): boolean {
     return true;
+  }
+  get calls(): number {
+    return this.shared.calls;
+  }
+  set calls(value: number) {
+    this.shared.calls = value;
   }
 
   async completeJSON<T>(opts: {

@@ -112,6 +112,11 @@ export const RUNTIME_SOURCE = String.raw`
       const l = document.querySelector('label[for="' + esc + '"]');
       if (l) return (l.textContent || '').trim();
     }
+    const wrapper = el.closest ? el.closest('label') : null;
+    if (wrapper && wrapper !== el) {
+      const text = (wrapper.textContent || '').trim();
+      if (text) return text.slice(0, 80);
+    }
     if (el instanceof HTMLInputElement && (el.type === 'submit' || el.type === 'button')) return el.value || el.type;
     const text = (el.textContent || '').trim();
     if (text) return text;

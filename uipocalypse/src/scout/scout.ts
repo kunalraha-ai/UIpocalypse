@@ -43,7 +43,7 @@ export async function runScout(opts: {
   seedUrl: string;
   maxSteps: number;
   getActions: () => Promise<
-    Array<{ id: number; role: string | null; name: string; risky: boolean; textLike: boolean }>
+    Array<{ id: number; role: string | null; name: string; risky: boolean; textLike: boolean; locator: string }>
   >;
   perform: (id: number, input?: string) => Promise<{ dead: boolean; reasons: string[]; nav: boolean }>;
   currentState: () => Promise<{ hash: string; url: string }>;
@@ -62,8 +62,8 @@ export async function runScout(opts: {
     if (!safe.length) return { steps, llmCalls: llm.calls - llmCallsAtStart, stopped: 'no-actions' };
 
     const dbActions = graph.actionsWithVisits(graphState.id);
-    const visitsFor = (runtimeId: number) => dbActions.find((a) => a.locator === `rt:${runtimeId}`)?.visits ?? 0;
-    const anyUnvisited = safe.some((a) => visitsFor(a.id) === 0);
+    const visitsFor = (locator: string) => dbActions.find((a) => a.locator === locator)?.visits ?? 0;
+    const anyUnvisited = safe.some((a) => visitsFor(a.locator) === 0);
 
     // saturation: everything here has been visited and nothing is new — stop
     if (!anyUnvisited && steps > 0) {
@@ -76,7 +76,7 @@ export async function runScout(opts: {
       id: a.id,
       role: a.role,
       name: a.name.slice(0, 60),
-      visited: visitsFor(a.id),
+      visited: visitsFor(a.locator),
     }));
     for (let attempt = 0; attempt < 2 && !decision; attempt++) {
       try {
@@ -117,7 +117,7 @@ export async function runScout(opts: {
     const toState = graph.getOrCreateState({ hash: after.hash, url: after.url, signature: '' });
     const graphAction = graph.getOrCreateAction({
       stateId: graphState.id,
-      locator: `rt:${chosen.id}`,
+      locator: chosen.locator,
       kind: chosen.role ?? 'unknown',
       label: chosen.name.slice(0, 80),
       riskClass: chosen.risky ? 'destructive' : 'safe',

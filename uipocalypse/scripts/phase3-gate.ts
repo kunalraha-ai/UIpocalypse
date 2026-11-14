@@ -10,7 +10,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { analyze } from '../src/analyzer/analyzer.js';
 import { createPlan } from '../src/plan/planner.js';
-import { createLlm } from '../src/llm/index.js';
+import { createLlmSet } from '../src/llm/index.js';
 import { explore } from '../src/browser/runner.js';
 import { initWorkspace } from '../src/workspace.js';
 import { openDb, listFindings } from '../src/db/index.js';
@@ -25,18 +25,21 @@ const ws = initWorkspace(wsDir);
 const db = openDb(ws.db);
 const { config } = loadConfig();
 const logger = createLogger({});
-const llm = createLlm();
-llm.maxCalls = config.llm.maxCallsPerRun;
+const llms = createLlmSet();
+llms.planner.maxCalls = config.llm.maxCallsPerRun;
+llms.scout.maxCalls = config.llm.maxCallsPerRun;
 
-console.log(`LLM: ${llm.configured ? `${llm.model} via LLM_BASE_URL` : 'NOT CONFIGURED (degraded mode)'}`);
+console.log(
+  `LLM: planner=${llms.planner.configured ? llms.planner.model : 'NOT CONFIGURED'} | scout=${llms.scout.configured ? llms.scout.model : 'NOT CONFIGURED'}`,
+);
 console.log(`Target: ${url} — repo: ${repoPath}`);
 console.log(`Workspace: ${wsDir}\n`);
 
 // ---------------------------------------------------------------- planner
 const { appMap } = analyze(repoPath);
-const plannerStarted = llm.calls;
-const planning = await createPlan({ appMap, targetUrl: url, llm, workspacePlansDir: ws.plans });
-const plannerCalls = llm.calls - plannerStarted;
+const plannerStarted = llms.planner.calls;
+const planning = await createPlan({ appMap, targetUrl: url, llm: llms.planner, workspacePlansDir: ws.plans });
+const plannerCalls = llms.planner.calls - plannerStarted;
 console.log(
   `Plan ${planning.planId} (cached=${planning.cached}) — personas: ${planning.plan.personas.join(', ')} | seeds: ${planning.plan.seedRoutes.join(', ')} | planner LLM calls: ${plannerCalls}`,
 );
@@ -50,7 +53,8 @@ const run1 = await explore({
   plan: planning.plan,
   db,
   routes: planning.appMapRoutes,
-  llm,
+  llm: llms.planner,
+  scoutLlm: llms.scout,
   logger,
   budgetSeconds: 300,
   scoutSteps: 24,
@@ -62,14 +66,15 @@ console.log(JSON.stringify(run1, null, 2));
 // ---------------------------------------------------------------- run 2 (cached graph + cached plan)
 console.log('\n=== RUN 2 (cached plan + graph) ===');
 // simulate a fresh session: re-load the plan from cache (0 LLM calls)
-const rePlan = await createPlan({ appMap, targetUrl: url, llm, workspacePlansDir: ws.plans });
+const rePlan = await createPlan({ appMap, targetUrl: url, llm: llms.planner, workspacePlansDir: ws.plans });
 const run2 = await explore({
   url,
   config,
   plan: rePlan.plan,
   db,
   routes: rePlan.appMapRoutes,
-  llm,
+  llm: llms.planner,
+  scoutLlm: llms.scout,
   logger,
   budgetSeconds: 180,
   scoutSteps: 24,

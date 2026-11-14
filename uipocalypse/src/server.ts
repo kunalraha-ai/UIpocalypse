@@ -6,7 +6,7 @@ import { createLogger } from './logger.js';
 import { openDb, type Db } from './db/index.js';
 import { scanCodebase } from './tools/scan-codebase.js';
 import { loadConfig } from './config.js';
-import { createLlm } from './llm/index.js';
+import { createLlm, createLlmSet } from './llm/index.js';
 import { analyze } from './analyzer/analyzer.js';
 import { createPlan, loadPlan } from './plan/planner.js';
 import { DEFAULT_NASTY_INPUTS, PlanSchema, type Plan } from './plan/schema.js';
@@ -131,8 +131,9 @@ export function createServer(opts: { workspaceRoot?: string } = {}): ServerConte
         });
       }
 
-      const llm = createLlm();
-      llm.maxCalls = config.llm.maxCallsPerRun;
+      const llms = createLlmSet();
+      llms.planner.maxCalls = config.llm.maxCallsPerRun;
+      llms.scout.maxCalls = config.llm.maxCallsPerRun;
       try {
         const result = await explore({
           url,
@@ -140,7 +141,8 @@ export function createServer(opts: { workspaceRoot?: string } = {}): ServerConte
           plan,
           db,
           routes,
-          llm,
+          llm: llms.planner,
+          scoutLlm: llms.scout,
           logger,
           budgetSeconds,
         });
