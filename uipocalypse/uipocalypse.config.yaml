@@ -1,0 +1,13 @@
+# UIpocalypse config for the sample app benchmark (TRD §7)
+target: http://localhost:3123
+allowHosts: [localhost, 127.0.0.1]
+agents: 50
+budgetSeconds: 120
+skipActions: []
+destructiveOptIn: false
+db:
+  allowedHosts: [localhost, 127.0.0.1]
+invariants:
+  - name: WELCOME10 single-use coupon redeemed at most once
+    sql: select count(*) from coupon_redemptions
+    expect: 1

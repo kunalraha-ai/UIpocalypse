@@ -52,6 +52,8 @@ export type ExploreOptions = {
   budgetSeconds?: number;
   scoutSteps?: number;
   wandererSteps?: number;
+  /** reuse a run row (e.g. when the swarm phase follows the scout phase) */
+  runId?: number;
 };
 
 export type ExploreResult = {
@@ -71,7 +73,7 @@ declare global {
       getActions: () => RuntimeAction[];
       perform: (
         id: number,
-        o?: { input?: string; doubleClick?: boolean },
+        o?: { input?: string; doubleClick?: boolean; interClickDelayMs?: number; waitMs?: number },
       ) => Promise<PerformResult>;
       drain: () => {
         requests: Array<{ url: string; status: number }>;
@@ -80,6 +82,7 @@ declare global {
         spinners: Array<{ label: string; since: number; stillVisible: boolean }>;
       };
       getState: () => { url: string; title: string; spinners: Array<{ label: string; since: number }> };
+      raceFire: (id: number, delayMs: number) => { ok: boolean };
     };
   }
 }
@@ -93,7 +96,7 @@ export async function explore(opts: ExploreOptions): Promise<ExploreResult> {
 
   const budgetMs = (opts.budgetSeconds ?? opts.config.budgetSeconds) * 1000;
   const started = Date.now();
-  const runId = createRun(opts.db, { targetUrl: opts.url, agents: 1 });
+  const runId = opts.runId ?? createRun(opts.db, { targetUrl: opts.url, agents: 1 });
   const log = opts.logger.child({ runId });
   const graph = new StateGraph(opts.db, opts.routes);
   const wanderer = new Wanderer(seedFrom(runId));

@@ -17,7 +17,9 @@ export type FindingCandidate = {
     | 'failed_request'
     | 'dead_click'
     | 'infinite_spinner'
-    | 'navigation_error';
+    | 'navigation_error'
+    | 'duplicate_write'
+    | 'race_violation';
   severity: Severity;
   confidence: 'low' | 'medium' | 'high';
   evidence: Record<string, unknown>;
@@ -31,6 +33,8 @@ const BENIGN = /(favicon|\.map$|sentry|analytics|hotjar|googletagmanager)/i;
 export class DetectorHub {
   private candidates: FindingCandidate[] = [];
   private readonly appOrigin: string;
+  /** per-page POST log for duplicate_write detection (same write ≥2× within 1 s from one agent) */
+  private readonly postLog = new Map<object, Array<{ url: string; time: number }>>();
 
   constructor(opts: { appOrigin: string }) {
     this.appOrigin = opts.appOrigin;
@@ -38,6 +42,20 @@ export class DetectorHub {
 
   attachPage(page: Page): void {
     const url = () => page.url();
+    const posts: Array<{ url: string; time: number }> = [];
+    this.postLog.set(page, posts);
+    page.on('request', (req) => {
+      const method = req.method();
+      if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') return;
+      const requestUrl = req.url();
+      try {
+        if (new URL(requestUrl).origin !== this.appOrigin) return;
+      } catch {
+        return;
+      }
+      posts.push({ url: requestUrl, time: Date.now() });
+      if (posts.length > 200) posts.splice(0, 100);
+    });
     page.on('pageerror', (err) => {
       this.candidates.push({
         type: 'page_error',
@@ -164,6 +182,34 @@ export class DetectorHub {
 
   push(candidate: FindingCandidate): void {
     this.candidates.push(candidate);
+  }
+
+  /**
+   * duplicate_write (TRD §3.6): same write request ≥ 2× within 1 s from a
+   * single agent (double-click). Called per step with the agent's page so the
+   * window is per-agent. Race mode (one click per agent) never trips it.
+   */
+  duplicateWrites(page: Page, sinceIndex: number, opts: { steps: string[] }): { findings: FindingCandidate[]; newIndex: number } {
+    const posts = this.postLog.get(page) ?? [];
+    const findings: FindingCandidate[] = [];
+    const seen = new Map<string, number>();
+    for (let i = sinceIndex; i < posts.length; i++) {
+      const post = posts[i]!;
+      seen.set(post.url, (seen.get(post.url) ?? 0) + 1);
+    }
+    for (const [requestUrl, count] of seen) {
+      if (count >= 2) {
+        findings.push({
+          type: 'duplicate_write',
+          severity: 'high',
+          confidence: 'high',
+          evidence: { url: requestUrl.slice(0, 300), count, window: '1 step, <1s apart' },
+          steps: opts.steps,
+          url: page.url(),
+        });
+      }
+    }
+    return { findings, newIndex: posts.length };
   }
 
   take(): FindingCandidate[] {

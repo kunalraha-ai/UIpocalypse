@@ -11,6 +11,7 @@ import { analyze } from './analyzer/analyzer.js';
 import { createPlan, loadPlan } from './plan/planner.js';
 import { DEFAULT_NASTY_INPUTS, PlanSchema, type Plan } from './plan/schema.js';
 import { explore } from './browser/runner.js';
+import { swarm } from './browser/orchestrator.js';
 import type { Workspace } from './workspace.js';
 import type { Logger } from './logger.js';
 
@@ -100,15 +101,29 @@ export function createServer(opts: { workspaceRoot?: string } = {}): ServerConte
     {
       title: 'Run swarm',
       description:
-        'Release the swarm against a URL (safety-guarded). Phase 3: one context — LLM scouts explore unseen states, then a code-policy Wanderer walks the shared state graph. Returns findings, coverage and LLM-call counts.',
+        'Release the swarm against a URL (safety-guarded): LLM scouts explore unseen states, then N code-policy agents (Wanderer, Double-Clicker, Garbage Paster, Abandoner) swarm with independent stepping, ramped concurrency and crash isolation. Optional barrier-synchronized race mode runs config invariants (requires an allow-listed DB).',
       inputSchema: {
         url: z.string().describe('Target URL, e.g. http://localhost:3000'),
         planId: z.string().optional().describe('Plan id from plan_swarm'),
-        agents: z.number().int().min(1).max(100).optional().describe('Ignored in Phase 3 (single context); Phase 4 scales this'),
-        budgetSeconds: z.number().int().min(1).max(600).optional(),
+        agents: z.number().int().min(1).max(100).optional().describe('Swarm size (default from config, 30)'),
+        budgetSeconds: z.number().int().min(1).max(600).optional().describe('Swarm-phase wall-clock budget'),
+        optIn: z
+          .object({
+            destructive: z.boolean().optional(),
+            externalSideEffects: z.boolean().optional(),
+          })
+          .optional(),
+        race: z
+          .object({
+            url: z.string().optional().describe('Defaults to the target URL'),
+            actionLabel: z.string().describe('Action to fire concurrently, e.g. "Redeem coupon"'),
+            input: z.string().optional().describe('Value for text inputs, e.g. the coupon code'),
+            contexts: z.number().int().min(2).max(50).optional().describe('Concurrent firers (default 20)'),
+          })
+          .optional(),
       },
     },
-    async ({ url, planId, budgetSeconds }) => {
+    async ({ url, planId, agents, budgetSeconds, optIn, race }) => {
       const { config } = loadConfig();
       let plan: Plan;
       let routes: string[] = [];
@@ -135,7 +150,8 @@ export function createServer(opts: { workspaceRoot?: string } = {}): ServerConte
       llms.planner.maxCalls = config.llm.maxCallsPerRun;
       llms.scout.maxCalls = config.llm.maxCallsPerRun;
       try {
-        const result = await explore({
+        // phase 1: scouts fill the graph (single context, fast model)
+        const exploreResult = await explore({
           url,
           config,
           plan,
@@ -144,9 +160,41 @@ export function createServer(opts: { workspaceRoot?: string } = {}): ServerConte
           llm: llms.planner,
           scoutLlm: llms.scout,
           logger,
-          budgetSeconds,
+          budgetSeconds: Math.min(budgetSeconds ?? config.budgetSeconds, 120),
         });
-        return text(result);
+        // phase 2: the swarm (independent stepping, ramp, personas) — same run row
+        const swarmResult = await swarm({
+          url,
+          config,
+          plan,
+          db,
+          routes,
+          llm: llms.scout,
+          logger,
+          agents,
+          budgetSeconds,
+          runId: exploreResult.runId,
+          optIn,
+          raceTarget: race
+            ? {
+                url: race.url ?? url,
+                actionLabel: race.actionLabel,
+                input: race.input,
+                contexts: race.contexts,
+              }
+            : undefined,
+        });
+
+        const findingCounts: Record<string, number> = {};
+        for (const [k, v] of Object.entries(exploreResult.findingCounts)) findingCounts[k] = v;
+        for (const [k, v] of Object.entries(swarmResult.findingCounts)) findingCounts[k] = (findingCounts[k] ?? 0) + v;
+
+        return text({
+          runId: swarmResult.runId,
+          explore: exploreResult,
+          swarm: swarmResult,
+          findingCounts,
+        });
       } catch (e) {
         return { isError: true, content: [{ type: 'text' as const, text: String(e) }] };
       }

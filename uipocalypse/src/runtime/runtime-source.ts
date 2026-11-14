@@ -264,6 +264,15 @@ export const RUNTIME_SOURCE = String.raw`
       };
     },
 
+    /** Barrier-synchronized race firing (TRD FR-W4): click element 'id' after
+     * 'delayMs' — scheduled inside the page so M contexts fire truly at once. */
+    raceFire: function (id, delayMs) {
+      const el = els[id];
+      if (!el) return { ok: false };
+      window.setTimeout(function () { el.click(); }, delayMs);
+      return { ok: true };
+    },
+
     drain: function () {
       const out = {
         mutations: M.count,

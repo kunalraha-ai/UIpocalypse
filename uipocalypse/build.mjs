@@ -7,7 +7,7 @@ await build({
   target: 'node22',
   format: 'cjs',
   outfile: 'dist/index.cjs',
-  external: ['better-sqlite3', 'playwright'],
+  external: ['better-sqlite3', 'playwright', 'pg'],
   banner: { js: '#!/usr/bin/env node' },
   sourcemap: true,
 });
