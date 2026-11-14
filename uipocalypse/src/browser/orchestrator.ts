@@ -72,6 +72,8 @@ export type SwarmResult = {
   racePreExisting: string[];
   /** dead-click verdicts suppressed because the control has produced feedback before (repeat-activation) */
   suppressedDeadVerdicts: number;
+  /** controls that worked on some interactions this run but not others (inconsistent_feedback findings) */
+  inconsistentFeedbackActions: string[];
   aborted: boolean;
   warnings: string[];
 };
@@ -104,6 +106,8 @@ export async function swarm(opts: SwarmOptions): Promise<SwarmResult> {
   const findings: FindingCandidate[] = [];
   const stepsCounter = { n: 0 };
   const suppressedDeadVerdicts = { n: 0 };
+  const inconsistentFeedbackSeen = new Set<string>();
+  const inconsistentFeedbackActions: string[] = [];
   let activeLevel = Math.min(5, agentsWanted);
   let degradedAtLevel: number | undefined;
   let lastStepUpAt = 0;
@@ -296,10 +300,11 @@ export async function swarm(opts: SwarmOptions): Promise<SwarmResult> {
       });
       agent.stalledSteps = toState.isNew ? 0 : agent.stalledSteps + 1;
 
-      // repeat-activation suppression: remember controls that produced real
-      // feedback once — anywhere, in any run (the graph is the memory)
+      // repeat-activation suppression (RUN-SCOPED): remember controls that
+      // produced real feedback during THIS run — prior runs never suppress,
+      // so a regression in this run is always reported (fix-verify loop)
       if (result.reasons.some((r) => ALIVE_REASONS.includes(r))) {
-        graph.markActionAlive(actionLocator);
+        graph.markAliveThisRun(runId, actionLocator);
       }
 
       // detectors: errors + dead click + duplicate writes
@@ -327,10 +332,29 @@ export async function swarm(opts: SwarmOptions): Promise<SwarmResult> {
         });
       }
       if (result.dead && !result.saturated && !result.blocked && drain.pageErrors.length === 0) {
-        if (graph.actionEverAlive(actionLocator)) {
-          // this control HAS produced feedback before (any state, any run) —
-          // a dead verdict now is repeat-activation of idempotent state, not a bug
+        if (graph.aliveThisRun(runId, actionLocator)) {
+          // this control produced feedback earlier in THIS run — a dead
+          // verdict now is repeat-activation noise, suppressed as a dead_click…
           suppressedDeadVerdicts.n++;
+          // …but never silenced entirely: the FIRST such verdict reports the
+          // control as low-confidence inconsistent_feedback (usually an
+          // idempotent toggle re-activated; occasionally a real intermittent
+          // fault — "works once, then stops")
+          if (!inconsistentFeedbackSeen.has(actionLocator)) {
+            inconsistentFeedbackSeen.add(actionLocator);
+            inconsistentFeedbackActions.push(label);
+            findings.push({
+              type: 'inconsistent_feedback',
+              severity: 'low',
+              confidence: 'low',
+              evidence: {
+                action: label,
+                note: 'produced real feedback on some interactions this run but none on this one — idempotent repeat, or an intermittent fault',
+              },
+              steps: agent.history.slice(-8),
+              url: page.url(),
+            });
+          }
         } else {
           const verdict = hub.deadClick({
             actionLabel: label,
@@ -593,6 +617,7 @@ export async function swarm(opts: SwarmOptions): Promise<SwarmResult> {
     duplicateEffects,
     racePreExisting,
     suppressedDeadVerdicts: suppressedDeadVerdicts.n,
+    inconsistentFeedbackActions,
     aborted,
     warnings: decision.warnings,
   };

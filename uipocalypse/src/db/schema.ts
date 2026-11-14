@@ -19,8 +19,16 @@ CREATE TABLE IF NOT EXISTS actions (
   kind TEXT,
   label TEXT,
   risk_class TEXT,            -- safe | write | destructive | external
-  ever_alive INTEGER NOT NULL DEFAULT 0,  -- observed producing real feedback in ANY state/run
   UNIQUE(state_id, locator)
+);
+
+-- per-run alive marks (repeat-activation suppression is RUN-SCOPED by design:
+-- a control that was alive in an earlier run must never mask a regression in
+-- this one — the fix-verify loop depends on it)
+CREATE TABLE IF NOT EXISTS alive_actions (
+  run_id INTEGER NOT NULL,
+  locator TEXT NOT NULL,
+  PRIMARY KEY(run_id, locator)
 );
 
 CREATE TABLE IF NOT EXISTS transitions (

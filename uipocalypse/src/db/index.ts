@@ -15,12 +15,6 @@ export function openDb(dir: string): Db {
   const db = new Database(join(dir, 'db.sqlite'));
   db.pragma('journal_mode = WAL');
   db.exec(SCHEMA_SQL);
-  // migration: actions.ever_alive (project DBs created before the
-  // repeat-activation suppression lack the column)
-  const actionCols = db.prepare('PRAGMA table_info(actions)').all() as Array<{ name: string }>;
-  if (!actionCols.some((c) => c.name === 'ever_alive')) {
-    db.exec('ALTER TABLE actions ADD COLUMN ever_alive INTEGER NOT NULL DEFAULT 0');
-  }
   return db;
 }
 

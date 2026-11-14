@@ -67,6 +67,10 @@ Run C on 5-10 real vibecoded repos with owner permission.
 - Sort findings into "bug / safety hole / not a bug."
 - Publish only aggregate, anonymized results; notify owners privately first (SAFETY.md §5).
 
+### Held-out detector generalization check (Phase 6, pre-repos)
+
+Before the real repos, run the swarm once against **Plain Pages** (`held-out-app-2/`) — the third app, untouched by every detector, spike and gate since it was written. Ground truth is documented in its README: exactly three real dead controls must be flagged (including the subtle one — a handler that runs but touches nothing), the idempotent toggles may surface as low-confidence `inconsistent_feedback`, and anything else is a false positive to count. Messy Mart and CreditCraft are tuning fixtures; this is the generalization check.
+
 ## 6. Pass/fail gates
 
 | Gate | Threshold |

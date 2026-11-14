@@ -61,16 +61,20 @@ The plan front-loads the riskiest assumptions (state hashing, swarm speed, false
 - Concurrency ramp and "app collapsed at N" reporting
 
 **Deliverable:** 30-50 agent run on the sample app in ≤ 120 s (post-scouting; Phase 0 measured 109.7-118.0 s at 50 × 100 — the old ≤ 60 s target was ~2× off, see PHASE0_RESULTS.md); detects double-submit and race bugs.
-**Gate: PASS (Phase 4)** — 50 agents at the 105 s watchdog (six gate executions, every one ≤ 120 s: 105.0 / 105.0 / 96.4 / 105.0 / 105.5 / 105.2 s; final run 6/6 — one intermediate run failed on two detector/config bugs that the re-runs caught and fixed); `duplicate_request` + `duplicate_effect` (invariant-confirmed) on Buy credits, `race_violation` (20 fired → 7 redemptions of a single-use coupon, baseline-attributed), the #6 garbage-name `page_error` and #7 emoji-search 500 all detected live, zero destructive clicks. See PHASE4_RESULTS.md.
+**Gate: PASS (Phase 4)** — 50 agents at the 105 s watchdog (seven gate executions, every one ≤ 120 s: 105.0 / 105.0 / 96.4 / 105.0 / 105.5 / 105.2 / 105.3 s; final run 6/6 — one intermediate run failed on two detector/config bugs that the re-runs caught and fixed, and the first suppression design was reworked on review to stay run-scoped so regressions are never masked); `duplicate_request` + `duplicate_effect` (invariant-confirmed) on Buy credits, `race_violation` (20 fired → 14 redemptions of a single-use coupon, baseline-attributed), the #6 garbage-name `page_error` and #7 emoji-search 500 all detected live, 19/19 dead_clicks on the planted dead control, zero destructive clicks. See PHASE4_RESULTS.md.
 
 ## Phase 5: Collector, reviewer, report (Week 5)
 
-- Clustering and dedupe, coverage computation and unreached-action reasons
-- Reviewer (LLM call #2) → markdown/JSON report with fix prompts mapped to file/line
-- Screenshots on failure; Playwright traces for replay
-- `get_report`, `list_runs`, `diff_runs` (fixed / new / still failing)
-- `verify_deployment_safety` convenience tool
-- Remaining static rules (to ~15-20)
+Build in this order (review-directed; the fingerprint key is already decided in TRD §3.7 FR-C1):
+
+1. **Collector and clustering** on the decided cluster key — the acceptance case is the gate run's 52 duplicate observations collapsing to one issue per flawed endpoint. The two classification rules land in the same step: a 401/400 on a route that exists in the app map is a *correct rejection* (downgrade), and `net::ERR_ABORTED` is a cancellation artifact (filter) — **then re-measure the FP rate over the clustered set** (Phase 4's 4-of-17 was pre-classifier and a projection afterwards; publish counts with the percentage — the denominators are small).
+2. **Reviewer (LLM call #2)** → markdown/JSON report with fix prompts mapped to file/line through the app map; ranks `inconsistent_feedback` findings; coverage computation and unreached-action reasons.
+3. **Planner-drafted invariants** (TRD FR-P1): `atMost` predicates drafted from the DB schema + app map, preflight-validated against a clean DB; `duplicate_request` remains the standalone signal for apps without a reachable DB.
+4. **Screenshots on failure; Playwright traces for replay.**
+5. **`diff_runs`** (fixed / new / still failing) — the regression loop the run-scoped suppression protects.
+6. **Remaining static rules** (to ~15-20).
+7. **`get_report`, `list_runs`, `verify_deployment_safety`** convenience tool.
+8. **Timing record:** several full-pipeline first runs and reruns; publish medians + ranges for the PRD G1 numbers.
 
 **Deliverable:** end-to-end "verify deployment safety" from Claude Code on the sample app.
 

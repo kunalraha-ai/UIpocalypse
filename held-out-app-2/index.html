@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Plain Pages — home</title>
+  <style>body { font-family: system-ui, sans-serif; max-width: 640px; margin: 2rem auto; }
+    button { padding: 6px 12px; margin: 4px; cursor: pointer; }
+    .dark { background: #16181d; color: #e8e8ea; }</style>
+</head>
+<body>
+  <h1>Plain Pages</h1>
+  <nav>
+    <a href="index.html">Home</a> ·
+    <a href="catalog.html">Catalog</a>
+  </nav>
+
+  <section>
+    <h2>Newsletter</h2>
+    <!-- Constrained-input surface: browser blocks the submit when the
+         email field is empty/invalid; a valid submit renders a receipt. -->
+    <form onsubmit="event.preventDefault(); document.getElementById('receipt').textContent = 'Subscribed ✓';">
+      <input type="email" name="email" placeholder="you@example.com" required />
+      <button type="submit">Join list</button>
+    </form>
+    <p id="receipt"></p>
+  </section>
+
+  <section>
+    <h2>Preferences</h2>
+    <button id="theme">Toggle dark mode</button>
+    <button onclick="alert('Support inbox: help@plainpages.example')">Contact support</button>
+    <!-- PLANTED DEAD #1: no handler at all -->
+    <button id="dead1">Reset preferences</button>
+    <details>
+      <summary>Shipping FAQ</summary>
+      <p>We ship plain pages only. Nothing physical.</p>
+    </details>
+    <button id="deleter">Delete account</button>
+  </section>
+
+  <script src="plain.js"></script>
+</body>
+</html>

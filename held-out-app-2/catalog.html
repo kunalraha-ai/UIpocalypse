@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Plain Pages — catalog</title>
+  <style>body { font-family: system-ui, sans-serif; max-width: 640px; margin: 2rem auto; }
+    button { padding: 6px 12px; margin: 4px; cursor: pointer; }
+    .item { padding: 8px; border-bottom: 1px solid #ccc; }</style>
+</head>
+<body>
+  <h1>Catalog</h1>
+  <nav>
+    <a href="index.html">Home</a> ·
+    <a href="catalog.html">Catalog</a>
+  </nav>
+
+  <section>
+    <!-- Idempotent-toggle surface: clicking the ACTIVE filter early-returns
+         (vanilla-JS idempotency, no framework bail-out involved) -->
+    <button class="filter" data-cat="tools" onclick="pickFilter('tools')">Show tools</button>
+    <button class="filter" data-cat="books" onclick="pickFilter('books')">Show books</button>
+    <!-- PLANTED DEAD #2: empty onclick attribute -->
+    <button onclick="">Clear filters</button>
+
+    <div id="list"></div>
+    <button id="more">Load more</button>
+  </section>
+
+  <section>
+    <h2>Notes</h2>
+    <input id="note" placeholder="leave a note" />
+    <button onclick="saveNote()">Save note</button>
+    <p id="saved"></p>
+  </section>
+
+  <script src="plain.js"></script>
+</body>
+</html>

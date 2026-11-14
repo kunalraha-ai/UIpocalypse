@@ -1,7 +1,7 @@
 import { describe, expect, it, beforeAll, afterAll } from 'vitest';
 import { chromium } from 'playwright';
 import { join } from 'node:path';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { swarm } from '../src/browser/orchestrator.js';
 import { runRace, attributeDuplicateEffects, invariantViolated, type InvariantSpec, type InvariantRunner } from '../src/browser/race.js';import { PlanSchema } from '../src/plan/schema.js';
 import { createLlm } from '../src/llm/index.js';
@@ -215,17 +215,71 @@ describe('swarm orchestrator (Phase 4)', () => {
       .toEqual([]);
   });
 
-  it('repeat-activation suppression: a control with observed feedback is never reported dead again (held-out-app finding)', () => {
+  it('repeat-activation suppression is RUN-SCOPED: prior-run feedback never masks this run (regression guarantee)', () => {
     const g = new StateGraph(ws.db, []);
     const s = g.getOrCreateState({ hash: 'h-sup', url: '/', signature: '' });
     g.getOrCreateAction({ stateId: s.id, locator: 'button|X#0', kind: 'button', label: 'X', riskClass: 'safe' });
-    expect(g.actionEverAlive('button|X#0')).toBe(false);
-    // the control produces real feedback once — in ANY state, ANY run
-    g.markActionAlive('button|X#0');
-    expect(g.actionEverAlive('button|X#0')).toBe(true);
-    // and a different locator stays dead-reportable
-    expect(g.actionEverAlive('button|Dead button#0')).toBe(false);
+    // run 1: the control works — marked alive
+    g.markAliveThisRun(1, 'button|X#0');
+    expect(g.aliveThisRun(1, 'button|X#0')).toBe(true);
+    // run 2: NO carry-over — a dead verdict here is reported at full confidence
+    // (this is the fix-verify loop: works in run 1, regressed in run 2 → flagged)
+    expect(g.aliveThisRun(2, 'button|X#0')).toBe(false);
+    expect(g.aliveThisRun(2, 'button|Dead button#0')).toBe(false);
   });
+
+  it('regression test (review): a control that worked in run 1 whose handler is emptied must still be flagged in run 2', async () => {
+    // run 1: the full fixture — "Flag once" works (first click flags, repeats suppressed)
+    const server1 = await serveStatic(FIXTURE);
+    const first = await swarm({
+      url: server1.url,
+      config: ws.config,
+      plan: fixturePlan(server1.url),
+      db: ws.db,
+      routes: ['/', '/page2.html'],
+      llm: createLlm({ LLM_API_KEY: '' }),
+      logger: ws.logger,
+      agents: 8,
+      budgetSeconds: 30,
+      perAgentSteps: 12,
+    });
+    await server1.close();
+    const run1Dead = listFindings(ws.db, first.runId)
+      .filter((r) => r.type === 'dead_click')
+      .map((r) => (JSON.parse(r.evidence_json!) as { action: string }).action);
+    // within run 1, Flag once never reads dead (its first click always flags → later repeats suppressed)
+    expect(new Set(run1Dead)).toEqual(new Set(['Dead button']));
+
+    // run 2: the SAME fixture with Flag once's handler EMPTIED — a regression.
+    // Run 1's feedback must NOT suppress this run's dead verdicts.
+    const variantDir = mkdtempSync('/tmp/opencode/uip-regression-');
+    const variantHtml = readFileSync(join(FIXTURE, 'index.html'), 'utf8').replace(
+      /<button id="flagonce"[^>]*>Flag once<\/button>/,
+      '<button id="flagonce">Flag once</button>',
+    );
+    writeFileSync(join(variantDir, 'index.html'), variantHtml);
+    writeFileSync(join(variantDir, 'page2.html'), readFileSync(join(FIXTURE, 'page2.html'), 'utf8'));
+    const server2 = await serveStatic(variantDir);
+    const second = await swarm({
+      url: server2.url,
+      config: ws.config,
+      plan: fixturePlan(server2.url),
+      db: ws.db,
+      routes: ['/', '/page2.html'],
+      llm: createLlm({ LLM_API_KEY: '' }),
+      logger: ws.logger,
+      agents: 8,
+      budgetSeconds: 30,
+      perAgentSteps: 12,
+    });
+    await server2.close();
+    const run2Dead = listFindings(ws.db, second.runId)
+      .filter((r) => r.type === 'dead_click')
+      .map((r) => (JSON.parse(r.evidence_json!) as { action: string }).action);
+    // the regressed control is flagged despite run 1's recorded feedback
+    expect(run2Dead).toContain('Flag once');
+    expect(new Set(run2Dead)).toEqual(new Set(['Dead button', 'Flag once']));
+  }, 180_000);
 
   it('orchestrator race is skipped without a DB URL (G4 fails closed)', async () => {
     const dir = mkdtempSync('/tmp/opencode/uip-p4-race-');

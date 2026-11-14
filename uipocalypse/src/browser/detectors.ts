@@ -16,6 +16,7 @@ export type FindingCandidate = {
     | 'console_error'
     | 'failed_request'
     | 'dead_click'
+    | 'inconsistent_feedback'
     | 'infinite_spinner'
     | 'navigation_error'
     | 'duplicate_request'

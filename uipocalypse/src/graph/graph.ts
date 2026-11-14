@@ -93,19 +93,22 @@ export class StateGraph {
   }
 
   /**
-   * Repeat-activation suppression (Phase 4 held-out finding): mark this action
-   * locator as having produced REAL feedback (mutation/request/nav/aria/dialog)
-   * at least once, in any state, in any run — the persistent graph remembers.
+   * Repeat-activation suppression (held-out finding), RUN-SCOPED by design:
+   * mark this action locator as having produced REAL feedback (mutation/
+   * request/nav/aria/dialog) during THIS run. Prior runs never suppress —
+   * a control that was alive in run N must not mask a regression in run N+1.
    */
-  markActionAlive(locator: string): void {
-    this.db.prepare('UPDATE actions SET ever_alive = 1 WHERE locator = ?').run(locator);
+  markAliveThisRun(runId: number, locator: string): void {
+    this.db
+      .prepare('INSERT OR IGNORE INTO alive_actions (run_id, locator) VALUES (?, ?)')
+      .run(runId, locator);
   }
 
-  /** Has this action locator ever produced real feedback in any recorded run? */
-  actionEverAlive(locator: string): boolean {
+  /** Did this action locator produce real feedback during THIS run? */
+  aliveThisRun(runId: number, locator: string): boolean {
     const row = this.db
-      .prepare('SELECT EXISTS(SELECT 1 FROM actions WHERE locator = ? AND ever_alive = 1) AS e')
-      .get(locator) as { e: number };
+      .prepare('SELECT EXISTS(SELECT 1 FROM alive_actions WHERE run_id = ? AND locator = ?) AS e')
+      .get(runId, locator) as { e: number };
     return row.e === 1;
   }
 

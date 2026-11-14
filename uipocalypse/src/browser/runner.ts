@@ -119,6 +119,7 @@ export async function explore(opts: ExploreOptions): Promise<ExploreResult> {
 
   const findings: FindingCandidate[] = [];
   const suppressedDead = { n: 0 };
+  const inconsistentFeedbackSeen = new Set<string>();
   const history: string[] = [];
 
   async function currentState(): Promise<{ hash: string; url: string }> {
@@ -193,10 +194,11 @@ export async function explore(opts: ExploreOptions): Promise<ExploreResult> {
       error: result.dead,
     });
 
-    // repeat-activation suppression: remember controls that produced real
-    // feedback once — anywhere, in any run (the graph is the memory)
+    // repeat-activation suppression (RUN-SCOPED): feedback earlier in THIS
+    // run suppresses later dead verdicts for the same control; prior runs
+    // never suppress, so regressions in this run are always reported
     if (result.reasons.some((r) => ALIVE_REASONS.includes(r))) {
-      graph.markActionAlive(actionLocator);
+      graph.markAliveThisRun(runId, actionLocator);
     }
 
     // detector verdicts for this action (drain resets per step → per-action attribution)
@@ -226,9 +228,24 @@ export async function explore(opts: ExploreOptions): Promise<ExploreResult> {
     }
     // dead click — but an action that THREW is not "dead": the error is the finding
     if (result.dead && !result.saturated && !result.blocked && !hadErrors) {
-      if (graph.actionEverAlive(actionLocator)) {
-        // this control HAS produced feedback before — repeat-activation, not a bug
+      if (graph.aliveThisRun(runId, actionLocator)) {
+        // repeat-activation noise — suppressed as dead_click, but the first
+        // such verdict reports the control as low-confidence inconsistent_feedback
         suppressedDead.n++;
+        if (!inconsistentFeedbackSeen.has(actionLocator)) {
+          inconsistentFeedbackSeen.add(actionLocator);
+          findings.push({
+            type: 'inconsistent_feedback',
+            severity: 'low',
+            confidence: 'low',
+            evidence: {
+              action: label,
+              note: 'produced real feedback on some interactions this run but none on this one — idempotent repeat, or an intermittent fault',
+            },
+            steps: history.slice(-8),
+            url: page.url(),
+          });
+        }
       } else {
         const verdict = hub.deadClick({
           actionLabel: label,
