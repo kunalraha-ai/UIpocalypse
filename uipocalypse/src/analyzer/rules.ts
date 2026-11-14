@@ -25,8 +25,19 @@ const SEVERITY_RANK: Record<Severity, number> = { high: 0, medium: 1, low: 2, in
 
 // ---------------------------------------------------------------- 1. dead-handler
 
+/** Server-action machinery in the file: buttons likely compose into forms elsewhere. */
+const FORM_MACHINERY = /useActionState|useFormStatus|formAction/;
+
 export function deadHandler(ctx: RuleContext): Issue[] {
   const issues: Issue[] = [];
+  const machineryCache = new Map<string, boolean>();
+  const hasFormMachinery = (file: string): boolean => {
+    if (!machineryCache.has(file)) {
+      const text = ctx.fileText(file);
+      machineryCache.set(file, text ? FORM_MACHINERY.test(text) : false);
+    }
+    return machineryCache.get(file)!;
+  };
   for (const el of ctx.appMap.elements) {
     for (const prop of el.emptyHandlers) {
       issues.push({
@@ -38,13 +49,20 @@ export function deadHandler(ctx: RuleContext): Issue[] {
         fixHint: 'Wire the handler to real logic, or remove the element.',
       });
     }
-    // buttons outside any form with no handlers at all (and not decorative) do nothing
+    // speculative branch (low severity) — must clear every known-unknowable:
+    // disabled controls, submit machinery, spread props (handlers may arrive at
+    // call sites), and server-action composition (FP audit: vercel/commerce,
+    // shadcn/taxonomy, supabase user-management)
     if (
       (el.tag === 'button' || el.tag === 'input') &&
       !el.inForm &&
       el.handlers.length === 0 &&
       el.emptyHandlers.length === 0 &&
-      !el.ariaHidden
+      !el.ariaHidden &&
+      !el.disabled &&
+      el.typeAttr !== 'submit' &&
+      !el.hasSpread &&
+      !hasFormMachinery(el.file)
     ) {
       issues.push({
         rule: 'dead-handler',
@@ -65,13 +83,23 @@ export function unwiredForm(ctx: RuleContext): Issue[] {
   const issues: Issue[] = [];
   for (const el of ctx.appMap.elements) {
     if (el.tag !== 'form') continue;
-    if (!el.hasOnSubmit && !el.hasAction && !el.hasMethodAttr) {
+    // only forms that actually attempt a submission (a submit control) and are
+    // not wired by any mechanism: onSubmit, action, method, or formAction
+    // server actions on descendants (FP audit: radio filter groups and
+    // skeleton forms have no submit control and must not fire)
+    if (
+      el.hasSubmitControl &&
+      !el.hasOnSubmit &&
+      !el.hasAction &&
+      !el.hasMethodAttr &&
+      !el.hasFormActionDescendant
+    ) {
       issues.push({
         rule: 'unwired-form',
         severity: 'medium',
         file: el.file,
         line: el.line,
-        message: `form "${el.label}" has no submit handler and no action — submissions go nowhere useful (native GET reload).`,
+        message: `form "${el.label}" has a submit control but no submit handler, action or formAction — submissions go nowhere useful (native GET reload).`,
         fixHint: 'Add onSubmit={...} or an action; handle errors and pending state.',
       });
     }
@@ -188,10 +216,14 @@ export function serviceKeyInClient(ctx: RuleContext): Issue[] {
 
 // ---------------------------------------------------------------- 6. undefined-env
 
+/** Platform-injected env vars: always present at runtime, never in .env files. */
+const PLATFORM_ENV = /^VERCEL_|^NODE_ENV$/;
+
 export function undefinedEnv(ctx: RuleContext): Issue[] {
   const issues: Issue[] = [];
   const seen = new Set<string>();
   for (const env of ctx.appMap.envVars) {
+    if (PLATFORM_ENV.test(env.name)) continue;
     if (ctx.envKeys.has(env.name)) continue;
     const key = `${env.name}@${env.file}:${env.line}`;
     if (seen.has(key)) continue;
@@ -231,11 +263,17 @@ export function unverifiedStripeWebhook(ctx: RuleContext): Issue[] {
 
 // ---------------------------------------------------------------- 8. no-error-state
 
+/** UI-state rules only make sense in components (.tsx/.jsx with JSX). */
+function isComponentFile(file: string): boolean {
+  return /\.(tsx|jsx)$/.test(file);
+}
+
 export function noErrorState(ctx: RuleContext): Issue[] {
   const issues: Issue[] = [];
   for (const call of ctx.appMap.apiCalls) {
     if (isServerFile(call.file)) continue;
     if (call.enclosingFnHasErrorHandling) continue;
+    if (!isComponentFile(call.file)) continue; // server libs / plain modules
     issues.push({
       rule: 'no-error-state',
       severity: 'medium',
@@ -257,6 +295,7 @@ export function noLoadingState(ctx: RuleContext): Issue[] {
     if (call.method !== 'POST' && call.method !== 'PUT' && call.method !== 'PATCH' && call.method !== 'DELETE') continue;
     const text = ctx.fileText(call.file);
     if (!text) continue;
+    if (!isComponentFile(call.file)) continue; // server libs / plain modules
     if (/loading|pending|busy|submitting|isSubmitting|disabled/i.test(text)) continue; // some pending state exists in this file
     issues.push({
       rule: 'no-loading-state',

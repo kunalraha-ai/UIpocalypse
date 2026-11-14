@@ -66,4 +66,18 @@ describe('static rule library (TRD §8, first 10 rules) — fixture mini-app', (
     expect(files('exposed-secret')).toContain('lib/secrets.ts');
     expect(byRule('exposed-secret')).toHaveLength(1);
   });
+
+  it('FP gates from the real-repo audit (vercel/commerce, shadcn/taxonomy, supabase user-management)', () => {
+    // disabled controls are intentionally inert — not dead
+    expect(has('dead-handler', /Coming soon/)).toBe(false);
+    // disabled attr (shadcn/taxonomy mode-toggle class, supabase account-form email)
+    expect(has('dead-handler', /Invisible submit/)).toBe(false); // type="submit" machinery
+    expect(has('dead-handler', /UiWrapper/)).toBe(false); // {...props} spread (taxonomy ui/button)
+    // forms without a submit control (skeletons, radio filter groups) never submit — not unwired
+    expect(has('unwired-form', /Skeleton/)).toBe(false);
+    // formAction server actions wire the form (supabase user-management login)
+    expect(has('unwired-form', /ServerActions/)).toBe(false);
+    // platform-injected env vars are always present at runtime
+    expect(has('undefined-env', /NODE_ENV/)).toBe(false);
+  });
 });

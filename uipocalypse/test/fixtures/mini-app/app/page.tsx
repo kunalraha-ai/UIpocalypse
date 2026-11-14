@@ -34,6 +34,17 @@ export default function Page() {
       <button onClick={() => { fetch('/api/missing'); }}>Call missing</button>
       {/* negative: endpoint exists, error handled */}
       <button onClick={() => { fetch('/api/exists').catch(() => {}); }}>Call exists</button>
+
+      {/* FP gates from the real-repo audit — none of these may fire: */}
+      <button disabled>Coming soon</button>
+      <form aria-label="Skeleton">
+        <input type="email" placeholder="search..." />
+      </form>
+      <form aria-label="ServerActions">
+        <button formAction={() => {}} formMethod="post">
+          Server action
+        </button>
+      </form>
     </div>
   );
 }

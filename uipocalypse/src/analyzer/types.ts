@@ -17,6 +17,16 @@ export type ElementInfo = {
   hasOnSubmit: boolean; // form: onSubmit handler
   hasMethodAttr: boolean; // form: method attr (native dialog forms use method="dialog")
   submitType: boolean; // button: type="submit" or default-in-form
+  /** static `disabled` attribute present (runtime also checks live state) */
+  disabled: boolean;
+  /** value of the `type` attribute, when present */
+  typeAttr: string | null;
+  /** element receives {...spread} props — handlers may arrive at call sites */
+  hasSpread: boolean;
+  /** form only: contains a control that would submit it (button default/input type=submit) */
+  hasSubmitControl: boolean;
+  /** form only: a descendant declares formAction={...} (server actions) */
+  hasFormActionDescendant: boolean;
 };
 
 export type ApiCallInfo = {

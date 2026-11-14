@@ -133,12 +133,16 @@ function collectElement(node: JsxElement | JsxSelfClosingElement, rel: string, o
     node.getKind() === SyntaxKind.JsxElement
       ? (node as JsxElement).getOpeningElement()
       : (node as JsxSelfClosingElement);
-  const tag = opening.getTagNameNode().getText().toLowerCase();
-  if (!INTERESTING_TAGS.has(tag)) return;
+  const tag = opening.getTagNameNode().getText();
+  if (!INTERESTING_TAGS.has(tag)) return; // native tags are lowercase; Capitalized <Button> is a component
 
   const attrs = new Map<string, string | null>();
+  let hasSpread = false;
   for (const attrLike of opening.getAttributes()) {
-    if (attrLike.getKind() !== SyntaxKind.JsxAttribute) continue; // skip spreads
+    if (attrLike.getKind() !== SyntaxKind.JsxAttribute) {
+      hasSpread = true; // {...props} — handlers may arrive at call sites
+      continue;
+    }
     const attr = attrLike as import('ts-morph').JsxAttribute;
     const name = attr.getNameNode().getText();
     const init = attr.getInitializer();
@@ -160,6 +164,39 @@ function collectElement(node: JsxElement | JsxSelfClosingElement, rel: string, o
     }
   }
 
+  // forms: does anything inside actually submit, or wire via formAction?
+  let hasSubmitControl = false;
+  let hasFormActionDescendant = false;
+  if (tag === 'form') {
+    const descendants = [
+      ...node.getDescendantsOfKind(SyntaxKind.JsxElement),
+      ...node.getDescendantsOfKind(SyntaxKind.JsxSelfClosingElement),
+    ];
+    for (const desc of descendants) {
+      const dOpening =
+        desc.getKind() === SyntaxKind.JsxElement
+          ? (desc as JsxElement).getOpeningElement()
+          : (desc as JsxSelfClosingElement);
+      const dTag = dOpening.getTagNameNode().getText().toLowerCase();
+      if (dTag !== 'button' && dTag !== 'input') continue;
+      const dAttrs = new Map<string, string | null>();
+      for (const dAttrLike of dOpening.getAttributes()) {
+        if (dAttrLike.getKind() !== SyntaxKind.JsxAttribute) continue;
+        const dAttr = dAttrLike as import('ts-morph').JsxAttribute;
+        dAttrs.set(dAttr.getNameNode().getText(), dAttr.getInitializer()?.getText() ?? null);
+      }
+      if (dAttrs.has('formAction')) {
+        hasFormActionDescendant = true; // server-action wiring
+        continue;
+      }
+      const dType = dAttrs.get('type')?.replace(/['"]/g, '') ?? null;
+      if (dTag === 'button' && (dType === null || dType === '' || dType === 'submit')) hasSubmitControl = true;
+      if (dTag === 'input' && dType === 'submit') hasSubmitControl = true;
+    }
+  }
+
+  const typeAttr = attrs.get('type')?.replace(/['"`]/g, '') ?? null;
+
   out.push({
     tag,
     file: rel,
@@ -173,6 +210,11 @@ function collectElement(node: JsxElement | JsxSelfClosingElement, rel: string, o
     hasOnSubmit: handlers.includes('onSubmit') && !emptyHandlers.includes('onSubmit'),
     hasMethodAttr: attrs.has('method'),
     submitType: tag === 'button' || tag === 'input',
+    disabled: attrs.has('disabled'),
+    typeAttr,
+    hasSpread,
+    hasSubmitControl,
+    hasFormActionDescendant,
   });
 }
 

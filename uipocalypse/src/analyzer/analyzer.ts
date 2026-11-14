@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import type { Issue, ScanOutput } from './types.js';
 import { extractAppMap, readEnvFileKeys } from './extract.js';
 import { makeFileTextFn, runRules } from './rules.js';
@@ -10,11 +10,12 @@ import { makeFileTextFn, runRules } from './rules.js';
  */
 
 export function analyze(root: string): ScanOutput {
-  if (!existsSync(root)) throw new Error(`Scan target does not exist: ${root}`);
-  const appMap = extractAppMap(root);
+  const resolvedRoot = resolve(root);
+  if (!existsSync(resolvedRoot)) throw new Error(`Scan target does not exist: ${resolvedRoot}`);
+  const appMap = extractAppMap(resolvedRoot);
 
   const migrations: Array<{ rel: string; text: string }> = [];
-  const migDir = join(root, 'supabase', 'migrations');
+  const migDir = join(resolvedRoot, 'supabase', 'migrations');
   if (existsSync(migDir)) {
     for (const file of readdirSync(migDir)) {
       if (file.endsWith('.sql')) {
