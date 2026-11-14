@@ -22,7 +22,7 @@ Same machine, same model for any LLM use, same app build, 3 repeated runs each, 
 | 1 | "Save profile" button has an empty onClick | Static + dead click | `dead-handler`, `dead_click` |
 | 2 | Newsletter form has no submit handler | Static | `unwired-form` |
 | 3 | `fetch('/api/promo')` points to a route that doesn't exist | Static + 404 | `missing-endpoint`, `failed_request` |
-| 4 | Double-click "Buy credits" creates two charges/rows | Behavior | `duplicate_write` |
+| 4 | Double-click "Buy credits" creates two charges/rows | Behavior | `duplicate_request` (request level) + `duplicate_effect` (invariant-confirmed) |
 | 5 | 20 concurrent "Redeem coupon" requests all succeed (coupon should be single-use) | Race | `race_violation` |
 | 6 | 10,000-char name crashes profile page (unhandled error) | Edge input | `page_error` |
 | 7 | Emoji/RTL in search causes 500 | Edge input | `failed_request` |

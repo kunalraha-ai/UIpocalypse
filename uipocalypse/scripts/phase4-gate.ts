@@ -46,6 +46,15 @@ const { appMap } = analyze(repo);
 const planning = await createPlan({ appMap, targetUrl: url, llm: llms.planner, workspacePlansDir: ws.plans });
 console.log(`plan ${planning.planId} cached=${planning.cached} personas=${planning.plan.personas.join(',')}`);
 
+// Deterministic seeding (FR-P1 "seed routes"): the LLM plan varies run to run,
+// but the app map always knows these routes — seed them in a fixed order so
+// the scout phase deterministically reaches the profile and buy-credits pages
+// (bug #6's crash and bug #4's double-submit both live there).
+planning.plan.seedRoutes = [
+  ...new Set([...planning.plan.seedRoutes, '/profile', '/credits', '/login', '/checkout', '/orders', '/settings']),
+];
+console.log(`seed routes: ${planning.plan.seedRoutes.join(', ')}`);
+
 const t0 = Date.now();
 const exploreResult = await explore({
   url,
@@ -74,6 +83,7 @@ const swarmResult = await swarm({
   routes: planning.appMapRoutes,
   llm: llms.scout,
   logger,
+  runId: exploreResult.runId, // scouts + swarm = ONE run row, same as MCP run_swarm
   agents: 50,
   budgetSeconds: 105,
   perAgentSteps: 100,
@@ -106,10 +116,11 @@ const hist = (type: string, key: (f: (typeof allFindings)[number]) => string) =>
 };
 const clean = (u: unknown) => String(u ?? '?').replace('http://localhost:3123', '');
 console.log('\n=== finding breakdown (raw observations, pre-cluster) ===');
-console.log(`dead_click:      ${hist('dead_click', (f) => String(ev(f).action ?? '?'))}`);
-console.log(`duplicate_write: ${hist('duplicate_write', (f) => clean(ev(f).url))}`);
-console.log(`failed_request:  ${hist('failed_request', (f) => `${clean(ev(f).url)} [${ev(f).status}]`)}`);
-console.log(`page_error:      ${hist('page_error', (f) => String(ev(f).message ?? '?').slice(0, 70))}`);
+console.log(`dead_click:         ${hist('dead_click', (f) => String(ev(f).action ?? '?'))}`);
+console.log(`duplicate_request:  ${hist('duplicate_request', (f) => clean(ev(f).url))}`);
+console.log(`duplicate_effect:   ${hist('duplicate_effect', (f) => String(ev(f).invariant ?? '?'))}`);
+console.log(`failed_request:     ${hist('failed_request', (f) => `${clean(ev(f).url)} [${ev(f).status}]`)}`);
+console.log(`page_error:         ${hist('page_error', (f) => String(ev(f).message ?? '?').slice(0, 70))}`);
 
 const has = (type: string) => (types.get(type) ?? 0) > 0;
 const evidenceOf = (type: string) =>
@@ -121,7 +132,7 @@ const evidenceOf = (type: string) =>
 console.log('\n=== PHASE 4 EXIT GATE ===');
 const checks: Array<[string, boolean, string]> = [];
 checks.push(['swarm ≤ 120 s', swarmResult.wallMs <= 120_000, `${(swarmResult.wallMs / 1000).toFixed(1)} s, ${swarmResult.steps} steps, ${swarmResult.stepsPerSec.toFixed(1)} steps/s`]);
-checks.push(['bug #4 duplicate_write', has('duplicate_write'), JSON.stringify(evidenceOf('duplicate_write'))]);
+checks.push(['bug #4 duplicate_request (double-submit, request level)', has('duplicate_request'), JSON.stringify(evidenceOf('duplicate_request'))]);
 checks.push(['bug #5 race_violation', has('race_violation'), JSON.stringify(evidenceOf('race_violation'))]);
 checks.push(['bug #6 page_error (garbage input crash)', has('page_error'), JSON.stringify(evidenceOf('page_error'))]);
 checks.push(['bug #7 failed_request 500 (emoji search)', allFindings.some((f) => f.type === 'failed_request' && (f.evidence_json ?? '').includes('/api/search')), JSON.stringify(evidenceOf('failed_request'))]);
@@ -145,6 +156,12 @@ for (const [name, ok, detail] of checks) {
   console.log(`  ${ok ? 'PASS' : 'FAIL'}  ${name} — ${detail}`);
   if (!ok) pass = false;
 }
+const dupEffects = allFindings.filter((f) => f.type === 'duplicate_effect');
+console.log(
+  `  ${dupEffects.length ? 'CONFIRMED' : 'UNCONFIRMED'}  bug #4 duplicate_effect (invariant-confirmed damage) — ${JSON.stringify(
+    dupEffects.map((f) => JSON.parse(f.evidence_json ?? '{}')),
+  )}`,
+);
 console.log(`\nGATE: ${pass ? 'PASS' : 'FAIL'}`);
 console.log(`total wall (scouts + swarm): ${((Date.now() - t0) / 1000).toFixed(1)} s`);
 

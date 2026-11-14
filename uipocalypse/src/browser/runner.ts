@@ -8,7 +8,7 @@ import { createGuard } from '../guard/index.js';
 import { RUNTIME_SOURCE } from '../runtime/runtime-source.js';
 import { StateGraph } from '../graph/graph.js';
 import { hashAriaSnapshot, normalizeRoute } from '../graph/hash.js';
-import { DetectorHub, type FindingCandidate } from './detectors.js';
+import { DetectorHub, type FindingCandidate, ALIVE_REASONS } from './detectors.js';
 import { runScout } from '../scout/scout.js';
 import { Wanderer } from '../agent/wanderer.js';
 import type { Plan } from '../plan/schema.js';
@@ -118,6 +118,7 @@ export async function explore(opts: ExploreOptions): Promise<ExploreResult> {
   hub.attachPage(page);
 
   const findings: FindingCandidate[] = [];
+  const suppressedDead = { n: 0 };
   const history: string[] = [];
 
   async function currentState(): Promise<{ hash: string; url: string }> {
@@ -164,9 +165,10 @@ export async function explore(opts: ExploreOptions): Promise<ExploreResult> {
     const actions = await getActions();
     const action = actions.find((a) => a.id === id);
     const label = action?.name ?? `action#${id}`;
+    const actionLocator = action?.locator ?? `rt:${id}`;
     const graphAction = graph.getOrCreateAction({
       stateId: graphFrom.id,
-      locator: action?.locator ?? `rt:${id}`,
+      locator: actionLocator,
       kind: action?.role ?? 'unknown',
       label: label.slice(0, 80),
       riskClass: action?.risky ? 'destructive' : 'safe',
@@ -190,6 +192,12 @@ export async function explore(opts: ExploreOptions): Promise<ExploreResult> {
       ms: 0,
       error: result.dead,
     });
+
+    // repeat-activation suppression: remember controls that produced real
+    // feedback once — anywhere, in any run (the graph is the memory)
+    if (result.reasons.some((r) => ALIVE_REASONS.includes(r))) {
+      graph.markActionAlive(actionLocator);
+    }
 
     // detector verdicts for this action (drain resets per step → per-action attribution)
     const drain = await page.evaluate(() => window.__uip.drain());
@@ -217,15 +225,20 @@ export async function explore(opts: ExploreOptions): Promise<ExploreResult> {
       });
     }
     // dead click — but an action that THREW is not "dead": the error is the finding
-    if (result.dead && !result.saturated && !hadErrors) {
-      const verdict = hub.deadClick({
-        actionLabel: label,
-        reasons: [],
-        steps: history.slice(-8),
-        url: page.url(),
-        actionId: id,
-      });
-      if (verdict) findings.push(verdict);
+    if (result.dead && !result.saturated && !result.blocked && !hadErrors) {
+      if (graph.actionEverAlive(actionLocator)) {
+        // this control HAS produced feedback before — repeat-activation, not a bug
+        suppressedDead.n++;
+      } else {
+        const verdict = hub.deadClick({
+          actionLabel: label,
+          reasons: [],
+          steps: history.slice(-8),
+          url: page.url(),
+          actionId: id,
+        });
+        if (verdict) findings.push(verdict);
+      }
     }
     if (result.nav) await page.waitForLoadState('load', { timeout: 5000 }).catch(() => {});
     return result;
@@ -331,7 +344,7 @@ export async function explore(opts: ExploreOptions): Promise<ExploreResult> {
 
     return {
       runId,
-      summary: { scoutOutcome, seeds: seedUrls.slice(0, 4), findingsTotal: findings.length },
+      summary: { scoutOutcome, seeds: seedUrls.slice(0, 4), findingsTotal: findings.length, suppressedDeadClicks: suppressedDead.n },
       coverage: stats.coverage,
       findingCounts: counts,
       graph: { states: stats.states, actions: stats.actions, transitions: stats.transitions },

@@ -14,12 +14,31 @@ import { RUNTIME_SOURCE } from '../runtime/runtime-source.js';
  * `pg`; the connection URL comes from SUPABASE_DB_URL / DATABASE_URL.
  */
 
-export type InvariantSpec = { name: string; sql: string; expect: number };
+export type InvariantSpec = {
+  name: string;
+  sql: string;
+  /** exact end-state check — post-run only, never evaluated mid-run */
+  expect?: number;
+  /** point-in-time damage predicate — evaluated by race mode and the duplicate_effect sweep */
+  atMost?: number;
+};
+
+/** Violation rule: atMost is a point-in-time predicate (actual > atMost = damage);
+ * expect is an exact end-state check. `expect` invariants are NOT evaluated
+ * mid-run — an end-state expectation like "coupon redeemed exactly once" reads
+ * 0 before the run redeems it, which is "not yet", not damage. */
+export function invariantViolated(inv: { expect?: number; atMost?: number }, actual: number): boolean {
+  return inv.atMost !== undefined ? actual > inv.atMost : actual !== (inv.expect ?? 0);
+}
+
+/** Only point-in-time (atMost) invariants are valid mid-run. */
+const pointInTime = (inv: InvariantSpec) => inv.atMost !== undefined;
 
 export type InvariantResult = {
   name: string;
   sql: string;
-  expect: number;
+  expect?: number;
+  atMost?: number;
   actual: number;
   pass: boolean;
 };
@@ -41,8 +60,13 @@ export type RaceOptions = {
 
 export type RaceResult = {
   fired: number;
+  /** post-volley invariant results (for logging/telemetry) */
   invariants: InvariantResult[];
+  /** invariants that flipped pass → fail across the volley (race-caused) */
   violations: FindingCandidate[];
+  /** invariants already failing pre-volley — owned by the duplicate_effect
+   * sweep or unrelated to the race; never reported as race_violation */
+  preExistingFailures: InvariantResult[];
 };
 
 export async function runRace(
@@ -94,6 +118,25 @@ export async function runRace(
       ready.push({ page, id: target.id });
     }
 
+    // pre-volley baseline: an invariant already failing here is swarm damage,
+    // not race damage — only pass→fail transitions across the volley count.
+    // Only point-in-time (atMost) invariants are valid mid-run.
+    const raceInvariants = opts.config.invariants.filter(pointInTime);
+    const skippedEndState = opts.config.invariants.length - raceInvariants.length;
+    if (skippedEndState > 0) {
+      log.info('race skips end-state invariants (post-run only)', { skipped: skippedEndState });
+    }
+    const baseline = new Map<string, InvariantResult>();
+    for (const invariant of raceInvariants) {
+      try {
+        const result = await deps.runInvariants(invariant);
+        baseline.set(result.name, result);
+      } catch {
+        // unmeasurable baseline → treated as absent; a post-volley failure then
+        // lands in preExistingFailures instead of being misattributed
+      }
+    }
+
     // pass 2: barrier — arm every ready context against one wall-clock target
     const barrierAt = Date.now() + 500;
     await Promise.all(
@@ -113,39 +156,50 @@ export async function runRace(
     // a race that never fired must not be misread as a violation
     if (fired < 2) {
       log.warn('race did not fire — skipping invariant checks', { fired });
-      return { fired, invariants: [], violations: [] };
+      return { fired, invariants: [], violations: [], preExistingFailures: [] };
     }
 
-    // invariant checks
+    // baseline was measured BEFORE the volley (below); measure post-volley state.
+    // Only pass→fail transitions are race violations — an invariant that was
+    // already failing before the volley is swarm damage owned by the
+    // duplicate_effect sweep, and must not be attributed to the race.
     const invariants: InvariantResult[] = [];
-    for (const invariant of opts.config.invariants) {
+    const violations: FindingCandidate[] = [];
+    const preExistingFailures: InvariantResult[] = [];
+    for (const invariant of raceInvariants) {
       try {
         const result = await deps.runInvariants(invariant);
         invariants.push(result);
+        if (result.pass) continue;
+        if (baseline.get(result.name)?.pass) {
+          violations.push({
+            type: 'race_violation' as const,
+            severity: 'high' as const,
+            confidence: 'high' as const,
+            evidence: {
+              invariant: result.name,
+              sql: result.sql,
+              expected: result.atMost ?? result.expect,
+              actual: result.actual,
+              firedAt: `${fired} concurrent "${opts.actionLabel}" against ${opts.url}`,
+            },
+            steps: [],
+            url: opts.url,
+          });
+        } else {
+          preExistingFailures.push(result);
+        }
       } catch (e) {
         opts.logger.warn('invariant check failed to run', { name: invariant.name, error: String(e).slice(0, 150) });
       }
     }
 
-    const violations: FindingCandidate[] = invariants
-      .filter((i) => !i.pass)
-      .map((i) => ({
-        type: 'race_violation' as const,
-        severity: 'high' as const,
-        confidence: 'high' as const,
-        evidence: {
-          invariant: i.name,
-          sql: i.sql,
-          expected: i.expect,
-          actual: i.actual,
-          firedAt: `${fired} concurrent "${opts.actionLabel}" against ${opts.url}`,
-        },
-        steps: [],
-        url: opts.url,
-      }));
-
-    log.info('race complete', { fired, violations: violations.length });
-    return { fired, invariants, violations };
+    log.info('race complete', {
+      fired,
+      violations: violations.length,
+      preExistingFailures: preExistingFailures.length,
+    });
+    return { fired, invariants, violations, preExistingFailures };
   } finally {
     await Promise.allSettled(contexts.map((c) => c.close()));
   }
@@ -161,11 +215,35 @@ export function pgInvariantRunner(dbUrl: string): InvariantRunner {
       const res = await client.query(invariant.sql);
       const row = res.rows[0] ?? {};
       const actual = Number(Object.values(row)[0] ?? 0);
-      return { ...invariant, actual, pass: actual === invariant.expect };
+      return { ...invariant, actual, pass: !invariantViolated(invariant, actual) };
     } finally {
       await client.end();
     }
   };
+}
+
+/**
+ * duplicate_effect attribution (TRD §3.6): a duplicate_request proves a
+ * missing submit guard; a FAILING config invariant after the swarm proves the
+ * damage actually landed. Only runs when duplicate_request observations exist —
+ * an invariant failure with no duplicate writes is not a duplicate effect.
+ * Runs BEFORE race mode, so race-volley damage can never be attributed to
+ * swarm double-clicks; race mode baselines its own window. Only point-in-time
+ * (atMost) invariants are evaluated — an end-state `expect` like "redeemed
+ * exactly once" reads "not yet" mid-run, which is not damage.
+ */
+export async function attributeDuplicateEffects(opts: {
+  invariants: InvariantSpec[];
+  duplicateRequestCount: number;
+  run: InvariantRunner;
+}): Promise<InvariantResult[]> {
+  if (opts.duplicateRequestCount <= 0) return [];
+  const failed: InvariantResult[] = [];
+  for (const invariant of opts.invariants.filter(pointInTime)) {
+    const result = await opts.run(invariant);
+    if (!result.pass) failed.push(result);
+  }
+  return failed;
 }
 
 export function dbUrlFromEnv(env: Record<string, string | undefined> = process.env): string | null {

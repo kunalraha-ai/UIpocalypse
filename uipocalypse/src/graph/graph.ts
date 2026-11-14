@@ -92,6 +92,23 @@ export class StateGraph {
     }>;
   }
 
+  /**
+   * Repeat-activation suppression (Phase 4 held-out finding): mark this action
+   * locator as having produced REAL feedback (mutation/request/nav/aria/dialog)
+   * at least once, in any state, in any run — the persistent graph remembers.
+   */
+  markActionAlive(locator: string): void {
+    this.db.prepare('UPDATE actions SET ever_alive = 1 WHERE locator = ?').run(locator);
+  }
+
+  /** Has this action locator ever produced real feedback in any recorded run? */
+  actionEverAlive(locator: string): boolean {
+    const row = this.db
+      .prepare('SELECT EXISTS(SELECT 1 FROM actions WHERE locator = ? AND ever_alive = 1) AS e')
+      .get(locator) as { e: number };
+    return row.e === 1;
+  }
+
   hasUnvisitedActions(stateId: number): boolean {
     const row = this.db
       .prepare(

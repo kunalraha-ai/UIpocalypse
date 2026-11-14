@@ -34,7 +34,20 @@ export const ConfigSchema = z.object({
     .object({ allowedHosts: z.array(z.string()).default(DEFAULT_DB_HOSTS) })
     .default({ allowedHosts: DEFAULT_DB_HOSTS }),
   invariants: z
-    .array(z.object({ name: z.string(), sql: z.string(), expect: z.number() }))
+    .array(
+      z
+        .object({
+          name: z.string(),
+          sql: z.string(),
+          /** exact end-state check — meaningful only after the run (not evaluated mid-run) */
+          expect: z.number().optional(),
+          /** point-in-time damage predicate — the only kind race mode and the duplicate_effect sweep evaluate */
+          atMost: z.number().optional(),
+        })
+        .refine((v) => v.expect !== undefined || v.atMost !== undefined, {
+          message: 'invariant needs expect (end-state) or atMost (point-in-time)',
+        }),
+    )
     .default([]),
   /** Per-host request ceiling (SAFETY.md G7). */
   maxRps: z.number().int().min(1).default(50),

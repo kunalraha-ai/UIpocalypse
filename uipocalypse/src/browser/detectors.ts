@@ -18,7 +18,8 @@ export type FindingCandidate = {
     | 'dead_click'
     | 'infinite_spinner'
     | 'navigation_error'
-    | 'duplicate_write'
+    | 'duplicate_request'
+    | 'duplicate_effect'
     | 'race_violation';
   severity: Severity;
   confidence: 'low' | 'medium' | 'high';
@@ -30,10 +31,13 @@ export type FindingCandidate = {
 
 const BENIGN = /(favicon|\.map$|sentry|analytics|hotjar|googletagmanager)/i;
 
+/** perform() reasons that count as REAL app feedback (repeat-activation suppression). */
+export const ALIVE_REASONS = ['mutation', 'request', 'nav', 'aria', 'dialog', 'dialog-feedback'];
+
 export class DetectorHub {
   private candidates: FindingCandidate[] = [];
   private readonly appOrigin: string;
-  /** per-page POST log for duplicate_write detection (same write ≥2× within 1 s from one agent) */
+  /** per-page POST log for duplicate_request detection (same write ≥2× within 1 s from one agent) */
   private readonly postLog = new Map<object, Array<{ url: string; time: number }>>();
 
   constructor(opts: { appOrigin: string }) {
@@ -185,11 +189,14 @@ export class DetectorHub {
   }
 
   /**
-   * duplicate_write (TRD §3.6): same write request ≥ 2× within 1 s from a
-   * single agent (double-click). Called per step with the agent's page so the
-   * window is per-agent. Race mode (one click per agent) never trips it.
+   * duplicate_request (TRD §3.6): same write request ≥ 2× within 1 s from a
+   * single agent (double-click). Request-level signal only — it proves the app
+   * has no submit guard, NOT that the damage happened (the second POST may
+   * have been rejected server-side). The invariant-confirmed upgrade is
+   * duplicate_effect, emitted by the orchestrator's post-swarm sweep.
+   * Race mode (one click per agent) never trips it.
    */
-  duplicateWrites(page: Page, sinceIndex: number, opts: { steps: string[] }): { findings: FindingCandidate[]; newIndex: number } {
+  duplicateRequests(page: Page, sinceIndex: number, opts: { steps: string[] }): { findings: FindingCandidate[]; newIndex: number } {
     const posts = this.postLog.get(page) ?? [];
     const findings: FindingCandidate[] = [];
     const seen = new Map<string, number>();
@@ -200,10 +207,10 @@ export class DetectorHub {
     for (const [requestUrl, count] of seen) {
       if (count >= 2) {
         findings.push({
-          type: 'duplicate_write',
-          severity: 'high',
-          confidence: 'high',
-          evidence: { url: requestUrl.slice(0, 300), count, window: '1 step, <1s apart' },
+          type: 'duplicate_request',
+          severity: 'medium',
+          confidence: 'medium',
+          evidence: { url: requestUrl.slice(0, 300), count, window: '1 step, <1s apart', note: 'no submit guard — the damage is not confirmed' },
           steps: opts.steps,
           url: page.url(),
         });

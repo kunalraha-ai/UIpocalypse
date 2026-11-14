@@ -3,11 +3,11 @@ import { chromium } from 'playwright';
 import { join } from 'node:path';
 import { mkdtempSync } from 'node:fs';
 import { swarm } from '../src/browser/orchestrator.js';
-import { runRace } from '../src/browser/race.js';
-import { PlanSchema } from '../src/plan/schema.js';
+import { runRace, attributeDuplicateEffects, invariantViolated, type InvariantSpec, type InvariantRunner } from '../src/browser/race.js';import { PlanSchema } from '../src/plan/schema.js';
 import { createLlm } from '../src/llm/index.js';
 import { initWorkspace } from '../src/workspace.js';
 import { openDb, listFindings } from '../src/db/index.js';
+import { StateGraph } from '../src/graph/graph.js';
 import { createLogger } from '../src/logger.js';
 import { loadConfig } from '../src/config.js';
 import { serveStatic } from './helpers.js';
@@ -115,8 +115,16 @@ describe('swarm orchestrator (Phase 4)', () => {
     expect(row.duration_ms).not.toBeNull();
   }, 90_000);
 
-  it('race mode: barrier arms every context; failed invariant → race_violation', async () => {
+  it('race mode: barrier arms every context; pass→fail invariant transition → race_violation', async () => {
     const browser = await chromium.launch();
+    // stateful stub: baseline passes, post-volley fails — the pass→fail
+    // transition is what the race owns (pre-existing failures are not race damage)
+    const calls = new Map<string, number>();
+    const runInvariants: InvariantRunner = async (inv) => {
+      const n = (calls.get(inv.name) ?? 0) + 1;
+      calls.set(inv.name, n);
+      return n === 1 ? { ...inv, actual: inv.atMost ?? 0, pass: true } : { ...inv, actual: 2, pass: false };
+    };
     const result = await runRace(
       browser,
       {
@@ -125,23 +133,99 @@ describe('swarm orchestrator (Phase 4)', () => {
         contexts: 3,
         config: {
           ...ws.config,
-          invariants: [{ name: 'single-use coupon honored once', sql: 'select count(*) from coupon_redemptions', expect: 1 }],
+          invariants: [
+            { name: 'single-use coupon honored once', sql: 'select count(*) from coupon_redemptions', atMost: 1 },
+            // end-state invariants are meaningless mid-run and must be skipped by the race
+            { name: 'end-state expectation', sql: 'select 1', expect: 1 },
+          ],
         },
         logger: ws.logger,
       },
-      {
-        // stub: pretend the concurrent volley violated the invariant (2 vs 1)
-        runInvariants: async (inv) => ({ ...inv, actual: 2, pass: false }),
-      },
+      { runInvariants },
     );
     await browser.close();
 
     expect(result.fired).toBe(3); // every context found the target and armed
     expect(result.violations).toHaveLength(1);
+    expect(result.preExistingFailures).toEqual([]);
     expect(result.violations[0]!.type).toBe('race_violation');
     expect((result.violations[0]!.evidence as { actual: number; expected: number }).actual).toBe(2);
     expect((result.violations[0]!.evidence as { actual: number; expected: number }).expected).toBe(1);
+    // the end-state invariant was never evaluated mid-run (one baseline call + one post call for the atMost one)
+    expect(calls.get('end-state expectation')).toBeUndefined();
+    expect(calls.get('single-use coupon honored once')).toBe(2);
   }, 60_000);
+
+  it('race mode: an invariant already failing pre-volley is preExisting, never a race_violation', async () => {
+    const browser = await chromium.launch();
+    // constant stub: baseline already failing → the volley did not cause it
+    const runInvariants: InvariantRunner = async (inv) => ({ ...inv, actual: 2, pass: false });
+    const result = await runRace(
+      browser,
+      {
+        url: server.url,
+        actionLabel: 'Boom button',
+        contexts: 3,
+        config: {
+          ...ws.config,
+          invariants: [{ name: 'already broken', sql: 'select 1', atMost: 0 }],
+        },
+        logger: ws.logger,
+      },
+      { runInvariants },
+    );
+    await browser.close();
+
+    expect(result.fired).toBe(3);
+    expect(result.violations).toEqual([]);
+    expect(result.preExistingFailures).toHaveLength(1);
+    expect(result.preExistingFailures[0]!.name).toBe('already broken');
+  }, 60_000);
+
+  it('invariant comparator: atMost is point-in-time, expect is end-state, expect-only is skipped mid-run', async () => {
+    // atMost: damage predicate — any observation point
+    expect(invariantViolated({ atMost: 1 }, 0)).toBe(false); // not redeemed yet — fine mid-run
+    expect(invariantViolated({ atMost: 1 }, 1)).toBe(false);
+    expect(invariantViolated({ atMost: 1 }, 2)).toBe(true); // double redemption — damage
+    // expect: exact end-state
+    expect(invariantViolated({ expect: 1 }, 0)).toBe(true);
+    expect(invariantViolated({ expect: 1 }, 1)).toBe(false);
+    expect(invariantViolated({ expect: 0 }, 0)).toBe(false);
+    expect(invariantViolated({ expect: 0 }, 3)).toBe(true);
+  });
+
+  it('duplicate_effect attribution: failing atMost invariants, only when duplicates exist; end-state ones never run mid-run', async () => {
+    const invA: InvariantSpec = { name: 'A', sql: 'select 1', atMost: 0 };
+    const invB: InvariantSpec = { name: 'B', sql: 'select 2', atMost: 1 };
+    const invEnd: InvariantSpec = { name: 'end', sql: 'select 3', expect: 1 };
+    const seen: string[] = [];
+    const run: InvariantRunner = async (inv) => {
+      seen.push(inv.name);
+      return { ...inv, actual: inv.name === 'A' ? 2 : 0, pass: inv.name !== 'A' };
+    };
+
+    // duplicates observed → the failing point-in-time invariant is attributed as duplicate damage
+    expect(await attributeDuplicateEffects({ invariants: [invA, invB, invEnd], duplicateRequestCount: 3, run }))
+      .toEqual([{ ...invA, actual: 2, pass: false }]);
+    // the end-state invariant was never evaluated mid-run
+    expect(seen).toEqual(['A', 'B']);
+    // no duplicate_request observations → nothing runs (an invariant failure
+    // without duplicates is not a duplicate effect)
+    expect(await attributeDuplicateEffects({ invariants: [invA], duplicateRequestCount: 0, run }))
+      .toEqual([]);
+  });
+
+  it('repeat-activation suppression: a control with observed feedback is never reported dead again (held-out-app finding)', () => {
+    const g = new StateGraph(ws.db, []);
+    const s = g.getOrCreateState({ hash: 'h-sup', url: '/', signature: '' });
+    g.getOrCreateAction({ stateId: s.id, locator: 'button|X#0', kind: 'button', label: 'X', riskClass: 'safe' });
+    expect(g.actionEverAlive('button|X#0')).toBe(false);
+    // the control produces real feedback once — in ANY state, ANY run
+    g.markActionAlive('button|X#0');
+    expect(g.actionEverAlive('button|X#0')).toBe(true);
+    // and a different locator stays dead-reportable
+    expect(g.actionEverAlive('button|Dead button#0')).toBe(false);
+  });
 
   it('orchestrator race is skipped without a DB URL (G4 fails closed)', async () => {
     const dir = mkdtempSync('/tmp/opencode/uip-p4-race-');

@@ -86,7 +86,7 @@ A **local MCP server** (plus CLI) exposing tools an AI coding agent calls:
 
 | Metric | Target |
 |---|---|
-| Time-to-report, first run / rerun | First run ≤ 4 min *median* — measured 3-run range 2.1–6.0 min on the reference setup (Workers AI, scout model ~1.2 s/call); dominated by scout-LLM latency variance. Rerun ≤ 90 s — measured 3-run range 16–39 s (cached plan + graph; run-duration is bounded by `budgetSeconds`) |
+| Time-to-report, first run / rerun | First run ≤ 4 min *median* — **full pipeline measured once at 3.4 min** (scan + plan + scouts + swarm, no report step yet — PHASE4_RESULTS exit gate); scout-phase-only first runs measured 2.1–6.0 min over 3 runs. Dominated by scout-LLM latency; the **`LLM_SCOUT_MODEL` swap** (fast non-reasoning llama-3.1-8b, ~1.2 s/call, vs ~10 s/call for the reasoning model) is what brought this inside the target. Rerun ≤ 90 s — **components measured, end-to-end not yet demonstrated**: cached plan + graph → scout saturation in 0–10 LLM calls (16–39 s, 3 runs) + swarm bounded by `budgetSeconds` (default 60 s) ⇒ ~60–105 s at current speeds; the full-pipeline rerun is a Phase 5 measurement |
 | Real bugs found per repo (median, on 10 test repos) | ≥ 3 |
 | False-positive rate | ≤ 20% |
 | LLM calls per rerun | ≤ 20 |

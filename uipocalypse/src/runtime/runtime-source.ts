@@ -69,6 +69,20 @@ export const RUNTIME_SOURCE = String.raw`
     E.consoleErrors.push(parts.join(' ').slice(0, 500));
     origError.apply(console, arguments);
   };
+
+  // ---- native dialog feedback: alert/confirm/prompt are app feedback too —
+  // a dead-click verdict must not miss them (found on the held-out app: a
+  // button whose only effect is alert() read as dead)
+  const DLG = { count: 0 };
+  ['alert', 'confirm', 'prompt'].forEach(function (name) {
+    const orig = window[name];
+    if (typeof orig === 'function') {
+      window[name] = function () {
+        DLG.count++;
+        try { return orig.apply(this, arguments); } catch (e) { return undefined; }
+      };
+    }
+  });
   window.addEventListener('error', function (e) {
     E.pageErrors.push(String((e && e.message) || 'error').slice(0, 500));
   });
@@ -227,6 +241,7 @@ export const RUNTIME_SOURCE = String.raw`
         focusOn: document.activeElement === el,
         aria: ariaState(el),
         dialog: !!document.querySelector('dialog[open]'),
+        nativeDialogs: DLG.count,
       };
 
       if (textLike && typeof opts.input === 'string') {
@@ -251,6 +266,7 @@ export const RUNTIME_SOURCE = String.raw`
         focusOn: document.activeElement === el,
         aria: ariaState(el),
         dialog: !!document.querySelector('dialog[open]'),
+        nativeDialogs: DLG.count,
       };
       const reasons = [];
       if (after.mutations > before.mutations) reasons.push('mutation');
@@ -259,6 +275,7 @@ export const RUNTIME_SOURCE = String.raw`
       if (!before.focusOn && after.focusOn) reasons.push('focus');
       if (after.aria !== before.aria) reasons.push('aria');
       if (after.dialog && !before.dialog) reasons.push('dialog');
+      if (after.nativeDialogs > before.nativeDialogs) reasons.push('dialog-feedback');
       if (blocked && reasons.length === 0) reasons.push('validation-blocked');
       if (textLike && reasons.length === 0) {
         if (typeof opts.input === 'string') {

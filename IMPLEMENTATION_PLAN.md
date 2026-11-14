@@ -61,7 +61,7 @@ The plan front-loads the riskiest assumptions (state hashing, swarm speed, false
 - Concurrency ramp and "app collapsed at N" reporting
 
 **Deliverable:** 30-50 agent run on the sample app in ≤ 120 s (post-scouting; Phase 0 measured 109.7-118.0 s at 50 × 100 — the old ≤ 60 s target was ~2× off, see PHASE0_RESULTS.md); detects double-submit and race bugs.
-**Gate: PASS (Phase 4)** — 50 × 100 = 5,000 steps in **96.4 s** (three consecutive runs: 105.0 / 105.0 / 96.4 s, all checks green); `duplicate_write` on Buy credits, `race_violation` (20 fired → 13 redemptions of a single-use coupon), the #6 garbage-name `page_error` and #7 emoji-search 500 all detected live, zero destructive clicks. See PHASE4_RESULTS.md.
+**Gate: PASS (Phase 4)** — 50 agents at the 105 s watchdog (six gate executions, every one ≤ 120 s: 105.0 / 105.0 / 96.4 / 105.0 / 105.5 / 105.2 s; final run 6/6 — one intermediate run failed on two detector/config bugs that the re-runs caught and fixed); `duplicate_request` + `duplicate_effect` (invariant-confirmed) on Buy credits, `race_violation` (20 fired → 7 redemptions of a single-use coupon, baseline-attributed), the #6 garbage-name `page_error` and #7 emoji-search 500 all detected live, zero destructive clicks. See PHASE4_RESULTS.md.
 
 ## Phase 5: Collector, reviewer, report (Week 5)
 

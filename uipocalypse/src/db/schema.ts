@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS actions (
   kind TEXT,
   label TEXT,
   risk_class TEXT,            -- safe | write | destructive | external
+  ever_alive INTEGER NOT NULL DEFAULT 0,  -- observed producing real feedback in ANY state/run
   UNIQUE(state_id, locator)
 );
 

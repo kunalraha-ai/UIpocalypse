@@ -59,17 +59,18 @@ Injected into every page. Responsibilities:
 |---|---|
 | `console_error` / `page_error` | `console.error`, `pageerror`, unhandled rejection |
 | `failed_request` | HTTP 4xx/5xx or network failure on app-origin requests (ignoring known benign: favicon, analytics) |
-| `dead_click` | Click on enabled visible element produces no DOM mutation, no network request, no URL/hash change, and no focus or ARIA state change within 500 ms. **State-saturated controls are excluded** (an already-selected radio cannot produce feedback by design) — Phase 0 S4 found them as a false-positive class. **Validation-blocked submits are excluded too** (a submit on an invalid form is stopped by the browser before any app handler runs; the browser supplies its own bubble feedback) — Phase 4 found them as a false-positive class once the Garbage Paster deliberately fills constrained fields with garbage before hitting submit. **No-op text actions are excluded as well** (re-pasting an identical value into a still-focused field; "clicking" a focused field without typing) — they cannot produce feedback by design, since React bails on identical state; found by the Phase 4 swarm fixture test, and the aria-state comparison now uses the full input value, not just its length |
+| `dead_click` | Click on enabled visible element produces no DOM mutation, no network request, no URL/hash change, and no focus or ARIA state change within 500 ms. **State-saturated controls are excluded** (an already-selected radio cannot produce feedback by design) — Phase 0 S4 found them as a false-positive class. **Validation-blocked submits are excluded too** (a submit on an invalid form is stopped by the browser before any app handler runs; the browser supplies its own bubble feedback) — Phase 4 found them as a false-positive class once the Garbage Paster deliberately fills constrained fields with garbage before hitting submit. **No-op text actions are excluded as well** (re-pasting an identical value into a still-focused field; "clicking" a focused field without typing) — they cannot produce feedback by design, since React bails on identical state; found by the Phase 4 swarm fixture test, and the aria-state comparison now uses the full input value, not just its length. **Native-dialog feedback counts** (`alert`/`confirm`/`prompt` are wrapped — a button whose only effect is `alert()` is alive). **Repeat-activation is suppressed via the persistent graph:** a control whose stable locator has ever produced real feedback (mutation/request/nav/aria/dialog) in any state, in any run, is never reported dead — its later zero-feedback verdicts are idempotent re-activation (nav-to-self, same-user re-click, re-selecting the active category), counted as suppressed. Found on the held-out app, where this class alone was 15% of all swarm steps |
 | `infinite_spinner` | Element matching loading heuristics (role=progressbar, `aria-busy`, common spinner classes) persists > 10 s |
-| `duplicate_write` | Same write request observed ≥ 2 times within 1 s from a single agent after double-click, or DB invariant shows duplicate rows |
-| `race_violation` | After race mode, invariant check fails (e.g., balance negative, duplicate unique-intent rows). Invariants come from the Planner's expectations or user config. **Proven only against a mock DB so far (Phase 0); must be re-verified against real Supabase/Postgres before it counts as demonstrated** |
+| `duplicate_request` | Same write request observed ≥ 2 times within 1 s from a single agent after double-click — **medium confidence: it proves the app has no submit guard, not that the damage happened** (the second POST may have been rejected server-side) |
+| `duplicate_effect` | A configured SQL invariant confirms duplicate/corrupted rows after `duplicate_request` observations — **high confidence: the damage landed** (e.g. two transaction rows within 1 s, lost-update balance drift). Attributed after the agents finish and **before race mode** (so volley damage can never be misattributed to double-clicks), through the G4 gate; only point-in-time `atMost` invariants are evaluated — exact `expect` end-state checks are post-run only (an unredeemed coupon reads 0 mid-run, which is "not yet", not damage) |
+| `race_violation` | After race mode, invariant check fails (e.g., balance negative, duplicate unique-intent rows). Invariants come from the Planner's expectations or user config. **Attribution: the race measures a pre-volley baseline and owns only pass→fail transitions** — an invariant already failing before the volley is swarm damage (owned by the `duplicate_effect` sweep) or unattributed, never a race violation. Only point-in-time `atMost` invariants are evaluated mid-run. **Proven only against a mock DB so far (Phase 0); must be re-verified against real Supabase/Postgres before it counts as demonstrated** |
 | `navigation_error` | Navigation to 404/500 or a blank page **or a framework error UI (e.g., Next.js "This page couldn't load")** after an in-app action; the `pageerror` signal counts too — Next 16 does not blank the page on client crashes (Phase 0 finding) |
 | `unreachable_action` | Action present in code map but never reachable by any agent (reported in coverage, not as a bug) |
 
 Every finding carries: type, severity, confidence (high/med/low), persona, state ID, action ID, steps to reproduce (the agent's recent action history), evidence (console text, request/response summary), screenshot path, trace path.
 
 ### 3.7 Collector and reviewer
-- **FR-C1.** Deduplicate and cluster findings by (type, normalized message/route/action).
+- **FR-C1.** Deduplicate and cluster findings by (type, normalized message/route/action). **Cluster key decided pre-Phase 5 (so `diff_runs` "fixed / new / still failing" is stable across runs): `type-family + normalized endpoint (app-map route template; DB table for invariant findings) + action label (masked, occurrence-collapsed)`** — never raw URLs, DOM indices or observation counts. Type-family rules: `duplicate_request`/`duplicate_effect`/`race_violation` share one family per endpoint (52 observations → one issue per flawed endpoint); `page_error`/`console_error`/`failed_request` cluster per endpoint; `dead_click` per action. The reviewer maps failing-request clusters back through the app map: a 4xx on a route that exists in the map is a *correct rejection* (downgrade), a 4xx on a missing route is a finding.
 - **FR-C2.** Compute coverage: `reached_actions / discovered_actions`, plus a list of unreached actions with probable reasons (auth wall, requires input, destructive-skipped).
 - **FR-R1.** One LLM call over clustered findings (not raw logs) to produce the report: plain-English summary, root-cause hypotheses tied to file/line when the code map has it, and fix prompts for the calling agent.
 
@@ -159,9 +160,16 @@ destructiveOptIn: false
 db:
   allowedHosts: [localhost, 127.0.0.1]
 invariants:
+  # atMost = point-in-time damage predicate: checked by race mode (baseline →
+  # post-volley transition) and the duplicate_effect sweep mid-run.
   - name: credits never negative
     sql: "select count(*) from profiles where credits < 0"
-    expect: 0
+    atMost: 0
+  # expect = exact end-state check, evaluated only in the post-run report —
+  # mid-run it reads "not yet", which is not damage.
+  - name: exactly one welcome coupon redeemed
+    sql: "select count(*) from coupon_redemptions where code = 'WELCOME'"
+    expect: 1
 ```
 
 ## 8. Static rule library (MVP, ~15-20 rules)

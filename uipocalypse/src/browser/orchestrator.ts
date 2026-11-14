@@ -11,9 +11,9 @@ import { createRateLimiter, createRampMonitor, type RampReport } from '../guard/
 import { RUNTIME_SOURCE } from '../runtime/runtime-source.js';
 import { StateGraph } from '../graph/graph.js';
 import { hashAriaSnapshot, normalizeRoute } from '../graph/hash.js';
-import { DetectorHub, type FindingCandidate } from './detectors.js';
+import { DetectorHub, type FindingCandidate, ALIVE_REASONS } from './detectors.js';
 import { ALL_PERSONAS, createPersona, type PersonaDecision } from '../agent/personas.js';
-import { runRace, pgInvariantRunner, dbUrlFromEnv, dbHostFromUrl } from './race.js';
+import { runRace, pgInvariantRunner, dbUrlFromEnv, dbHostFromUrl, attributeDuplicateEffects, type InvariantResult } from './race.js';
 import { addFinding, createRun, finishRun, type Db } from '../db/index.js';
 
 /**
@@ -66,6 +66,12 @@ export type SwarmResult = {
   raceWallMs: number;
   /** why race mode did not run (G4 refusal, no invariants, or an error) */
   raceSkipReason?: string;
+  /** invariant-confirmed duplicate damage (TRD §3.6 duplicate_effect) */
+  duplicateEffects: InvariantResult[];
+  /** invariants already failing before the race volley (owned by the sweep or unattributed) */
+  racePreExisting: string[];
+  /** dead-click verdicts suppressed because the control has produced feedback before (repeat-activation) */
+  suppressedDeadVerdicts: number;
   aborted: boolean;
   warnings: string[];
 };
@@ -97,6 +103,7 @@ export async function swarm(opts: SwarmOptions): Promise<SwarmResult> {
   const browser = await chromium.launch();
   const findings: FindingCandidate[] = [];
   const stepsCounter = { n: 0 };
+  const suppressedDeadVerdicts = { n: 0 };
   let activeLevel = Math.min(5, agentsWanted);
   let degradedAtLevel: number | undefined;
   let lastStepUpAt = 0;
@@ -249,9 +256,10 @@ export async function swarm(opts: SwarmOptions): Promise<SwarmResult> {
       }
       const action = actions.find((a) => a.id === choice.runtimeId);
       const label = action?.name ?? `action#${choice.runtimeId}`;
+      const actionLocator = action?.locator ?? `rt:${choice.runtimeId}`;
       const graphAction = graph.getOrCreateAction({
         stateId: graphState.id,
-        locator: action?.locator ?? `rt:${choice.runtimeId}`,
+        locator: actionLocator,
         kind: action?.role ?? 'unknown',
         label: label.slice(0, 80),
         riskClass: action?.risky ? 'destructive' : 'safe',
@@ -288,6 +296,12 @@ export async function swarm(opts: SwarmOptions): Promise<SwarmResult> {
       });
       agent.stalledSteps = toState.isNew ? 0 : agent.stalledSteps + 1;
 
+      // repeat-activation suppression: remember controls that produced real
+      // feedback once — anywhere, in any run (the graph is the memory)
+      if (result.reasons.some((r) => ALIVE_REASONS.includes(r))) {
+        graph.markActionAlive(actionLocator);
+      }
+
       // detectors: errors + dead click + duplicate writes
       const drain = await page.evaluate(() => window.__uip.drain());
       let hadError = false;
@@ -312,17 +326,23 @@ export async function swarm(opts: SwarmOptions): Promise<SwarmResult> {
           url: page.url(),
         });
       }
-      if (result.dead && !result.saturated && drain.pageErrors.length === 0) {
-        const verdict = hub.deadClick({
-          actionLabel: label,
-          reasons: [],
-          steps: agent.history.slice(-8),
-          url: page.url(),
-          actionId: choice.runtimeId,
-        });
-        if (verdict) findings.push(verdict);
+      if (result.dead && !result.saturated && !result.blocked && drain.pageErrors.length === 0) {
+        if (graph.actionEverAlive(actionLocator)) {
+          // this control HAS produced feedback before (any state, any run) —
+          // a dead verdict now is repeat-activation of idempotent state, not a bug
+          suppressedDeadVerdicts.n++;
+        } else {
+          const verdict = hub.deadClick({
+            actionLabel: label,
+            reasons: [],
+            steps: agent.history.slice(-8),
+            url: page.url(),
+            actionId: choice.runtimeId,
+          });
+          if (verdict) findings.push(verdict);
+        }
       }
-      const dup = hub.duplicateWrites(page, agent.postIndex, { steps: agent.history.slice(-8) });
+      const dup = hub.duplicateRequests(page, agent.postIndex, { steps: agent.history.slice(-8) });
       findings.push(...dup.findings.map((f) => ({ ...f, evidence: { ...f.evidence, persona: agent.persona.id } })));
       agent.postIndex = dup.newIndex;
 
@@ -384,15 +404,62 @@ export async function swarm(opts: SwarmOptions): Promise<SwarmResult> {
   }
   const agentWallMs = Date.now() - agentPhaseStart;
 
+  // -------------------------------------------- duplicate_effect sweep (TRD §3.6)
+  // Runs BEFORE race mode: duplicate_request proves the app has no submit
+  // guard; a failing invariant at this point (agents done, race not yet fired)
+  // proves the damage landed and belongs to the swarm's double-clicks. Skipped
+  // when the DB is not allow-listed (same G4 gate as race mode) and when no
+  // duplicate_request was observed (an invariant failure without duplicates is
+  // not this type).
+  const dbUrl = dbUrlFromEnv();
+  const dbHost = dbUrl ? dbHostFromUrl(dbUrl) : null;
+  const modesOk =
+    dbUrl && dbHost
+      ? guard.checkModes({ dbHost, modes: ['race'] })
+      : { allowed: false, reasons: ['no DATABASE_URL/SUPABASE_DB_URL resolved'] };
+  const duplicateEffects: InvariantResult[] = [];
+  const duplicateEffectNames = new Set<string>();
+  if (!opts.abort?.aborted && modesOk.allowed) {
+    const duplicateRequestCount = findings.filter((f) => f.type === 'duplicate_request').length;
+    if (duplicateRequestCount > 0 && effectiveConfig.invariants.length) {
+      try {
+        const failed = await attributeDuplicateEffects({
+          invariants: effectiveConfig.invariants,
+          duplicateRequestCount,
+          run: pgInvariantRunner(dbUrl!),
+        });
+        duplicateEffects.push(...failed);
+        for (const inv of failed) {
+          duplicateEffectNames.add(inv.name);
+          findings.push({
+            type: 'duplicate_effect',
+            severity: 'high',
+            confidence: 'high',
+            evidence: {
+              invariant: inv.name,
+              sql: inv.sql,
+              expected: inv.atMost ?? inv.expect,
+              actual: inv.actual,
+              correlatedDuplicateRequests: duplicateRequestCount,
+            },
+            steps: [],
+            url: opts.url,
+          });
+          log.warn('duplicate_effect confirmed', { invariant: inv.name, expected: inv.expect, actual: inv.actual });
+        }
+      } catch (e) {
+        log.warn('duplicate_effect sweep failed', { error: String(e).slice(0, 200) });
+      }
+    }
+  }
+
   // ------------------------------------------------------------ race mode (G4-gated)
   let raceFired: number | undefined;
   let raceWallMs = 0;
   let raceSkipReason: string | undefined;
+  const racePreExisting: string[] = [];
   if (opts.raceTarget && !opts.abort?.aborted) {
-    const dbUrl = dbUrlFromEnv();
-    const dbHost = dbUrl ? dbHostFromUrl(dbUrl) : null;
-    const modeOk = dbUrl && dbHost ? guard.checkModes({ dbHost, modes: ['race'] }) : { allowed: false, reasons: ['no DATABASE_URL/SUPABASE_DB_URL resolved'] };
-    if (modeOk.allowed && effectiveConfig.invariants.length) {
+    if (modesOk.allowed && effectiveConfig.invariants.length) {
       try {
         const raceStart = Date.now();
         const race = await runRace(
@@ -414,14 +481,23 @@ export async function swarm(opts: SwarmOptions): Promise<SwarmResult> {
         for (const inv of race.invariants) {
           log.info('invariant', { name: inv.name, actual: inv.actual, expect: inv.expect, pass: inv.pass });
         }
+        for (const inv of race.preExistingFailures) {
+          racePreExisting.push(inv.name);
+          if (duplicateEffectNames.has(inv.name)) continue; // already owned by the sweep
+          log.warn('invariant failing before the race volley (not duplicate-correlated — unattributed)', {
+            invariant: inv.name,
+            actual: inv.actual,
+            expect: inv.expect,
+          });
+        }
       } catch (e) {
         raceSkipReason = `race error: ${String(e).slice(0, 300)}`;
         log.warn('race mode failed', { error: String(e).slice(0, 200) });
       }
     } else {
-      raceSkipReason = modeOk.allowed
+      raceSkipReason = modesOk.allowed
         ? 'no invariants configured'
-        : `G4 refused: ${modeOk.reasons.join(' | ')}`;
+        : `G4 refused: ${modesOk.reasons.join(' | ')}`;
       log.warn('race mode skipped', { reason: raceSkipReason });
     }
   }
@@ -484,6 +560,7 @@ export async function swarm(opts: SwarmOptions): Promise<SwarmResult> {
     agentWallMs,
     raceWallMs,
     findings: findings.length,
+    suppressedDeadVerdicts: suppressedDeadVerdicts.n,
     respawns: agents.reduce((s, a) => s + a.respawns, 0),
     aborted,
     ...stats,
@@ -513,6 +590,9 @@ export async function swarm(opts: SwarmOptions): Promise<SwarmResult> {
     raceFired,
     raceWallMs,
     raceSkipReason,
+    duplicateEffects,
+    racePreExisting,
+    suppressedDeadVerdicts: suppressedDeadVerdicts.n,
     aborted,
     warnings: decision.warnings,
   };

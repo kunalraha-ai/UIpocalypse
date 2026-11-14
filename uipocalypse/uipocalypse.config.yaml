@@ -8,6 +8,15 @@ destructiveOptIn: false
 db:
   allowedHosts: [localhost, 127.0.0.1]
 invariants:
+  # point-in-time damage predicates (atMost) — evaluated mid-run by race mode
+  # and the duplicate_effect sweep. Exact end-state checks use `expect` and are
+  # post-run only (an unredeemed coupon reads 0 mid-run, which is "not yet").
   - name: WELCOME10 single-use coupon redeemed at most once
     sql: select count(*) from coupon_redemptions
-    expect: 1
+    atMost: 1
+  - name: no duplicate purchase transactions within 1 s (double-submit damage)
+    sql: select count(*) from transactions t1 join transactions t2 on t1.id < t2.id and t1.user_id = t2.user_id and t2.created_at - t1.created_at < interval '1 second'
+    atMost: 0
+  - name: no duplicate orders within 1 s (double-submit damage)
+    sql: select count(*) from orders o1 join orders o2 on o1.id < o2.id and o1.user_id = o2.user_id and o2.created_at - o1.created_at < interval '1 second'
+    atMost: 0

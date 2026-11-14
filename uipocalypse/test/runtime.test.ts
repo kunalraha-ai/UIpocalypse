@@ -53,6 +53,14 @@ describe('in-page runtime (TRD §3.5) on the static fixture', () => {
     expect(result.reasons).toContain('mutation');
   });
 
+  it('counts alert() as app feedback — never a dead click (held-out-app finding)', async () => {
+    const actions = await page.evaluate(() => window.__uip.getActions());
+    const alerts = actions.find((a: { name: string }) => a.name === 'Alert button')!
+    const result = await page.evaluate((id) => window.__uip.perform(id), alerts.id);
+    expect(result.dead).toBe(false);
+    expect(result.reasons).toContain('dialog-feedback');
+  });
+
   it('captures unhandled errors from a click', async () => {
     const actions = await page.evaluate(() => window.__uip.getActions());
     const boom = actions.find((a: { name: string }) => a.name === 'Boom button')!

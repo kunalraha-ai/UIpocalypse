@@ -9,6 +9,8 @@
     <button id="dead">Dead button</button>
     <button id="alive" onclick="window.n = (window.n || 0) + 1; document.title = 'clicked ' + window.n">Alive button</button>
     <button id="boom" onclick="notAFunction()">Boom button</button>
+    <button id="alerts" onclick="alert('hi')">Alert button</button>
+    <button id="flagonce" onclick="if (!window.flag) { window.flag = 1; document.title = 'flagged'; }">Flag once</button>
     <a href="page2.html">Page 2</a>
     <input id="name" placeholder="your name" />
     <form onsubmit="event.preventDefault(); document.title = 'subscribed'">
