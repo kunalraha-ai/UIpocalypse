@@ -1,5 +1,6 @@
 import { chromium } from 'playwright';
 import { createHash } from 'node:crypto';
+import { join } from 'node:path';
 import type { BrowserContext, Page } from 'playwright';
 import type { Logger } from '../logger.js';
 import type { UiConfig } from '../config.js';
@@ -14,6 +15,7 @@ import { hashAriaSnapshot, normalizeRoute } from '../graph/hash.js';
 import { DetectorHub, type FindingCandidate, ALIVE_REASONS } from './detectors.js';
 import { ALL_PERSONAS, createPersona, type PersonaDecision } from '../agent/personas.js';
 import { runRace, pgInvariantRunner, dbUrlFromEnv, dbHostFromUrl, attributeDuplicateEffects, type InvariantResult } from './race.js';
+import { withTimeout, OP_TIMEOUT_MS, armWatchdog } from './timeout.js';
 import { addFinding, createRun, finishRun, type Db } from '../db/index.js';
 
 /**
@@ -41,6 +43,8 @@ export type SwarmOptions = {
   /** reuse a run row created by the scout phase */
   runId?: number;
   optIn?: { destructive?: boolean; externalSideEffects?: boolean };
+  /** directory for failure screenshots (workspace.screenshots) — omit to skip */
+  screenshotDir?: string;
   raceTarget?: {
     url: string;
     actionLabel: string;
@@ -103,11 +107,29 @@ export async function swarm(opts: SwarmOptions): Promise<SwarmResult> {
   const llmCallsAtStart = opts.llm.calls;
 
   const browser = await chromium.launch();
+  // TRD §11 global watchdog: a wedged operation must never stall the swarm
+  // past budget + bounded overshoot (agents + race + invariant sweep) —
+  // force-close the browser, let pending ops reject, still emit the report.
+  const cancelWatchdog = armWatchdog(() => browser.close(), budgetMs + 90_000, log);
   const findings: FindingCandidate[] = [];
   const stepsCounter = { n: 0 };
   const suppressedDeadVerdicts = { n: 0 };
   const inconsistentFeedbackSeen = new Set<string>();
   const inconsistentFeedbackActions: string[] = [];
+  const shotCounter = { n: 0 };
+
+  /** failure screenshot (TRD §3.6: every finding may carry a screenshot path) */
+  async function screenshot(page: Page): Promise<string | null> {
+    if (!opts.screenshotDir) return null;
+    try {
+      shotCounter.n++;
+      const file = join(opts.screenshotDir, `run-${runId}-${shotCounter.n}.png`);
+      await page.screenshot({ path: file });
+      return file;
+    } catch {
+      return null;
+    }
+  }
   let activeLevel = Math.min(5, agentsWanted);
   let degradedAtLevel: number | undefined;
   let lastStepUpAt = 0;
@@ -175,13 +197,17 @@ export async function swarm(opts: SwarmOptions): Promise<SwarmResult> {
   }
 
   async function currentState(page: Page): Promise<{ hash: string; url: string }> {
-    const snap = await page.locator('body').ariaSnapshot();
+    const snap = await withTimeout(page.locator('body').ariaSnapshot(), OP_TIMEOUT_MS, 'ariaSnapshot');
     const { hash } = hashAriaSnapshot(snap);
     return { hash, url: normalizeRoute(page.url(), opts.routes) };
   }
 
   async function getActions(page: Page) {
-    const raw = await page.evaluate(() => window.__uip.getActions());
+    const raw = await withTimeout(
+      page.evaluate(() => window.__uip.getActions()),
+      OP_TIMEOUT_MS,
+      'getActions',
+    );
     const seen = new Map<string, number>();
     const actions = raw.map((a) => {
       const sig = `${a.role ?? 'unknown'}|${a.name}`;
@@ -271,17 +297,21 @@ export async function swarm(opts: SwarmOptions): Promise<SwarmResult> {
 
       let result;
       try {
-        result = await page.evaluate(
-          ({
-            id,
-            input,
-            performOpts,
-          }: {
-            id: number;
-            input?: string;
-            performOpts?: { doubleClick?: boolean; interClickDelayMs?: number; waitMs?: number };
-          }) => window.__uip.perform(id, { input, ...(performOpts ?? {}) }),
-          { id: choice.runtimeId, input: choice.input, performOpts: choice },
+        result = await withTimeout(
+          page.evaluate(
+            ({
+              id,
+              input,
+              performOpts,
+            }: {
+              id: number;
+              input?: string;
+              performOpts?: { doubleClick?: boolean; interClickDelayMs?: number; waitMs?: number };
+            }) => window.__uip.perform(id, { input, ...(performOpts ?? {}) }),
+            { id: choice.runtimeId, input: choice.input, performOpts: choice },
+          ),
+          OP_TIMEOUT_MS,
+          'perform',
         );
       } catch {
         // full navigation destroyed the context mid-perform → nav signal
@@ -308,7 +338,11 @@ export async function swarm(opts: SwarmOptions): Promise<SwarmResult> {
       }
 
       // detectors: errors + dead click + duplicate writes
-      const drain = await page.evaluate(() => window.__uip.drain());
+      const drain = await withTimeout(
+        page.evaluate(() => window.__uip.drain()),
+        OP_TIMEOUT_MS,
+        'drain',
+      ).catch(() => ({ requests: [], pageErrors: [] as string[], consoleErrors: [] as string[], spinners: [] }));
       let hadError = false;
       for (const err of drain.pageErrors) {
         hadError = true;
@@ -353,6 +387,7 @@ export async function swarm(opts: SwarmOptions): Promise<SwarmResult> {
               },
               steps: agent.history.slice(-8),
               url: page.url(),
+              screenshot: await screenshot(page),
             });
           }
         } else {
@@ -363,7 +398,7 @@ export async function swarm(opts: SwarmOptions): Promise<SwarmResult> {
             url: page.url(),
             actionId: choice.runtimeId,
           });
-          if (verdict) findings.push(verdict);
+          if (verdict) findings.push({ ...verdict, screenshot: await screenshot(page) });
         }
       }
       const dup = hub.duplicateRequests(page, agent.postIndex, { steps: agent.history.slice(-8) });
@@ -562,7 +597,7 @@ export async function swarm(opts: SwarmOptions): Promise<SwarmResult> {
       confidence: f.confidence,
       persona: 'swarm',
       evidence: { ...f.evidence, steps: f.steps.slice(-8), pageUrl: f.url },
-      screenshot: null,
+      screenshot: f.screenshot ?? null,
       trace: null,
     });
   }
@@ -577,6 +612,7 @@ export async function swarm(opts: SwarmOptions): Promise<SwarmResult> {
   });
 
   await browser.close().catch(() => {});
+  cancelWatchdog();
 
   log.info('swarm complete', {
     agents: agentsWanted,

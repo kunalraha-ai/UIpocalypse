@@ -10,6 +10,7 @@ import { RUNTIME_SOURCE } from '../runtime/runtime-source.js';
 import { StateGraph } from '../graph/graph.js';
 import { hashAriaSnapshot, normalizeRoute } from '../graph/hash.js';
 import { DetectorHub, type FindingCandidate, ALIVE_REASONS } from './detectors.js';
+import { withTimeout, OP_TIMEOUT_MS, armWatchdog } from './timeout.js';
 import { runScout } from '../scout/scout.js';
 import { Wanderer } from '../agent/wanderer.js';
 import type { Plan } from '../plan/schema.js';
@@ -112,6 +113,14 @@ export async function explore(opts: ExploreOptions): Promise<ExploreResult> {
   const llmCallsAtStart = opts.llm.calls;
 
   const browser = await chromium.launch();
+  // TRD §11 global watchdog: a wedged operation must never stall the phase
+  // past budget + bounded overshoot — force-close the browser, let pending
+  // ops reject, and still emit the partial report.
+  const cancelWatchdog = armWatchdog(
+    () => browser.close(),
+    budgetMs + 60_000,
+    log,
+  );
   let context: BrowserContext;
   try {
     context = await browser.newContext();
@@ -150,13 +159,17 @@ export async function explore(opts: ExploreOptions): Promise<ExploreResult> {
   }
 
   async function currentState(): Promise<{ hash: string; url: string }> {
-    const snap = await page.locator('body').ariaSnapshot();
+    const snap = await withTimeout(page.locator('body').ariaSnapshot(), OP_TIMEOUT_MS, 'ariaSnapshot');
     const { hash } = hashAriaSnapshot(snap);
     return { hash, url: normalizeRoute(page.url(), opts.routes) };
   }
 
   async function getActions(): Promise<RuntimeAction[]> {
-    const raw = await page.evaluate(() => window.__uip.getActions());
+    const raw = await withTimeout(
+      page.evaluate(() => window.__uip.getActions()),
+      OP_TIMEOUT_MS,
+      'getActions',
+    );
     // stable locator: role|name#occurrence — non-interactive DOM changes (alerts,
     // spinners) shift enumeration indices but never reorder same-signature
     // elements, so this identity is stable across visits (graph-growth probe)
@@ -180,10 +193,14 @@ export async function explore(opts: ExploreOptions): Promise<ExploreResult> {
   }
 
   async function perform(id: number, input?: string, performOpts?: { doubleClick?: boolean }) {
-    return page.evaluate(
-      ({ id, input, performOpts }) => window.__uip.perform(id, { input, ...(performOpts ?? {}) }),
-      { id, input, performOpts },
-    );
+    return withTimeout(
+      page.evaluate(
+        ({ id, input, performOpts }) => window.__uip.perform(id, { input, ...(performOpts ?? {}) }),
+        { id, input, performOpts },
+      ),
+      OP_TIMEOUT_MS,
+      'perform',
+    ) as Promise<PerformResult>;
   }
 
   /** Perform + record the transition + detector verdicts. Shared by scout and wanderer. */
@@ -229,7 +246,7 @@ export async function explore(opts: ExploreOptions): Promise<ExploreResult> {
     }
 
     // detector verdicts for this action (drain resets per step → per-action attribution)
-    const drain = await page.evaluate(() => window.__uip.drain());
+    const drain = await withTimeout(page.evaluate(() => window.__uip.drain()), OP_TIMEOUT_MS, 'drain');
     const hadErrors = drain.pageErrors.length > 0 || drain.consoleErrors.length > 0;
     for (const err of drain.pageErrors) {
       findings.push({
@@ -308,20 +325,26 @@ export async function explore(opts: ExploreOptions): Promise<ExploreResult> {
       }
       await page.goto(seed, { waitUntil: 'domcontentloaded', timeout: 15000 }).catch(() => {});
       await page.waitForTimeout(400);
-      const result = await runScout({
-        page,
-        graph,
-        llm: opts.scoutLlm ?? opts.llm,
-        plan: opts.plan,
-        seedUrl: seed,
-        maxSteps: Math.min(scoutBudgetSteps, 12),
-        deadlineMs: scoutDeadline,
-        getActions,
-        perform: async (id, input) => stepAndRecord(id, input),
-        currentState,
-        onStep: (info) =>
-          log.info('scout step', { step: info.step, action: info.action.slice(0, 40), newState: info.new }),
-      });
+      let result;
+      try {
+        result = await runScout({
+          page,
+          graph,
+          llm: opts.scoutLlm ?? opts.llm,
+          plan: opts.plan,
+          seedUrl: seed,
+          maxSteps: Math.min(scoutBudgetSteps, 12),
+          deadlineMs: scoutDeadline,
+          getActions,
+          perform: async (id, input) => stepAndRecord(id, input),
+          currentState,
+          onStep: (info) =>
+            log.info('scout step', { step: info.step, action: info.action.slice(0, 40), newState: info.new }),
+        });
+      } catch (e) {
+        // a wedged/timed-out operation must not kill the phase — skip the seed
+        result = { steps: 0, llmCalls: 0, stopped: 'error' as const, error: String(e).slice(0, 200) };
+      }
       scoutCalls += result.llmCalls;
       scoutOutcome = result.stopped;
       if (result.stopped === 'error') {
@@ -356,12 +379,20 @@ export async function explore(opts: ExploreOptions): Promise<ExploreResult> {
         nastyInputs: nasty,
       });
       if (choice.kind === 'abandon') break;
-      await stepAndRecord(choice.runtimeId, choice.input);
+      try {
+        await stepAndRecord(choice.runtimeId, choice.input);
+      } catch (e) {
+        // wedged/timed-out op — stop the wanderer, keep everything recorded
+        log.warn('wanderer step failed — stopping wanderer', { error: String(e).slice(0, 200) });
+        break;
+      }
     }
 
     // ---------------------------------------------------------- late checks
-    const drain = await page.evaluate(() => window.__uip.drain());
-    findings.push(...hub.infiniteSpinners(drain.spinners, { steps: history.slice(-8), url: page.url() }));
+    const drain = await withTimeout(page.evaluate(() => window.__uip.drain()), OP_TIMEOUT_MS, 'drain').catch(() => null);
+    if (drain) {
+      findings.push(...hub.infiniteSpinners(drain.spinners, { steps: history.slice(-8), url: page.url() }));
+    }
     const navError = await hub.navigationError(page, history.slice(-8));
     if (navError) findings.push(navError);
 
@@ -409,6 +440,7 @@ export async function explore(opts: ExploreOptions): Promise<ExploreResult> {
       warnings: decision.warnings,
     };
   } finally {
+    cancelWatchdog();
     if (tracing && tracePath) {
       await context.tracing.stop({ path: tracePath }).catch(() => {});
     }

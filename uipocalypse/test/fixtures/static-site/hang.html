@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8" /><title>Hang fixture</title></head>
+  <body>
+    <h1>Hang fixture</h1>
+    <!-- Page-level script runs AFTER the injected init script and its early
+         `if (window.__uip) return;` guard, so this OVERWRITES __uip with a
+         wedged runtime: getActions never returns. Reproduces the real
+         evaluate-hang class (a wedged renderer stalls page.evaluate
+         forever — Playwright has no default timeout for evaluate). -->
+    <script>
+      window.__uip = {
+        getActions: function () { while (true) { } },
+        perform: function () { while (true) { } },
+        drain: function () { while (true) { } },
+        getState: function () { return { url: location.href, title: document.title, spinners: [] }; },
+        raceFire: function () { return { ok: true }; },
+      };
+    </script>
+  </body>
+</html>
