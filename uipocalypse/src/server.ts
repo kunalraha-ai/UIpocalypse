@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { join, resolve } from 'node:path';
 import { initWorkspace } from './workspace.js';
 import { createLogger } from './logger.js';
-import { openDb, type Db } from './db/index.js';
+import { openDb, listRuns, type Db } from './db/index.js';
 import { scanCodebase } from './tools/scan-codebase.js';
 import { loadConfig } from './config.js';
 import { createLlm, createLlmSet } from './llm/index.js';
@@ -12,13 +12,18 @@ import { createPlan, loadPlan } from './plan/planner.js';
 import { DEFAULT_NASTY_INPUTS, PlanSchema, type Plan } from './plan/schema.js';
 import { explore } from './browser/runner.js';
 import { swarm } from './browser/orchestrator.js';
+import { mergeDraftedInvariants } from './browser/race.js';
+import { createGuard } from './guard/index.js';
+import { generateReport, diffRuns, markdownReport, loadReport, type Report } from './report/reviewer.js';
+import type { UiConfig } from './config.js';
 import type { Workspace } from './workspace.js';
 import type { Logger } from './logger.js';
 
 /**
  * MCP server (stdio, local-first).
- * Tool surface: scan_codebase (real rules), plan_swarm + run_swarm (Phase 3:
- * single-context scout + wanderer; N-agent swarm lands in Phase 4).
+ * Tool surface: scan_codebase (static rules), plan_swarm + run_swarm
+ * (scouts + swarm), get_report / list_runs / diff_runs (Phase 5 collector +
+ * reviewer), and verify_deployment_safety chaining all of it in one call.
  */
 
 export type ServerContext = {
@@ -28,8 +33,33 @@ export type ServerContext = {
   workspace: Workspace;
 };
 
+/** placeholder when a cached report is served without a re-analysis */
+const EMPTY_APP_MAP: import('./analyzer/types.js').AppMap = {
+  framework: 'unknown',
+  stack: [],
+  files: [],
+  routes: [],
+  elements: [],
+  apiCalls: [],
+  envVars: [],
+  imports: {},
+  clientEntryFiles: [],
+  supabase: { tables: [], clientFiles: [], migrations: [] },
+  fileCount: 0,
+  extractedAt: '',
+};
+
 function text(content: unknown) {
   return { content: [{ type: 'text' as const, text: JSON.stringify(content, null, 2) }] };
+}
+
+/** FR-P1 wrapper: preflight the plan's drafted invariants against the DB. */
+async function effectiveInvariants(
+  config: UiConfig,
+  plan: Plan,
+  logger: Logger,
+): Promise<{ config: UiConfig; drafted: number; used: number; dropped: number }> {
+  return mergeDraftedInvariants(config, plan, createGuard(config), logger);
 }
 
 export function createServer(opts: { workspaceRoot?: string } = {}): ServerContext {
@@ -150,6 +180,8 @@ export function createServer(opts: { workspaceRoot?: string } = {}): ServerConte
       llms.planner.maxCalls = config.llm.maxCallsPerRun;
       llms.scout.maxCalls = config.llm.maxCallsPerRun;
       try {
+        // FR-P1: drafted invariants preflight against the DB before the run
+        const inv = await effectiveInvariants(config, plan, logger);
         // phase 1: scouts fill the graph (single context, fast model)
         const exploreResult = await explore({
           url,
@@ -161,11 +193,13 @@ export function createServer(opts: { workspaceRoot?: string } = {}): ServerConte
           scoutLlm: llms.scout,
           logger,
           budgetSeconds: Math.min(budgetSeconds ?? config.budgetSeconds, 120),
+          screenshotDir: workspace.screenshots,
+          traceDir: workspace.traces,
         });
         // phase 2: the swarm (independent stepping, ramp, personas) — same run row
         const swarmResult = await swarm({
           url,
-          config,
+          config: inv.config,
           plan,
           db,
           routes,
@@ -174,6 +208,7 @@ export function createServer(opts: { workspaceRoot?: string } = {}): ServerConte
           agents,
           budgetSeconds,
           runId: exploreResult.runId,
+          screenshotDir: workspace.screenshots,
           optIn,
           raceTarget: race
             ? {
@@ -194,9 +229,158 @@ export function createServer(opts: { workspaceRoot?: string } = {}): ServerConte
           explore: exploreResult,
           swarm: swarmResult,
           findingCounts,
+          planInvariants: { drafted: inv.drafted, used: inv.used, dropped: inv.dropped },
         });
       } catch (e) {
         return { isError: true, content: [{ type: 'text' as const, text: String(e) }] };
+      }
+    },
+  );
+
+  server.registerTool(
+    'get_report',
+    {
+      title: 'Get report',
+      description:
+        'Clustered findings for a run, ranked, with root causes and paste-ready fix prompts (LLM call #2 over clusters only, cached per run). Correct rejections (4xx on existing routes) and cancellation artifacts are classified, not reported as bugs. `path` is only needed the first time (to map clusters to file/line via the app map).',
+      inputSchema: {
+        runId: z.number().int().describe('Run id from run_swarm'),
+        format: z.enum(['markdown', 'json']).optional().describe('Report format (default markdown)'),
+        path: z.string().optional().describe('Repo root — required only if the report is not cached yet'),
+      },
+    },
+    async ({ runId, format, path }) => {
+      try {
+        // cached reports cost nothing — no analysis, no LLM
+        if (!loadReport(workspace.runs, runId) && !path) {
+          return {
+            isError: true,
+            content: [
+              {
+                type: 'text' as const,
+                text: `No cached report for run ${runId}. Pass \`path\` (the repo root) so clusters can be mapped to file/line via the app map; after the first call the report is cached.`,
+              },
+            ],
+          };
+        }
+        const report = await generateReport({
+          db,
+          runId,
+          appMap: path ? analyze(resolve(path)).appMap : EMPTY_APP_MAP,
+          llm: createLlm(),
+          runsDir: workspace.runs,
+        });
+        return text(format === 'json' ? report : markdownReport(report));
+      } catch (e) {
+        return { isError: true, content: [{ type: 'text' as const, text: `${e}` }] };
+      }
+    },
+  );
+
+  server.registerTool(
+    'list_runs',
+    {
+      title: 'List runs',
+      description: 'All swarm runs recorded in this workspace, with timing, LLM calls, coverage and finding counts.',
+      inputSchema: {},
+    },
+    async () => {
+      const runs = listRuns(db).map((r) => ({
+        ...r,
+        findings: (db.prepare('SELECT COUNT(*) AS n FROM findings WHERE run_id = ?').get(r.id) as { n: number }).n,
+      }));
+      return text(runs);
+    },
+  );
+
+  server.registerTool(
+    'diff_runs',
+    {
+      title: 'Diff runs',
+      description:
+        'Compare the last N runs of the same app: which clustered issues were fixed, which are new, which still fail, and which are INTERMITTENT (present in some runs — detection variance, not a fix). A finding only counts as fixed after 2 consecutive absences; pass 3+ runs for meaningful labels. Keyed on stable cluster fingerprints — the fix-verify loop for agent-driven repair.',
+      inputSchema: {
+        runs: z.array(z.number().int().min(1)).min(2).describe('Run ids, oldest first (3+ recommended)'),
+        path: z.string().describe('Repo root (the same codebase the runs tested, or its pre-fix state)'),
+      },
+    },
+    async ({ runs, path }) => {
+      try {
+        return text(diffRuns(db, analyze(resolve(path)).appMap, runs));
+      } catch (e) {
+        return { isError: true, content: [{ type: 'text' as const, text: `${e}` }] };
+      }
+    },
+  );
+
+  server.registerTool(
+    'verify_deployment_safety',
+    {
+      title: 'Verify deployment safety (one call)',
+      description:
+        'The whole pipeline in one call: static scan → plan (LLM #1, cached) → scouts → swarm (personas, ramp, race mode if invariants configured) → clustered report with fix prompts (LLM #2). The one-prompt UX from the PRD.',
+      inputSchema: {
+        path: z.string().describe('Path to the repo root to scan'),
+        url: z.string().describe('Target URL the swarm runs against, e.g. http://localhost:3000'),
+        agents: z.number().int().min(1).max(100).optional(),
+        budgetSeconds: z.number().int().min(1).max(600).optional(),
+      },
+    },
+    async ({ path, url, agents, budgetSeconds }) => {
+      const { config } = loadConfig();
+      const llms = createLlmSet();
+      llms.planner.maxCalls = config.llm.maxCallsPerRun;
+      llms.scout.maxCalls = config.llm.maxCallsPerRun;
+      try {
+        const t0 = Date.now();
+        const { appMap, issues } = await scanCodebase({ path }, { logger });
+        const planning = await createPlan({ appMap, targetUrl: url, llm: llms.planner, workspacePlansDir: workspace.plans });
+        const inv = await effectiveInvariants(config, planning.plan, logger);
+        const exploreResult = await explore({
+          url,
+          config,
+          plan: planning.plan,
+          db,
+          routes: planning.appMapRoutes,
+          llm: llms.planner,
+          scoutLlm: llms.scout,
+          logger,
+          budgetSeconds: Math.min(budgetSeconds ?? config.budgetSeconds, 120),
+          screenshotDir: workspace.screenshots,
+          traceDir: workspace.traces,
+        });
+        const swarmResult = await swarm({
+          url,
+          config: inv.config,
+          plan: planning.plan,
+          db,
+          routes: planning.appMapRoutes,
+          llm: llms.scout,
+          logger,
+          agents,
+          budgetSeconds,
+          runId: exploreResult.runId,
+          screenshotDir: workspace.screenshots,
+        });
+        const report: Report = await generateReport({
+          db,
+          runId: swarmResult.runId,
+          appMap,
+          llm: llms.planner,
+          runsDir: workspace.runs,
+        });
+        return text({
+          staticIssues: issues.length,
+          runId: swarmResult.runId,
+          planCached: planning.cached,
+          planInvariants: { drafted: inv.drafted, used: inv.used, dropped: inv.dropped },
+          llmCalls: llms.planner.calls + llms.scout.calls,
+          wallMs: Date.now() - t0,
+          report,
+          reportMarkdown: markdownReport(report),
+        });
+      } catch (e) {
+        return { isError: true, content: [{ type: 'text' as const, text: `${e}` }] };
       }
     },
   );

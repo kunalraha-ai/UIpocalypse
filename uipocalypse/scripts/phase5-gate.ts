@@ -60,6 +60,7 @@ type RunRecord = {
   artifacts: number;
   planInvariants: { drafted: number; used: number; dropped: number };
   reportClusters: Array<{ key: string; title: string; severity: string; observations: number; classification: string }>;
+  diffSummary?: { fixed: number; new: number; still: number; intermittent: number; phantoms: string[] };
 };
 
 async function fullPipeline(
@@ -90,6 +91,7 @@ async function fullPipeline(
   console.log(`plan cached=${planning.cached} seeds=${planning.plan.seedRoutes.length} draftedInvariants=${planning.plan.invariants.length}`);
 
   const inv = await mergeDraftedInvariants(config, planning.plan, createGuard(config), logger);
+  let diffSummary: RunRecord['diffSummary'];
 
   t = Date.now();
   const exploreResult = await explore({
@@ -155,9 +157,23 @@ async function fullPipeline(
   console.log(`report: ${report.issues.length} issues, review=${review.issues.length > 0 ? 'llm' : 'mechanical'}`);
 
   if (label === 'rerun (warm graph + cached plan)') {
-    // diff demo: run 3 vs the rerun — same app, nothing fixed
-    const diff = diffRuns(db, appMap, (db.prepare('SELECT id FROM runs ORDER BY id').all() as Array<{ id: number }>)[0]!.id, swarmResult.runId);
-    console.log(`diff demo (first vs rerun): fixed=${diff.fixed.length} new=${diff.new.length} still=${diff.stillFailing.length}`);
+    // diff across ALL runs in this workspace (identical app, nothing fixed):
+    // stable clusters stay "still failing", detection variance lands in
+    // "intermittent", and fixed/new should be empty (no phantoms)
+    const allIds = (db.prepare('SELECT id FROM runs ORDER BY id').all() as Array<{ id: number }>).map((r) => r.id);
+    const diff = diffRuns(db, appMap, allIds);
+    console.log(
+      `diff across ${allIds.length} identical runs: fixed=${diff.fixed.length} new=${diff.new.length} still=${diff.stillFailing.length} intermittent=${diff.intermittent.length}`,
+    );
+    const phantoms = [...diff.fixed, ...diff.new].map((f) => `${f.key} (runs ${f.presentIn.join(',')})`);
+    for (const p of phantoms) console.log(`  PHANTOM? ${p}`);
+    diffSummary = {
+      fixed: diff.fixed.length,
+      new: diff.new.length,
+      still: diff.stillFailing.length,
+      intermittent: diff.intermittent.length,
+      phantoms,
+    };
   }
   console.log(markdownReport(report).slice(0, 600));
 
@@ -175,6 +191,7 @@ async function fullPipeline(
     artifacts: collected.artifacts.length,
     planInvariants: { drafted: inv.drafted, used: inv.used, dropped: inv.dropped },
     reportClusters: collected.clusters.map((c) => ({ key: c.key, title: c.title, severity: c.severity, observations: c.observations, classification: c.classification })),
+    diffSummary,
   };
   db.close();
   return rec;
@@ -205,6 +222,16 @@ checks.push([
   'classification: 4xx-on-existing-route downgraded, ERR_ABORTED filtered',
   firsts.every((r) => r.correctRejections >= 1 && r.artifacts >= 1),
   `rejections ${firsts.map((r) => r.correctRejections).join('/')}, artifacts ${firsts.map((r) => r.artifacts).join('/')}`,
+]);
+checks.push([
+  'duplicate detection restored (the regression): every run has duplicate_request findings',
+  runs.every((r) => r.dupObs >= 1),
+  `dupObs per run: ${runs.map((r) => r.dupObs).join(', ')}`,
+]);
+checks.push([
+  'diff_runs over identical runs: no phantom fixed/new (variance must land in intermittent)',
+  (rerun.diffSummary?.phantoms ?? ['no diff recorded']).length === 0,
+  JSON.stringify(rerun.diffSummary ?? {}),
 ]);
 
 // screenshots on failure: dead_click/inconsistent findings carry existing files

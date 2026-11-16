@@ -144,7 +144,7 @@ All randomness is seeded; every finding records the seed so runs are reproducibl
 | `run_swarm` | `{ url, planId?, agents?, budgetSeconds?, optIn?: { destructive?, externalSideEffects? } }` | `{ runId, summary, coverage, findingCounts }` (streams progress notifications) |
 | `get_report` | `{ runId, format?: "markdown" \| "json", path? }` | report + fix prompts (cached per run; `path` only needed before the first cache fill) |
 | `list_runs` | `{}` | run rows with timing, LLM calls, coverage, finding counts |
-| `diff_runs` | `{ a, b, path }` | fixed / new / still failing (stable cluster fingerprints) |
+| `diff_runs` | `{ runs: number[], path }` | fixed / new / still failing / intermittent — a finding is `fixed` only after 2 consecutive absences; mixed presence is `intermittent` (3+ runs recommended) |
 | `verify_deployment_safety` | `{ path, url, agents?, budgetSeconds? }` | the whole pipeline in one call: scan → plan → scouts → swarm → clustered report |
 
 `verify_deployment_safety` can be a convenience wrapper chaining the four main tools, so one natural-language request maps to one call.
