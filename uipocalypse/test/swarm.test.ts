@@ -215,6 +215,35 @@ describe('swarm orchestrator (Phase 4)', () => {
       .toEqual([]);
   });
 
+  it('duplicate_request capability guard: a Double-Clicker firing a real POST twice within one step is detected', async () => {
+    // Regression context (phase 5 gate): the gate lost ALL duplicate_request
+    // findings because its swarm ran wanderer-only. This test pins the
+    // DETECTOR pipeline end-to-end: personas honor the plan, and a plan with
+    // the default roster must produce duplicate_request findings on the
+    // write-firing fixture.
+    const server2 = await serveStatic(FIXTURE);
+    const db2 = openDb(join(mkdtempSync('/tmp/opencode/uip-dup-'), 'db.sqlite'));
+    // no explicit personas: exercises the fixed PlanSchema default (full roster)
+    const plan = PlanSchema.parse({ summary: 'fixture', goals: [], seedRoutes: [server2.url], nastyInputs: { long: ['z'.repeat(50)] } });
+    const result = await swarm({
+      url: server2.url,
+      config: { ...ws.config },
+      plan,
+      db: db2,
+      routes: ['/', '/page2.html'],
+      llm: createLlm({ LLM_API_KEY: '' }),
+      logger: ws.logger,
+      agents: 6,
+      budgetSeconds: 20,
+      perAgentSteps: 10,
+    });
+    const rows = listFindings(db2, result.runId).filter((r) => r.type === 'duplicate_request');
+    expect(rows.length).toBeGreaterThanOrEqual(1);
+    expect(JSON.parse(rows[0]!.evidence_json!).url).toContain('/api/echo');
+    db2.close();
+    await server2.close();
+  }, 90_000);
+
   it('repeat-activation suppression is RUN-SCOPED: prior-run feedback never masks this run (regression guarantee)', () => {
     const g = new StateGraph(ws.db, []);
     const s = g.getOrCreateState({ hash: 'h-sup', url: '/', signature: '' });

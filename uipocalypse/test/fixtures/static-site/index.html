@@ -17,5 +17,9 @@
       <input type="email" name="email" placeholder="you@example.com" />
       <button type="submit">Subscribe</button>
     </form>
+    <!-- a real POST write the Double-Clicker can double-fire (duplicate_request guard) -->
+    <form action="/api/echo" method="post">
+      <button type="submit">Echo submit</button>
+    </form>
   </body>
 </html>

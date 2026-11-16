@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import type { LLM } from '../llm/index.js';
 import type { AppMap } from '../analyzer/types.js';
 import { redactForLlm } from '../guard/index.js';
-import { DEFAULT_NASTY_INPUTS, PlanSchema, type Plan } from './schema.js';
+import { DEFAULT_NASTY_INPUTS, PlanSchema, FULL_PERSONA_ROSTER, type Plan } from './schema.js';
 
 /**
  * Planner (TRD §3.2, LLM call #1): app-map summary → validated plan.
@@ -15,7 +15,9 @@ import { DEFAULT_NASTY_INPUTS, PlanSchema, type Plan } from './schema.js';
 
 const PLANNER_SYSTEM = [
   'You are the planner for UIpocalypse, a QA tool that releases a swarm of test users against a local web app.',
-  'Given a structured app map, produce a test plan: personas to use, goals worth completing, seed routes to start from, and nasty input sets.',
+  'Given a structured app map, produce a test plan: personas to use, goals worth completing, seed routes to start from, nasty input sets, and — when DB tables are listed — point-in-time damage invariants.',
+  'Personas: ALWAYS include the full roster ["wanderer", "double-clicker", "garbage-paster", "abandoner", "race-runner"] unless the user explicitly asked to narrow it — a missing Double-Clicker means double-submit bugs go undetected.',
+  'Invariants are `atMost` count queries over the schema: they must be TRUE on a clean database and only break when the app is genuinely broken (e.g. duplicate rows within one second for a single-use/unique-intent table). Never draft an invariant that is already violated before the run.',
   'Be pragmatic: this is for finding real breakage (crashes, dead buttons, broken flows), not UX critique.',
   'Respond with ONLY the JSON object.',
 ].join(' ');
@@ -30,6 +32,9 @@ function appMapSummary(appMap: AppMap, targetUrl: string): Record<string, unknow
     sampleElements: appMap.elements.slice(0, 25).map((e) => ({ tag: e.tag, label: e.label.slice(0, 40) })),
     apiCalls: appMap.apiCalls.slice(0, 25).map((c) => ({ url: c.url, method: c.method })),
     envVarNames: appMap.envVars.map((e) => e.name),
+    // for FR-P1 invariant drafting: the schema the app writes to
+    supabaseTables: appMap.supabase.tables,
+    writeEndpoints: appMap.apiCalls.filter((c) => c.method !== 'GET' && c.method !== 'OTHER').map((c) => c.url),
   };
 }
 
@@ -46,7 +51,7 @@ export function degradedPlan(appMap: AppMap, targetUrl: string): Plan {
   const pageRoutes = appMap.routes.filter((r) => r.kind === 'page').map((r) => r.path).slice(0, 6);
   return PlanSchema.parse({
     summary: 'Degraded plan (no LLM configured): default personas and seeds from the app map.',
-    personas: ['wanderer'],
+    personas: [...FULL_PERSONA_ROSTER],
     goals: [],
     seedRoutes: [new URL(targetUrl).pathname || '/', ...pageRoutes],
     nastyInputs: DEFAULT_NASTY_INPUTS,
@@ -86,9 +91,9 @@ export async function createPlan(opts: {
     try {
       plan = await opts.llm.completeJSON({
         system: PLANNER_SYSTEM,
-        user: `${user}\n\nJSON shape: { "summary": string, "personas": string[], "goals": [{ "description": string, "inputs"?: object, "expected"?: string }], "seedRoutes": string[], "nastyInputs": Record<string, string[]>, "notes"?: string }`,
+        user: `${user}\n\nJSON shape: { "summary": string, "personas": string[], "goals": [{ "description": string, "inputs"?: object, "expected"?: string }], "seedRoutes": string[], "nastyInputs": Record<string, string[]>, "invariants"?: [{ "name": string, "sql": string, "atMost": number }], "notes"?: string }`,
         schema: PlanSchema,
-        maxTokens: 1500,
+        maxTokens: 2000,
         label: 'planner',
       });
     } catch (e) {

@@ -7,9 +7,16 @@ import { createLogger } from '../src/logger.js';
 import { loadConfig } from '../src/config.js';
 import type { ServerContext } from '../src/server.js';
 
-/** Tiny static file server for the browser-test fixtures (no dependencies). */
+/** Tiny static file server for the browser-test fixtures (no dependencies).
+ * POST requests are answered 200 — write-path fixtures (duplicate_request
+ * detection) need a real endpoint to fire at. */
 export async function serveStatic(dir: string): Promise<{ url: string; close: () => Promise<void> }> {
   const server = createServer((req, res) => {
+    if (req.method === 'POST') {
+      res.setHeader('content-type', 'application/json');
+      res.end('{"ok":true}');
+      return;
+    }
     const path = req.url === '/' ? '/index.html' : req.url ?? '/';
     try {
       const data = readFileSync(join(dir, path));

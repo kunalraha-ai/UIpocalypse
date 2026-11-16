@@ -141,7 +141,9 @@ export function createPersona(id: string, seed: number): Persona {
   }
 }
 
-export const ALL_PERSONAS = ['wanderer', 'double-clicker', 'garbage-paster', 'abandoner', 'race-runner'];
+import { FULL_PERSONA_ROSTER } from '../plan/schema.js';
+
+export const ALL_PERSONAS: string[] = [...FULL_PERSONA_ROSTER];
 
 function pick(list: string[], rng: () => number): string {
   return list[Math.floor(rng() * list.length)] ?? 'about:blank';

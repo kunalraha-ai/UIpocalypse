@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { FakeLlm, createLlm } from '../src/llm/index.js';
 import { createPlan, loadPlan, planHash } from '../src/plan/planner.js';
+import { PlanSchema } from '../src/plan/schema.js';
 import type { AppMap } from '../src/analyzer/types.js';
 
 const appMap = {
@@ -73,7 +74,8 @@ describe('Planner (TRD §3.2, LLM call #1, cached by app-map hash)', () => {
     const llm = createLlm({ LLM_API_KEY: '' }); // NullLlm — even if the machine has a key
     const result = await createPlan({ appMap, targetUrl: TARGET, llm, workspacePlansDir: plansDir });
     expect(result.cached).toBe(false);
-    expect(result.plan.personas).toEqual(['wanderer']);
+    expect(result.plan.personas).toContain('double-clicker'); // full roster even degraded
+    expect(result.plan.personas).toContain('race-runner');
     expect(result.plan.seedRoutes[0]).toBe('/');
     expect(result.plan.seedRoutes).toContain('/profile');
     expect(result.plan.nastyInputs.long[0]).toHaveLength(10000);
@@ -82,6 +84,24 @@ describe('Planner (TRD §3.2, LLM call #1, cached by app-map hash)', () => {
   it('changes the plan id when the app map changes', () => {
     const otherMap = { ...appMap, routes: [...appMap.routes, { path: '/new', kind: 'page', file: 'app/new/page.tsx' }] } as AppMap;
     expect(planHash(otherMap, TARGET)).not.toBe(planHash(appMap, TARGET));
+  });
+
+  it('REGRESSION (phase5 gate): a plan without explicit personas defaults to the FULL roster, never a lone wanderer', () => {
+    // A wanderer-only default silently removes the Double-Clicker/Garbage
+    // Paster from every swarm that honors plan.personas — the phase 5 gate
+    // lost ALL duplicate_request detection this way (0 findings across 4
+    // runs where the phase 4 gate produced 18–52 per run).
+    const plan = PlanSchema.parse({ summary: 'no personas given' });
+    expect(plan.personas).toContain('double-clicker');
+    expect(plan.personas).toContain('garbage-paster');
+    expect(plan.personas).toContain('abandoner');
+    expect(plan.personas).toContain('race-runner');
+    expect(plan.personas).toContain('wanderer');
+  });
+
+  it('explicit narrow personas are still honored (user intent, not the default)', () => {
+    const plan = PlanSchema.parse({ summary: 'narrowed on purpose', personas: ['wanderer'] });
+    expect(plan.personas).toEqual(['wanderer']);
   });
 
   it('planner LLM failures degrade instead of blocking', async () => {
@@ -95,7 +115,7 @@ describe('Planner (TRD §3.2, LLM call #1, cached by app-map hash)', () => {
       },
     };
     const result = await createPlan({ appMap, targetUrl: TARGET, llm: llm as never, workspacePlansDir: plansDir });
-    expect(result.plan.personas).toEqual(['wanderer']);
+    expect(result.plan.personas).toContain('double-clicker'); // degraded → full roster
     expect(result.plan.notes).toMatch(/planner LLM call failed/);
   });
 

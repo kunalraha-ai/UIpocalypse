@@ -4,7 +4,7 @@ import { openDb } from './db/index.js';
 import { createLogger } from './logger.js';
 import { loadConfig } from './config.js';
 import { createLlmSet } from './llm/index.js';
-import { PlanSchema, DEFAULT_NASTY_INPUTS } from './plan/schema.js';
+import { PlanSchema, DEFAULT_NASTY_INPUTS, FULL_PERSONA_ROSTER } from './plan/schema.js';
 import { explore } from './browser/runner.js';
 import { swarm } from './browser/orchestrator.js';
 
@@ -52,7 +52,7 @@ async function runSwarmCli(argv: string[]): Promise<void> {
 
   const plan = PlanSchema.parse({
     summary: 'CLI plan',
-    personas: ['wanderer', 'double-clicker', 'garbage-paster', 'abandoner'],
+    personas: [...FULL_PERSONA_ROSTER],
     goals: [],
     seedRoutes: [args.url],
     nastyInputs: DEFAULT_NASTY_INPUTS,
@@ -69,6 +69,8 @@ async function runSwarmCli(argv: string[]): Promise<void> {
       scoutLlm: llms.scout,
       logger,
       budgetSeconds: 90,
+      screenshotDir: workspace.screenshots,
+      traceDir: workspace.traces,
     });
     const result = await swarm({
       url: args.url!,
@@ -82,6 +84,7 @@ async function runSwarmCli(argv: string[]): Promise<void> {
       budgetSeconds: args.budget,
       runId: exploreResult.runId,
       abort: abort.signal,
+      screenshotDir: workspace.screenshots,
       raceTarget: args.raceAction
         ? { url: args.url!, actionLabel: args.raceAction, input: args.raceInput, contexts: 20 }
         : undefined,
