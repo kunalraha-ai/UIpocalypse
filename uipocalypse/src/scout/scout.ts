@@ -73,8 +73,13 @@ export async function runScout(opts: {
     const visitsFor = (locator: string) => dbActions.find((a) => a.locator === locator)?.visits ?? 0;
     const anyUnvisited = safe.some((a) => visitsFor(a.locator) === 0);
 
-    // saturation: everything here has been visited and nothing is new — stop
-    if (!anyUnvisited && steps > 0) {
+    // saturation: everything here has been visited and nothing is new — stop.
+    // Applies at step 0 too (PHASE3_RESULTS: "a fully-known state costs zero
+    // LLM calls") — for four gate days the `steps > 0` guard silently burned
+    // one slow LLM call per saturated seed, which alone blew the 90 s rerun
+    // target whenever the LLM was slow. An empty graph can't trip this: with
+    // no recorded actions every visitsFor is 0, so anyUnvisited is true.
+    if (!anyUnvisited) {
       return { steps, llmCalls: llm.calls - llmCallsAtStart, stopped: 'saturated' };
     }
 

@@ -77,4 +77,66 @@ describe('scout hard wall-clock cap (config scoutBudgetSeconds, default 90)', ()
     db.close();
     await server.close();
   }, 60_000);
+
+  it('step-0 saturation (PHASE3_RESULTS behavior): a fully-known seed costs ZERO LLM calls on the rerun', async () => {
+    const server = await serveStatic(FIXTURE);
+    const ws = initWorkspace(mkdtempSync('/tmp/opencode/uip-sat0-'));
+    const db = openDb(ws.db);
+    const { config } = loadConfig();
+
+    // run 1: explore the tiny fixture to saturation (wanderer visits everything)
+    const first = new SlowNeverSaturatingLlm();
+    first.completeJSON = (async () => ScoutDecisionSchema.parse({ done: true })) as typeof first.completeJSON;
+    const plan = PlanSchema.parse({ summary: 'sat0', seedRoutes: [server.url], nastyInputs: { long: ['z'] } });
+    await explore({
+      url: server.url,
+      config,
+      plan,
+      db,
+      routes: ['/', '/page2.html'],
+      llm: first,
+      scoutLlm: first,
+      logger: createLogger({}),
+      budgetSeconds: 30,
+      wandererSteps: 40, // enough for the weighted-random wanderer to visit every seed-state action
+    });
+
+    // PRECONDITION: the seed state must be fully visited, or the run-2 scout
+    // is legitimately allowed to call the LLM (an unexplored action is not saturation)
+    const seedState = db
+      .prepare('SELECT s.id AS id FROM states s ORDER BY s.id LIMIT 1')
+      .get() as { id: number };
+    const unvisited = db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM actions a WHERE a.state_id = ?
+          AND NOT EXISTS (SELECT 1 FROM transitions t WHERE t.from_state = a.state_id AND t.action_id = a.id)`,
+      )
+      .get(seedState.id) as { n: number };
+    expect(unvisited.n).toBe(0);
+
+    // run 2: same workspace — every seed state is fully known, so the scouts
+    // must saturate at step 0 with ZERO calls. The llm throws on any call.
+    const counting = new SlowNeverSaturatingLlm();
+    counting.completeJSON = (async () => {
+      counting.calls++; // count even the refused call — the assertion must see it
+      throw new Error('unexpected LLM call: a saturated seed must cost zero calls');
+    }) as typeof counting.completeJSON;
+    const second = await explore({
+      url: server.url,
+      config,
+      plan,
+      db,
+      routes: ['/', '/page2.html'],
+      llm: counting,
+      scoutLlm: counting,
+      logger: createLogger({}),
+      budgetSeconds: 30,
+      wandererSteps: 0,
+    });
+    expect(counting.calls).toBe(0); // RED today: each saturated seed burns one call
+    expect(second.summary.scoutOutcome).toMatch(/saturated|skipped/);
+
+    db.close();
+    await server.close();
+  }, 60_000);
 });
