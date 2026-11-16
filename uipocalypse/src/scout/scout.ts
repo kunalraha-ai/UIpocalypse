@@ -42,6 +42,8 @@ export async function runScout(opts: {
   plan: Plan;
   seedUrl: string;
   maxSteps: number;
+  /** hard wall-clock deadline (epoch ms): stop scouting when reached */
+  deadlineMs?: number;
   getActions: () => Promise<
     Array<{ id: number; role: string | null; name: string; risky: boolean; textLike: boolean; locator: string }>
   >;
@@ -55,6 +57,12 @@ export async function runScout(opts: {
   const llmCallsAtStart = llm.calls;
 
   for (; steps < opts.maxSteps; steps++) {
+    // hard cap: a slow LLM must not make the run unpredictable — stop scouting
+    // at the deadline wherever we are in the loop (checked per step, so at
+    // most one in-flight LLM call overshoots)
+    if (opts.deadlineMs !== undefined && Date.now() >= opts.deadlineMs) {
+      return { steps, llmCalls: llm.calls - llmCallsAtStart, stopped: 'budget' };
+    }
     const state = await opts.currentState();
     const graphState = graph.getOrCreateState({ hash: state.hash, url: state.url, signature: '' });
     const actions = await opts.getActions();

@@ -1,5 +1,6 @@
 import { chromium } from 'playwright';
 import { createHash } from 'node:crypto';
+import { join } from 'node:path';
 import type { BrowserContext } from 'playwright';
 import type { Logger } from '../logger.js';
 import type { LLM } from '../llm/index.js';
@@ -52,10 +53,16 @@ export type ExploreOptions = {
   scoutLlm?: LLM;
   logger: Logger;
   budgetSeconds?: number;
+  /** override config.scoutBudgetSeconds (the hard scouting-phase cap) */
+  scoutBudgetSeconds?: number;
   scoutSteps?: number;
   wandererSteps?: number;
   /** reuse a run row (e.g. when the swarm phase follows the scout phase) */
   runId?: number;
+  /** directory for failure screenshots — omit to skip */
+  screenshotDir?: string;
+  /** directory for the scout-phase Playwright trace (config.trace enables) */
+  traceDir?: string;
 };
 
 export type ExploreResult = {
@@ -113,6 +120,13 @@ export async function explore(opts: ExploreOptions): Promise<ExploreResult> {
     throw e;
   }
   await context.addInitScript(RUNTIME_SOURCE);
+  // Playwright trace for replay (TRD §6 v1): opt-in via config.trace; the
+  // scout context has a clean lifecycle, so one trace covers the phase
+  const tracing = !!(opts.traceDir && opts.config.trace);
+  const tracePath = tracing ? join(opts.traceDir!, `run-${runId}-scout.zip`) : null;
+  if (tracing) {
+    await context.tracing.start({ name: `run-${runId}-scout`, screenshots: true, snapshots: true });
+  }
   const page = await context.newPage();
   const hub = new DetectorHub({ appOrigin: new URL(opts.url).origin });
   hub.attachPage(page);
@@ -120,7 +134,20 @@ export async function explore(opts: ExploreOptions): Promise<ExploreResult> {
   const findings: FindingCandidate[] = [];
   const suppressedDead = { n: 0 };
   const inconsistentFeedbackSeen = new Set<string>();
+  const shotCounter = { n: 0 };
   const history: string[] = [];
+
+  async function screenshot(): Promise<string | null> {
+    if (!opts.screenshotDir) return null;
+    try {
+      shotCounter.n++;
+      const file = join(opts.screenshotDir, `run-${runId}-scout-${shotCounter.n}.png`);
+      await page.screenshot({ path: file });
+      return file;
+    } catch {
+      return null;
+    }
+  }
 
   async function currentState(): Promise<{ hash: string; url: string }> {
     const snap = await page.locator('body').ariaSnapshot();
@@ -244,6 +271,7 @@ export async function explore(opts: ExploreOptions): Promise<ExploreResult> {
             },
             steps: history.slice(-8),
             url: page.url(),
+            screenshot: await screenshot(),
           });
         }
       } else {
@@ -254,7 +282,7 @@ export async function explore(opts: ExploreOptions): Promise<ExploreResult> {
           url: page.url(),
           actionId: id,
         });
-        if (verdict) findings.push(verdict);
+        if (verdict) findings.push({ ...verdict, screenshot: await screenshot() });
       }
     }
     if (result.nav) await page.waitForLoadState('load', { timeout: 5000 }).catch(() => {});
@@ -263,11 +291,18 @@ export async function explore(opts: ExploreOptions): Promise<ExploreResult> {
 
   try {
     // ---------------------------------------------------------- seeds + scouts
+    // HARD wall-clock cap on the scouting phase (config.scoutBudgetSeconds,
+    // default 90): when it trips, scouting stops and the swarm proceeds —
+    // total run time stays predictable when the LLM is slow. Effective cap
+    // never exceeds the overall phase budget.
     const seedUrls = [...new Set([opts.url, ...opts.plan.seedRoutes.map((r) => new URL(r, opts.url).href)])];
-    const scoutBudget = opts.scoutSteps ?? 24;
+    const scoutBudget = opts.scoutBudgetSeconds ?? Math.min(opts.config.scoutBudgetSeconds, budgetMs / 1000);
+    const scoutDeadline = started + scoutBudget * 1000;
+    const scoutBudgetSteps = opts.scoutSteps ?? 24;
     let scoutOutcome = 'skipped';
+    let scoutCalls = 0;
     for (const seed of seedUrls.slice(0, 4)) {
-      if (Date.now() - started > budgetMs * 0.6) {
+      if (Date.now() >= scoutDeadline) {
         scoutOutcome = 'budget';
         break;
       }
@@ -279,13 +314,15 @@ export async function explore(opts: ExploreOptions): Promise<ExploreResult> {
         llm: opts.scoutLlm ?? opts.llm,
         plan: opts.plan,
         seedUrl: seed,
-        maxSteps: Math.min(scoutBudget, 12),
+        maxSteps: Math.min(scoutBudgetSteps, 12),
+        deadlineMs: scoutDeadline,
         getActions,
         perform: async (id, input) => stepAndRecord(id, input),
         currentState,
         onStep: (info) =>
           log.info('scout step', { step: info.step, action: info.action.slice(0, 40), newState: info.new }),
       });
+      scoutCalls += result.llmCalls;
       scoutOutcome = result.stopped;
       if (result.stopped === 'error') {
         // one seed failing must not kill the rest — log and move on
@@ -293,6 +330,8 @@ export async function explore(opts: ExploreOptions): Promise<ExploreResult> {
         continue;
       }
     }
+    if (Date.now() >= scoutDeadline && scoutOutcome !== 'error') scoutOutcome = 'budget';
+    log.info('scout phase done', { outcome: scoutOutcome, llmCalls: scoutCalls, wallMs: Date.now() - started, capMs: scoutBudget * 1000 });
 
     // ---------------------------------------------------------- wanderer (code policy, no LLM)
     const maxWandererSteps = opts.wandererSteps ?? 40;
@@ -338,8 +377,8 @@ export async function explore(opts: ExploreOptions): Promise<ExploreResult> {
         confidence: f.confidence,
         persona: 'scout+wanderer',
         evidence: { ...f.evidence, steps: f.steps.slice(-8), pageUrl: f.url },
-        screenshot: null,
-        trace: null,
+        screenshot: f.screenshot ?? null,
+        trace: tracing ? tracePath : null,
       });
     }
 
@@ -370,6 +409,9 @@ export async function explore(opts: ExploreOptions): Promise<ExploreResult> {
       warnings: decision.warnings,
     };
   } finally {
+    if (tracing && tracePath) {
+      await context.tracing.stop({ path: tracePath }).catch(() => {});
+    }
     await context.close().catch(() => {});
     await browser.close().catch(() => {});
   }

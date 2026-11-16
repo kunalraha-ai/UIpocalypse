@@ -17,6 +17,12 @@ export const ConfigSchema = z.object({
     .default(['localhost', '127.0.0.1', '*.local', '*.vercel.app', '*.netlify.app']),
   agents: z.number().int().min(1).max(100).default(30), // hard cap 100 (SAFETY.md G7)
   budgetSeconds: z.number().int().min(1).default(60),
+  /**
+   * HARD wall-clock cap on the scouting phase (default 90 s). When it trips,
+   * scouting stops and the swarm proceeds; the report shows the coverage
+   * shortfall. Keeps total run time predictable when the LLM is slow.
+   */
+  scoutBudgetSeconds: z.number().int().min(1).default(90),
   auth: z
     .object({
       storageState: z.string().optional(),
@@ -51,6 +57,8 @@ export const ConfigSchema = z.object({
     .default([]),
   /** Per-host request ceiling (SAFETY.md G7). */
   maxRps: z.number().int().min(1).default(50),
+  /** Record a Playwright trace of the scout phase for replay (off by default). */
+  trace: z.boolean().default(false),
   llm: z
     .object({
       baseURL: z.string().optional(),

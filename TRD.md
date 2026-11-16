@@ -142,8 +142,10 @@ All randomness is seeded; every finding records the seed so runs are reproducibl
 | `scan_codebase` | `{ path, stack? }` | `{ scanId, issues[], appMap }` |
 | `plan_swarm` | `{ scanId, agents?, personas?, goals? }` | `{ planId, personas[], goals[] }` |
 | `run_swarm` | `{ url, planId?, agents?, budgetSeconds?, optIn?: { destructive?, externalSideEffects? } }` | `{ runId, summary, coverage, findingCounts }` (streams progress notifications) |
-| `get_report` | `{ runId, format?: "markdown" \| "json" }` | report + fix prompts |
-| `list_runs` / `diff_runs` | `{ a, b }` | fixed / new / still failing |
+| `get_report` | `{ runId, format?: "markdown" \| "json", path? }` | report + fix prompts (cached per run; `path` only needed before the first cache fill) |
+| `list_runs` | `{}` | run rows with timing, LLM calls, coverage, finding counts |
+| `diff_runs` | `{ a, b, path }` | fixed / new / still failing (stable cluster fingerprints) |
+| `verify_deployment_safety` | `{ path, url, agents?, budgetSeconds? }` | the whole pipeline in one call: scan → plan → scouts → swarm → clustered report |
 
 `verify_deployment_safety` can be a convenience wrapper chaining the four main tools, so one natural-language request maps to one call.
 
@@ -154,6 +156,7 @@ target: http://localhost:3000
 allowHosts: [localhost, "*.vercel.app"]     # verified-ownership list
 agents: 30
 budgetSeconds: 60
+scoutBudgetSeconds: 90                       # HARD cap on the scouting phase — slow LLMs cannot make runs unpredictable
 auth:
   storageState: .uipocalypse/auth.json     # or loginScript
 skipActions: ["Delete account", "Send invite"]
@@ -173,7 +176,7 @@ invariants:
     expect: 1
 ```
 
-## 8. Static rule library (MVP, ~15-20 rules)
+## 8. Static rule library (MVP, 15 rules)
 
 - `dead-handler`: onClick missing, empty, or `() => {}`
 - `unwired-form`: `<form>` with no submit handler/action
@@ -186,7 +189,7 @@ invariants:
 - `no-error-state`: async call with no catch/error UI
 - `no-loading-state`: async submit with no pending state/disabled button
 - `unverified-stripe-webhook`: webhook route without signature verification
-- `missing-submit-guard`: write handler with no double-submit protection
+- `missing-submit-guard`: write call in a component with no pending/disable state
 - `unauth-write-route`: API route that writes without an auth check
 - `no-rate-limit-auth`: auth endpoints without any rate limiting (heuristic)
 - `missing-meta`: no title/description/OG tags (low severity)
