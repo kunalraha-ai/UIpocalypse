@@ -17,9 +17,9 @@
       <input type="email" name="email" placeholder="you@example.com" />
       <button type="submit">Subscribe</button>
     </form>
-    <!-- a real POST write the Double-Clicker can double-fire (duplicate_request guard) -->
-    <form action="/api/echo" method="post">
-      <button type="submit">Echo submit</button>
-    </form>
+    <!-- a real POST write the Double-Clicker can double-fire (duplicate_request
+         guard). fetch-based like real app submits — a native form POST would
+         navigate away on the first click and race the second one away. -->
+    <button onclick="fetch('/api/echo', { method: 'POST' }); document.title = 'echoed'">Echo submit</button>
   </body>
 </html>
