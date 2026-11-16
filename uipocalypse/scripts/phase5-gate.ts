@@ -1,0 +1,245 @@
+/**
+ * Phase 5 gate (IMPLEMENTATION_PLAN.md): full-pipeline timing (3 first-runs +
+ * 1 rerun — medians + ranges for PRD G1), the collector acceptance case
+ * (duplicate observations collapse to one cluster per endpoint), the two
+ * classification rules, screenshots on failure, and the diff_runs demo.
+ *
+ * Usage (from uipocalypse/, sample app on :3123, Supabase up):
+ *   npx tsx scripts/phase5-gate.ts
+ */
+
+import { execSync } from 'node:child_process';
+import { existsSync, readFileSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { analyze } from '../src/analyzer/analyzer.js';
+import { createPlan } from '../src/plan/planner.js';
+import { createLlmSet } from '../src/llm/index.js';
+import { explore } from '../src/browser/runner.js';
+import { swarm } from '../src/browser/orchestrator.js';
+import { mergeDraftedInvariants } from '../src/browser/race.js';
+import { createGuard } from '../src/guard/index.js';
+import { collectRun } from '../src/collect/collector.js';
+import { reviewRun, assembleReport, markdownReport, saveReport, diffRuns, type RunMeta } from '../src/report/reviewer.js';
+import { initWorkspace } from '../src/workspace.js';
+import { openDb, getRun } from '../src/db/index.js';
+import { createLogger } from '../src/logger.js';
+import { loadConfig } from '../src/config.js';
+
+process.env.SUPABASE_DB_URL ??= 'postgresql://postgres:postgres@127.0.0.1:54322/postgres';
+
+const url = 'http://localhost:3123';
+const repo = resolve('../sample-app');
+const RACE = {
+  url: `${url}/checkout`,
+  actionLabel: 'Redeem coupon',
+  input: 'WELCOME10',
+  contexts: 20,
+  setup: async (ctx: import('playwright').BrowserContext) => {
+    await ctx.request.post(`${url}/api/auth/login`, {
+      data: { email: 'alice@example.com', password: 'secret123' },
+    });
+  },
+};
+
+const { config } = loadConfig();
+const seedAppRoutes = ['/profile', '/credits', '/login', '/checkout', '/orders', '/settings'];
+const PERSONAS = ['wanderer', 'double-clicker', 'garbage-paster', 'abandoner', 'race-runner'];
+
+type RunRecord = {
+  label: string;
+  wsDir: string;
+  runId: number;
+  walls: { reset: number; scan: number; plan: number; scouts: number; swarm: number; review: number; total: number };
+  llm: { planner: number; scout: number; total: number };
+  dupObs: number;
+  dupClusters: number;
+  clusters: number;
+  findingClusters: number;
+  correctRejections: number;
+  artifacts: number;
+  planInvariants: { drafted: number; used: number; dropped: number };
+  reportClusters: Array<{ key: string; title: string; severity: string; observations: number; classification: string }>;
+};
+
+async function fullPipeline(
+  label: string,
+  opts: { freshWorkspace: boolean; prevWsDir?: string; race: boolean },
+): Promise<RunRecord> {
+  const logger = createLogger({});
+  console.log(`\n=== ${label} ===`);
+  let t = Date.now();
+  execSync('npx -y supabase@latest db reset', { cwd: repo, stdio: 'pipe' });
+  const resetMs = Date.now() - t;
+
+  const wsDir = opts.freshWorkspace ? mkdtempSync('/tmp/opencode/uip-p5gate-') : opts.prevWsDir!;
+  const ws = initWorkspace(wsDir);
+  const db = openDb(ws.db);
+  const llms = createLlmSet();
+  llms.planner.maxCalls = config.llm.maxCallsPerRun;
+  llms.scout.maxCalls = config.llm.maxCallsPerRun;
+
+  t = Date.now();
+  const { appMap } = analyze(repo);
+  const scanMs = Date.now() - t;
+
+  t = Date.now();
+  const planning = await createPlan({ appMap, targetUrl: url, llm: llms.planner, workspacePlansDir: ws.plans });
+  planning.plan.seedRoutes = [...new Set([...planning.plan.seedRoutes, ...seedAppRoutes])];
+  const planMs = Date.now() - t;
+  console.log(`plan cached=${planning.cached} seeds=${planning.plan.seedRoutes.length} draftedInvariants=${planning.plan.invariants.length}`);
+
+  const inv = await mergeDraftedInvariants(config, planning.plan, createGuard(config), logger);
+
+  t = Date.now();
+  const exploreResult = await explore({
+    url,
+    config,
+    plan: planning.plan,
+    db,
+    routes: planning.appMapRoutes,
+    llm: llms.planner,
+    scoutLlm: llms.scout,
+    logger,
+    budgetSeconds: 90,
+    scoutSteps: 24,
+    wandererSteps: 15,
+    screenshotDir: ws.screenshots,
+  });
+  const scoutMs = Date.now() - t;
+  console.log(`scouts: ${exploreResult.llmCalls} calls / ${(scoutMs / 1000).toFixed(1)}s`);
+
+  t = Date.now();
+  const swarmResult = await swarm({
+    url,
+    config: inv.config,
+    plan: planning.plan,
+    db,
+    routes: planning.appMapRoutes,
+    llm: llms.scout,
+    logger,
+    runId: exploreResult.runId,
+    agents: 50,
+    budgetSeconds: 60, // the default — the 90 s rerun target presumes it (PRD G1)
+    perAgentSteps: 100,
+    personas: PERSONAS, // full roster, always (the phase-5 regression lesson)
+    screenshotDir: ws.screenshots,
+    raceTarget: opts.race
+      ? RACE
+      : undefined, // the rerun mirrors the MCP verify flow, which never races
+  });
+  const swarmMs = Date.now() - t;
+  console.log(`swarm: ${swarmResult.steps} steps / ${(swarmMs / 1000).toFixed(1)}s, findings=${Object.entries(swarmResult.findingCounts).map(([k, v]) => `${k}:${v}`).join(' ')}`);
+
+  t = Date.now();
+  const collected = collectRun(db, swarmResult.runId, appMap);
+  const run = getRun(db, swarmResult.runId)!;
+  const meta: RunMeta = {
+    runId: run.id,
+    targetUrl: run.target_url,
+    agents: run.agents,
+    wallMs: run.duration_ms ?? 0,
+    llmCalls: run.llm_calls ?? 0,
+    startedAt: run.started_at,
+  };
+  const review = await reviewRun({ collected, appMap, llm: llms.planner, run: meta });
+  const report = assembleReport(collected, review, meta);
+  saveReport(ws.runs, report);
+  const reviewMs = Date.now() - t;
+
+  const dupObs = collected.clusters.filter((c) => c.types.includes('duplicate_request')).reduce((s, c) => s + c.observations, 0);
+  const dupClusters = collected.clusters.filter((c) => c.types.includes('duplicate_request')).length;
+  console.log(
+    `clusters: ${collected.clusters.length} total | findings ${collected.findingClusters.length} | rejections ${collected.correctRejections.length} | artifacts ${collected.artifacts.length} | dupObs ${dupObs} → ${dupClusters} clusters`,
+  );
+  console.log(`report: ${report.issues.length} issues, review=${review.issues.length > 0 ? 'llm' : 'mechanical'}`);
+
+  if (label === 'rerun (warm graph + cached plan)') {
+    // diff demo: run 3 vs the rerun — same app, nothing fixed
+    const diff = diffRuns(db, appMap, (db.prepare('SELECT id FROM runs ORDER BY id').all() as Array<{ id: number }>)[0]!.id, swarmResult.runId);
+    console.log(`diff demo (first vs rerun): fixed=${diff.fixed.length} new=${diff.new.length} still=${diff.stillFailing.length}`);
+  }
+  console.log(markdownReport(report).slice(0, 600));
+
+  const rec: RunRecord = {
+    label,
+    wsDir,
+    runId: swarmResult.runId,
+    walls: { reset: resetMs, scan: scanMs, plan: planMs, scouts: scoutMs, swarm: swarmMs, review: reviewMs, total: resetMs + scanMs + planMs + scoutMs + swarmMs + reviewMs },
+    llm: { planner: llms.planner.calls, scout: llms.scout.calls, total: llms.planner.calls + llms.scout.calls },
+    dupObs,
+    dupClusters,
+    clusters: collected.clusters.length,
+    findingClusters: collected.findingClusters.length,
+    correctRejections: collected.correctRejections.length,
+    artifacts: collected.artifacts.length,
+    planInvariants: { drafted: inv.drafted, used: inv.used, dropped: inv.dropped },
+    reportClusters: collected.clusters.map((c) => ({ key: c.key, title: c.title, severity: c.severity, observations: c.observations, classification: c.classification })),
+  };
+  db.close();
+  return rec;
+}
+
+const runs: RunRecord[] = [];
+runs.push(await fullPipeline('first-run 1 (fresh workspace)', { freshWorkspace: true }));
+runs.push(await fullPipeline('first-run 2 (fresh workspace)', { freshWorkspace: true }));
+runs.push(await fullPipeline('first-run 3 (fresh workspace)', { freshWorkspace: true }));
+runs.push(await fullPipeline('rerun (warm graph + cached plan)', { freshWorkspace: false, prevWsDir: runs[2]!.wsDir }));
+
+// ---------------------------------------------------------------- checks
+console.log('\n=== PHASE 5 GATE ===');
+const firsts = runs.slice(0, 3);
+const rerun = runs[3]!;
+const med = (xs: number[]) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)]!;
+const walls = firsts.map((r) => r.walls.total - r.walls.reset);
+const checks: Array<[string, boolean, string]> = [];
+
+checks.push(['first-run pipeline ≤ 4 min (median, PRD G1)', med(walls) <= 240_000, `median ${(med(walls) / 1000).toFixed(0)} s, range ${(Math.min(...walls) / 1000).toFixed(0)}–${(Math.max(...walls) / 1000).toFixed(0)} s (excl. db reset)`]);
+checks.push(['rerun ≤ 90 s (PRD G1)', rerun.walls.total - rerun.walls.reset <= 90_000, `${((rerun.walls.total - rerun.walls.reset) / 1000).toFixed(0)} s (scouts ${(rerun.walls.scouts / 1000).toFixed(0)} s + swarm ${(rerun.walls.swarm / 1000).toFixed(0)} s + report ${(rerun.walls.review / 1000).toFixed(0)} s)`]);
+checks.push([
+  'collector acceptance: duplicate observations collapse to one cluster per endpoint',
+  firsts.every((r) => r.dupClusters >= 2 && r.dupClusters <= 4),
+  firsts.map((r) => `${r.dupObs}→${r.dupClusters}`).join(', '),
+]);
+checks.push([
+  'classification: 4xx-on-existing-route downgraded, ERR_ABORTED filtered',
+  firsts.every((r) => r.correctRejections >= 1 && r.artifacts >= 1),
+  `rejections ${firsts.map((r) => r.correctRejections).join('/')}, artifacts ${firsts.map((r) => r.artifacts).join('/')}`,
+]);
+
+// screenshots on failure: dead_click/inconsistent findings carry existing files
+const ws3 = initWorkspace(runs[2]!.wsDir);
+const db3 = openDb(ws3.db);
+const shotRows = db3.prepare("SELECT screenshot FROM findings WHERE type IN ('dead_click','inconsistent_feedback') AND screenshot IS NOT NULL").all() as Array<{ screenshot: string }>;
+checks.push(['screenshots on failure exist', shotRows.length > 0 && shotRows.every((r) => existsSync(r.screenshot!)), `${shotRows.length} screenshot findings, all files present`]);
+db3.close();
+
+// report quality: every finding cluster carries a fix prompt + root cause
+const rep = JSON.parse(readFileSync(`${initWorkspace(runs[2]!.wsDir).runs}/run-${runs[2]!.runId}-report.json`, 'utf8')) as { issues: Array<{ rootCause: string; fixPrompt: string }> };
+checks.push([
+  'every reported issue carries a root cause + paste-ready fix prompt',
+  rep.issues.length > 0 && rep.issues.every((i) => i.rootCause.length > 10 && i.fixPrompt.length > 10),
+  `${rep.issues.length} issues`,
+]);
+
+let pass = true;
+for (const [name, ok, detail] of checks) {
+  console.log(`  ${ok ? 'PASS' : 'FAIL'}  ${name} — ${detail}`);
+  if (!ok) pass = false;
+}
+console.log(`\nGATE: ${pass ? 'PASS' : 'FAIL'}`);
+
+// timing record for PRD G1 (reviewer asked for medians + ranges, counts with percentages)
+console.log('\n=== timing record (PRD G1) ===');
+console.log(`first-run pipeline (scan+plan+scouts+swarm+report, no db reset): ${walls.map((w) => (w / 1000).toFixed(0)).join(', ')} s → median ${(med(walls) / 1000).toFixed(0)} s`);
+console.log(`first-run with db reset: ${firsts.map((r) => (r.walls.total / 1000).toFixed(0)).join(', ')} s`);
+console.log(`rerun (cached plan + warm graph): ${((rerun.walls.total - rerun.walls.reset) / 1000).toFixed(0)} s (scout LLM ${rerun.llm.scout}, planner ${rerun.llm.planner})`);
+console.log(`phase breakdown (first-run 3): scan ${runs[2]!.walls.scan}ms, plan ${runs[2]!.walls.plan}ms, scouts ${(runs[2]!.walls.scouts / 1000).toFixed(0)}s, swarm ${(runs[2]!.walls.swarm / 1000).toFixed(0)}s, review ${(runs[2]!.walls.review / 1000).toFixed(0)}s`);
+console.log(`LLM per run (planner+reviewer | scouts+escal): ${runs.map((r) => `${r.llm.planner}|${r.llm.scout}`).join('  ')}`);
+
+// cluster inventory for the FP classification (PHASE5_RESULTS.md)
+console.log('\n=== clusters (first-run 3) — for FP classification ===');
+for (const c of runs[2]!.reportClusters) console.log(`  [${c.classification}] ${c.key} — ${c.observations} obs (${c.severity})`);
+console.log(`\nplanner-drafted invariants: ${runs.map((r) => `${r.label}: ${r.planInvariants.drafted}→${r.planInvariants.used}`).join('  ')}`);
+
+for (const r of runs) if (r.label.startsWith('first-run')) rmSync(r.wsDir, { recursive: true, force: true });
