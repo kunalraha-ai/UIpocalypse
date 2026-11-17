@@ -109,7 +109,7 @@ export function finishRun(
   );
 }
 
-export function listRuns(db: Db): Array<{
+export type RunRow = {
   id: number;
   started_at: string;
   target_url: string;
@@ -117,18 +117,18 @@ export function listRuns(db: Db): Array<{
   duration_ms: number | null;
   llm_calls: number | null;
   coverage: number | null;
-}> {
+};
+
+export function listRuns(db: Db): RunRow[] {
   return db
     .prepare('SELECT id, started_at, target_url, agents, duration_ms, llm_calls, coverage FROM runs ORDER BY id')
-    .all() as Array<{
-    id: number;
-    started_at: string;
-    target_url: string;
-    agents: number;
-    duration_ms: number | null;
-    llm_calls: number | null;
-    coverage: number | null;
-  }>;
+    .all() as RunRow[];
+}
+
+export function getRun(db: Db, id: number): RunRow | null {
+  return db
+    .prepare('SELECT id, started_at, target_url, agents, duration_ms, llm_calls, coverage FROM runs WHERE id = ?')
+    .get(id) as RunRow | null;
 }
 
 // ---------------------------------------------------------------- findings
@@ -170,10 +170,7 @@ export function addFinding(
   return Number(info.lastInsertRowid);
 }
 
-export function listFindings(
-  db: Db,
-  runId: number,
-): Array<{
+export type FindingRow = {
   id: number;
   run_id: number;
   type: string;
@@ -186,19 +183,8 @@ export function listFindings(
   evidence_json: string | null;
   screenshot: string | null;
   trace: string | null;
-}> {
-  return db.prepare('SELECT * FROM findings WHERE run_id = ? ORDER BY id').all(runId) as Array<{
-    id: number;
-    run_id: number;
-    type: string;
-    severity: string | null;
-    confidence: string | null;
-    persona: string | null;
-    state_id: number | null;
-    action_id: number | null;
-    cluster_id: string | null;
-    evidence_json: string | null;
-    screenshot: string | null;
-    trace: string | null;
-  }>;
+};
+
+export function listFindings(db: Db, runId: number): FindingRow[] {
+  return db.prepare('SELECT * FROM findings WHERE run_id = ? ORDER BY id').all(runId) as FindingRow[];
 }

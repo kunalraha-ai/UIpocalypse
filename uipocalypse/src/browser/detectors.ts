@@ -28,6 +28,8 @@ export type FindingCandidate = {
   steps: string[];
   url: string;
   actionId?: number;
+  /** failure screenshot path, when the caller enabled screenshots */
+  screenshot?: string | null;
 };
 
 const BENIGN = /(favicon|\.map$|sentry|analytics|hotjar|googletagmanager)/i;

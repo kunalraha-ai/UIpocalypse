@@ -67,6 +67,40 @@ describe('static rule library (TRD §8, first 10 rules) — fixture mini-app', (
     expect(byRule('exposed-secret')).toHaveLength(1);
   });
 
+  // ------------------------------------------------ Phase 5 rules (11–15)
+
+  it('permissive-rls fires on using (true), not on scoped policies', () => {
+    expect(byRule('permissive-rls')).toHaveLength(1);
+    expect(has('permissive-rls', /yes_rls/)).toBe(true);
+    expect(has('permissive-rls', /auth\.uid/)).toBe(false);
+  });
+
+  it('unauth-write-route fires only on the unauthenticated write endpoint', () => {
+    expect(files('unauth-write-route')).toContain('app/api/write-noauth/route.ts');
+    expect(files('unauth-write-route')).not.toContain('app/api/write-auth/route.ts');
+    // auth endpoints are unauthenticated by design — never flagged
+    expect(files('unauth-write-route')).not.toContain('app/api/auth/login/route.ts');
+    expect(byRule('unauth-write-route')).toHaveLength(1);
+  });
+
+  it('no-rate-limit-auth fires on the bare login, not on the limited signup', () => {
+    expect(files('no-rate-limit-auth')).toContain('app/api/auth/login/route.ts');
+    expect(files('no-rate-limit-auth')).not.toContain('app/api/auth/signup/route.ts');
+    expect(byRule('no-rate-limit-auth')).toHaveLength(1);
+  });
+
+  it('missing-submit-guard fires on the unguarded write, not on the pending-disabled one', () => {
+    expect(files('missing-submit-guard')).toContain('components/bad-submit.tsx');
+    expect(files('missing-submit-guard')).not.toContain('components/good-submit.tsx');
+    // GET-only components and route files never fire
+    expect(byRule('missing-submit-guard')).toHaveLength(1);
+  });
+
+  it('missing-meta fires when the app has no root layout metadata (the mini-app has none)', () => {
+    expect(byRule('missing-meta')).toHaveLength(1);
+    expect(has('missing-meta', /root layout|No root layout/i)).toBe(true);
+  });
+
   it('FP gates from the real-repo audit (vercel/commerce, shadcn/taxonomy, supabase user-management)', () => {
     // disabled controls are intentionally inert — not dead
     expect(has('dead-handler', /Coming soon/)).toBe(false);

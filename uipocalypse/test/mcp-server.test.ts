@@ -29,7 +29,17 @@ describe('MCP server over stdio (Phase 1 deliverable: connectable + stub scan)',
     await client.connect(transport);
 
     const tools = await client.listTools();
-    expect(tools.tools.map((t) => t.name)).toContain('scan_codebase');
+    expect(tools.tools.map((t) => t.name)).toEqual(
+      expect.arrayContaining([
+        'scan_codebase',
+        'plan_swarm',
+        'run_swarm',
+        'get_report',
+        'list_runs',
+        'diff_runs',
+        'verify_deployment_safety',
+      ]),
+    );
 
     const res = (await client.callTool({
       name: 'scan_codebase',
@@ -46,6 +56,22 @@ describe('MCP server over stdio (Phase 1 deliverable: connectable + stub scan)',
     expect(payload.scanId).toMatch(/^run_/);
     expect(Array.isArray(payload.issues)).toBe(true);
     expect(payload.appMap.fileCount).toBeGreaterThan(0);
+
+    // Phase 5 surface: list_runs works over the empty workspace; get_report
+    // on a missing run explains the path requirement instead of crashing
+    const listed = (await client.callTool({ name: 'list_runs', arguments: {} })) as {
+      isError?: boolean;
+      content: Array<{ type: string; text: string }>;
+    };
+    expect(listed.isError).toBeFalsy();
+    expect(JSON.parse(listed.content[0]!.text)).toEqual([]);
+
+    const missing = (await client.callTool({ name: 'get_report', arguments: { runId: 999 } })) as {
+      isError?: boolean;
+      content: Array<{ type: string; text: string }>;
+    };
+    expect(missing.isError).toBe(true);
+    expect(missing.content[0]!.text).toMatch(/pass .*path/i);
 
     await client.close();
   });

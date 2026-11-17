@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import type { AppMap, Issue, Severity } from './types.js';
 
 /**
- * Static rule library (TRD §8, first 10 rules). All rules are conservative:
+ * Static rule library (TRD §8, 15 rules). All rules are conservative:
  * they fire on clear signals and attach evidence + a fix hint.
  */
 
@@ -343,6 +343,154 @@ export function exposedSecret(ctx: RuleContext): Issue[] {
 
 // ---------------------------------------------------------------- registry
 
+// ---------------------------------------------------------------- 11–15. Phase 5 rules
+
+const POLICY_PERMISSIVE =
+  /create\s+policy\s+\S+\s+on\s+(?:public\.)?"?([a-z_][a-z0-9_]*)"?(?:(?!using).)*?using\s*\(\s*true\s*\)/gis;
+
+/** 11. permissive-rls: a policy of `using (true)` exposes the table to the anon role. */
+export function permissiveRls(ctx: RuleContext): Issue[] {
+  const issues: Issue[] = [];
+  for (const migration of ctx.migrations) {
+    const text = migration.text
+      .replace(/--[^\n]*/g, ' ')
+      .replace(/\/\*[\s\S]*?\*\//g, ' ');
+    for (const m of text.matchAll(POLICY_PERMISSIVE)) {
+      issues.push({
+        rule: 'permissive-rls',
+        severity: 'high',
+        file: migration.rel,
+        line: lineOf(migration.text, m.index ?? 0),
+        message: `Policy on "${m[1]}" grants access with using (true) — every row is readable/writable by the anon role.`,
+        fixHint: `Scope the policy: using (auth.uid() = user_id) or similar.`,
+      });
+    }
+  }
+  return issues;
+}
+
+const WRITE_METHOD = /export\s+(?:async\s+)?function\s+(POST|PUT|PATCH|DELETE)\b/;
+const AUTH_SIGNALS = /getSession|getUser\s*\(|supabase\.auth|getServerSession|requireUser|auth\s*\(\)|currentUser|Bearer/i;
+const AUTH_PATH = /\/auth\b|login|signup|register|password|session|otp|magic|webhook/i;
+const RATE_LIMIT_SIGNALS = /rate.?limit|throttle|limiter|upstash/i;
+
+/** 12. unauth-write-route: a write endpoint with no auth check at all. */
+export function unauthWriteRoute(ctx: RuleContext): Issue[] {
+  const issues: Issue[] = [];
+  for (const r of ctx.appMap.routes) {
+    if (r.kind !== 'api' || !r.file) continue;
+    if (AUTH_PATH.test(r.path)) continue; // auth endpoints are unauthenticated by design
+    const text = ctx.fileText(r.file);
+    if (!text || !WRITE_METHOD.test(text)) continue;
+    if (AUTH_SIGNALS.test(text)) continue;
+    issues.push({
+      rule: 'unauth-write-route',
+      severity: 'high',
+      file: r.file,
+      line: 1,
+      message: `API route ${r.path} writes (POST/PUT/PATCH/DELETE) without any auth check — anyone can call it.`,
+      fixHint: 'Verify the session before writing: const user = await getSessionUser(); if (!user) return 401.',
+    });
+  }
+  return issues;
+}
+
+/** 13. no-rate-limit-auth: auth endpoints without any rate limiting (heuristic). */
+export function noRateLimitAuth(ctx: RuleContext): Issue[] {
+  const issues: Issue[] = [];
+  for (const r of ctx.appMap.routes) {
+    if (r.kind !== 'api' || !r.file) continue;
+    if (!/login|signup|register|password|otp|magiclink/i.test(r.path)) continue;
+    const text = ctx.fileText(r.file);
+    if (!text) continue;
+    if (RATE_LIMIT_SIGNALS.test(text)) continue;
+    issues.push({
+      rule: 'no-rate-limit-auth',
+      severity: 'medium',
+      file: r.file,
+      line: 1,
+      message: `Auth endpoint ${r.path} has no rate limiting — brute-forceable.`,
+      fixHint: 'Add a rate limiter (per-IP) in front of auth routes; see upstash/ratelimit or your platform middleware.',
+    });
+  }
+  return issues;
+}
+
+const PENDING_SIGNALS = /disabled|isPending|submitting|useFormStatus|setLoading|isLoading/i;
+const COMPONENT_FILE = /\.(tsx|jsx)$/;
+
+/** 14. missing-submit-guard: write call in a component with no pending/disable state anywhere. */
+export function missingSubmitGuard(ctx: RuleContext): Issue[] {
+  const issues: Issue[] = [];
+  const guarded = new Map<string, boolean>();
+  for (const call of ctx.appMap.apiCalls) {
+    if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(call.method)) continue;
+    if (!COMPONENT_FILE.test(call.file)) continue; // route files have no button to disable
+    if (!guarded.has(call.file)) {
+      const text = ctx.fileText(call.file);
+      guarded.set(call.file, text ? PENDING_SIGNALS.test(text) : true);
+    }
+    if (guarded.get(call.file)) continue;
+    issues.push({
+      rule: 'missing-submit-guard',
+      severity: 'medium',
+      file: call.file,
+      line: call.line,
+      message: `Write to ${call.url} with no pending state — rapid double-clicks double-fire the request (duplicate_write class).`,
+      fixHint: 'Disable the control while the request is in flight (const [pending, setPending] = useState(false)).',
+    });
+  }
+  return issues;
+}
+
+/** 15. missing-meta: no title in the root layout (Next) or index.html (Vite). */
+export function missingMeta(ctx: RuleContext): Issue[] {
+  const issues: Issue[] = [];
+  const meta = /metadata|generateMetadata|<title/i;
+  if (ctx.appMap.framework === 'next-app') {
+    const layout = ctx.appMap.files.find((f) => /app\/layout\.(tsx|ts|jsx|js)$/.test(f.replaceAll('\\', '/')));
+    if (!layout) {
+      issues.push({
+        rule: 'missing-meta',
+        severity: 'low',
+        file: 'app/layout.tsx',
+        line: 1,
+        message: 'No root layout found — the app has no <title>/description metadata.',
+        fixHint: 'Add app/layout.tsx exporting `metadata` with title and description.',
+      });
+    } else {
+      const text = ctx.fileText(layout);
+      if (!text || !meta.test(text)) {
+        issues.push({
+          rule: 'missing-meta',
+          severity: 'low',
+          file: layout,
+          line: 1,
+          message: 'Root layout has no metadata export — no <title>/description for users or link previews.',
+          fixHint: 'export const metadata = { title: ..., description: ... };',
+        });
+      }
+    }
+  } else if (ctx.appMap.framework === 'vite-react') {
+    const html = ctx.fileText('index.html');
+    if (html && !/<title/i.test(html)) {
+      issues.push({
+        rule: 'missing-meta',
+        severity: 'low',
+        file: 'index.html',
+        line: 1,
+        message: 'index.html has no <title>.',
+        fixHint: 'Add <title> and a description meta tag.',
+      });
+    }
+  }
+  return issues;
+}
+
+function lineOf(text: string, index: number): number {
+  return text.slice(0, index).split('\n').length;
+}
+
 export const RULES: Array<{ name: string; run: (ctx: RuleContext) => Issue[] }> = [
   { name: 'dead-handler', run: deadHandler },
   { name: 'unwired-form', run: unwiredForm },
@@ -354,6 +502,11 @@ export const RULES: Array<{ name: string; run: (ctx: RuleContext) => Issue[] }> 
   { name: 'no-error-state', run: noErrorState },
   { name: 'no-loading-state', run: noLoadingState },
   { name: 'exposed-secret', run: exposedSecret },
+  { name: 'permissive-rls', run: permissiveRls },
+  { name: 'unauth-write-route', run: unauthWriteRoute },
+  { name: 'no-rate-limit-auth', run: noRateLimitAuth },
+  { name: 'missing-submit-guard', run: missingSubmitGuard },
+  { name: 'missing-meta', run: missingMeta },
 ];
 
 export function runRules(ctx: RuleContext): Issue[] {

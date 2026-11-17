@@ -1,6 +1,6 @@
 # uipocalypse
 
-Local MCP server + CLI: chaotic-user QA for vibecoded apps. Status: **Phase 4** — scan_codebase (10 static rules), in-page runtime + detectors, state graph, Planner/Scouts, and the 50-agent swarm (personas, race mode, Ctrl-C partial report) are live; the report/collector lands in Phase 5. See the repo-root docs (`PRD.md`, `TRD.md`, `ARCHITECTURE.md`, `SAFETY.md`, `IMPLEMENTATION_PLAN.md`, `PHASE0-4_RESULTS.md`).
+Local MCP server + CLI: chaotic-user QA for vibecoded apps. Status: **Phase 5** — 15 static rules, in-page runtime + detectors, state graph, Planner/Scouts, the 50-agent swarm (personas, race mode, Ctrl-C partial report), and the Phase 5 collector/reviewer: clustered reports with fix prompts, `get_report`/`list_runs`/`diff_runs`/`verify_deployment_safety`. See the repo-root docs (`PRD.md`, `TRD.md`, `ARCHITECTURE.md`, `SAFETY.md`, `IMPLEMENTATION_PLAN.md`, `PHASE0-5_RESULTS.md`).
 
 ## Connect from Claude Code (or any MCP client)
 
@@ -22,7 +22,7 @@ Then add to your MCP client config:
 }
 ```
 
-Ask: *"scan this codebase with uipocalypse"* — `scan_codebase` runs the real static rules (Phase 2); `plan_swarm`/`run_swarm` run scouts + the swarm (Phases 3-4); the clustered report lands in Phase 5.
+Ask: *"scan this codebase with uipocalypse"* — `scan_codebase` runs the 15 static rules; `plan_swarm`/`run_swarm` run scouts + the swarm; `get_report` returns the clustered report with fix prompts; `diff_runs` is the fix-verify loop; `verify_deployment_safety` chains all of it in one call.
 
 ## Safety (v0)
 

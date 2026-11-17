@@ -1,6 +1,7 @@
 import type { Browser, BrowserContext, Page } from 'playwright';
 import type { UiConfig } from '../config.js';
 import type { Logger } from '../logger.js';
+import { createGuard } from '../guard/index.js';
 import type { FindingCandidate } from './detectors.js';
 import { RUNTIME_SOURCE } from '../runtime/runtime-source.js';
 
@@ -205,6 +206,35 @@ export async function runRace(
   }
 }
 
+/**
+ * FR-P1: planner-drafted `atMost` invariants join the config's own, after a
+ * preflight on the DB (a drafted invariant that already fails on a clean DB
+ * is dropped, not reported). Without a reachable allow-listed DB, the drafted
+ * invariants are skipped — `duplicate_request` stays the standalone signal.
+ */
+export async function mergeDraftedInvariants(
+  config: UiConfig,
+  plan: { invariants: InvariantSpec[] },
+  guard: ReturnType<typeof createGuard>,
+  logger: Logger,
+): Promise<{ config: UiConfig; drafted: number; used: number; dropped: number }> {
+  const drafted = plan.invariants.length;
+  if (!drafted) return { config, drafted: 0, used: 0, dropped: 0 };
+  const dbUrl = dbUrlFromEnv();
+  const dbHost = dbUrl ? dbHostFromUrl(dbUrl) : null;
+  if (!dbUrl || !dbHost || !guard.checkModes({ dbHost, modes: ['race'] }).allowed) {
+    logger.warn('planner-drafted invariants skipped (no reachable allow-listed DB)');
+    return { config, drafted, used: 0, dropped: drafted };
+  }
+  const pre = await preflightInvariants(plan.invariants, pgInvariantRunner(dbUrl));
+  for (const d of pre.dropped) {
+    logger.warn('planner-drafted invariant dropped (violated before the run)', d);
+  }
+  const own = new Set(config.invariants.map((i) => i.name));
+  const merged = [...config.invariants, ...pre.usable.filter((i) => !own.has(i.name))];
+  return { config: { ...config, invariants: merged }, drafted, used: pre.usable.length, dropped: pre.dropped.length };
+}
+
 /** Postgres-backed invariant runner (Supabase local default). */
 export function pgInvariantRunner(dbUrl: string): InvariantRunner {
   return async (invariant) => {
@@ -244,6 +274,30 @@ export async function attributeDuplicateEffects(opts: {
     if (!result.pass) failed.push(result);
   }
   return failed;
+}
+
+/**
+ * FR-P1 preflight: a planner-drafted `atMost` invariant is only usable if it
+ * HOLDS on the database before the run — one that is already violated on a
+ * clean DB is a bad invariant, not a finding (review directive). Returns the
+ * usable subset plus the dropped ones with their offending values.
+ */
+export async function preflightInvariants(
+  invariants: InvariantSpec[],
+  run: InvariantRunner,
+): Promise<{ usable: InvariantSpec[]; dropped: Array<{ name: string; actual: number; atMost?: number; error?: string }> }> {
+  const usable: InvariantSpec[] = [];
+  const dropped: Array<{ name: string; actual: number; atMost?: number; error?: string }> = [];
+  for (const inv of invariants.filter(pointInTime)) {
+    try {
+      const result = await run(inv);
+      if (result.pass) usable.push(inv);
+      else dropped.push({ name: inv.name, actual: result.actual, atMost: inv.atMost });
+    } catch (e) {
+      dropped.push({ name: inv.name, actual: -1, error: String(e).slice(0, 120) });
+    }
+  }
+  return { usable, dropped };
 }
 
 export function dbUrlFromEnv(env: Record<string, string | undefined> = process.env): string | null {
