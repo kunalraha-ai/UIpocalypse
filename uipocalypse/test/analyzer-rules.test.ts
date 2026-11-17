@@ -113,5 +113,16 @@ describe('static rule library (TRD §8, first 10 rules) — fixture mini-app', (
     expect(has('unwired-form', /ServerActions/)).toBe(false);
     // platform-injected env vars are always present at runtime
     expect(has('undefined-env', /NODE_ENV/)).toBe(false);
+    expect(has('undefined-env', /VERCEL/)).toBe(false);
+    expect(has('undefined-env', /PORT/)).toBe(false);
+    expect(has('undefined-env', /FIGMA_PUBLIC_URL/)).toBe(false);
+  });
+
+  it('serverless catch-all routes (api/v1/[...path].ts) resolve /api/v1/* fetches (GrowthSent eval)', () => {
+    // the fixture fetches /api/v1/auth/google/start — served by the catch-all
+    expect(has('missing-endpoint', /api\/v1\/auth/)).toBe(false);
+    // genuinely missing endpoints still fire (the catch-all is scoped to /api/v1)
+    expect(has('missing-endpoint', /api\/missing/)).toBe(true);
+    expect(byRule('missing-endpoint')).toHaveLength(1);
   });
 });

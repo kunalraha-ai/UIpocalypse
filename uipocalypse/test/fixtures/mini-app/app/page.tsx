@@ -45,6 +45,15 @@ export default function Page() {
           Server action
         </button>
       </form>
+
+      {/* Vercel serverless catch-all (GrowthSent eval): /api/v1/* resolves
+          through api/v1/[...path].ts — must not fire missing-endpoint */}
+      <button onClick={() => { fetch('/api/v1/auth/google/start'); }}>Catch-all fetch</button>
+      {/* bare VERCEL is platform-injected — must not fire undefined-env */}
+      {void process.env.VERCEL}
+      {/* PaaS/Figma-Make platform vars likewise */}
+      {void process.env.PORT}
+      {void process.env.FIGMA_PUBLIC_URL}
     </div>
   );
 }

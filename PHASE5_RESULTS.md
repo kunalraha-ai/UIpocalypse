@@ -66,6 +66,23 @@ Two root causes found in execution 1, both fixed red→green (commits `045f273`,
 
 **Execution 3 (re-run)** — recorded below when complete.
 
+## Real-app eval: GrowthSent (2026-11-17, recovered session)
+
+The interrupted session left an eval target (`GrowthSent/` — a real 68 MB Figma-Make vibecoded app, gitignored, not product code) and a stdio MCP-client driver (`eval-growthsent.mjs`). Running `scan_codebase` against it live surfaced **two analyzer convention gaps, both fixed with locked regression fixtures**:
+
+1. **Vercel serverless functions were invisible route sources.** The app's entire backend is `api/v1/[...path].ts` (a catch-all) — the analyzer only knew Next routers, so all 29 `/api/v1/*` fetches fired `missing-endpoint` as FPs. Fix: framework-agnostic `api/**/*.ts` route extraction with `[...slug]` catch-all matching (29 → 0).
+2. **Platform-injected env vars beyond VERCEL_**: bare `VERCEL`, `PORT` (PaaS convention), `FIGMA_*` (Figma Make) all fired `undefined-env` as FPs. Fix: allowlist extended.
+
+Final scan (0.7 s, 330 files): **29 issues, every one verified true** —
+
+| Rule | Count | Verified |
+|---|---|---|
+| dead-handler | 14 | ✅ all — Figma-Make generated `<button>Run fresh scan ↻</button>`, `✦ AI Fix All`, `✦ AI Fix` etc. with literally no onClick (checked in source); the exact bug class the product exists for |
+| undefined-env | 14 | ✅ app-specific ops flags (`PROVISION_MONGODB_*`, `RUN_MONGODB_INTEGRATION_TESTS`, `CRAWLER_TIMEOUT`, `DEV`, `MODE`, …) genuinely absent from every .env file |
+| missing-submit-guard | 1 | ✅ a websites write with no pending state |
+
+**Real-repo FP rate ≈ 0%** after the convention fixes — the third consecutive external validation (after vercel/commerce, shadcn/taxonomy, supabase user-management in the phase-4 pre-work) to land at zero after fixes.
+
 ### False-positive rate over the clustered set (execution 2, first-run 3)
 
 The classification rules now do real work — correct rejections (login 401 ×58, coupon 400 ×26, coupon 404 ×2) and cancellation artifacts (ERR_ABORTED ×~50 obs across 9 clusters) never enter the findings bucket. Over the 16 finding clusters (counts with percentages; n is small):

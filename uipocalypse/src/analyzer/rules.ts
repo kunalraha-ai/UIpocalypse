@@ -116,14 +116,27 @@ function pathSegments(url: string): string[] {
 export function missingEndpoint(ctx: RuleContext): Issue[] {
   const issues: Issue[] = [];
   const apiRoutes = ctx.appMap.routes.filter((r) => r.kind === 'api');
+  const matches = (fetchSegs: string[], routePath: string): boolean => {
+    const rSegs = pathSegments(routePath);
+    const catchIdx = rSegs.findIndex((s) => s.startsWith(':...'));
+    if (catchIdx !== -1) {
+      // serverless catch-all (api/v1/[...path].ts): prefix must match and the
+      // fetch must have at least one segment in the catch-all position
+      const fetchBefore = fetchSegs.slice(0, catchIdx);
+      const routeBefore = rSegs.slice(0, catchIdx);
+      return (
+        fetchSegs.length > catchIdx &&
+        fetchBefore.length === routeBefore.length &&
+        fetchBefore.every((s, i) => routeBefore[i]!.startsWith(':') || routeBefore[i]!.toLowerCase() === s.toLowerCase())
+      );
+    }
+    if (fetchSegs.length !== rSegs.length) return false;
+    return fetchSegs.every((s, i) => rSegs[i]!.startsWith(':') || rSegs[i]!.toLowerCase() === s.toLowerCase());
+  };
   for (const call of ctx.appMap.apiCalls) {
     if (!call.url.startsWith('/') || call.url.startsWith('//')) continue;
     const segs = pathSegments(call.url);
-    const matched = apiRoutes.some((route) => {
-      const rSegs = pathSegments(route.path);
-      if (segs.length !== rSegs.length) return false;
-      return segs.every((s, i) => rSegs[i]!.startsWith(':') || rSegs[i]!.toLowerCase() === s.toLowerCase());
-    });
+    const matched = apiRoutes.some((route) => matches(segs, route.path));
     if (!matched) {
       issues.push({
         rule: 'missing-endpoint',
@@ -217,7 +230,7 @@ export function serviceKeyInClient(ctx: RuleContext): Issue[] {
 // ---------------------------------------------------------------- 6. undefined-env
 
 /** Platform-injected env vars: always present at runtime, never in .env files. */
-const PLATFORM_ENV = /^VERCEL_|^NODE_ENV$/;
+const PLATFORM_ENV = /^VERCEL(_|$)|^NODE_ENV$|^PORT$|^FIGMA_/;
 
 export function undefinedEnv(ctx: RuleContext): Issue[] {
   const issues: Issue[] = [];

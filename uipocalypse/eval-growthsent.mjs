@@ -27,12 +27,12 @@ try {
     const tools = await client.listTools();
     console.log(JSON.stringify({ workspace: EVAL_WS, tools: tools.tools.map((t) => t.name) }, null, 2));
   } else if (command === 'scan') {
-    const res = await client.callTool({ name: 'scan_codebase', arguments: { path: process.argv[3] } });
+    const res = await client.callTool({ name: 'scan_codebase', arguments: { path: resolve(process.argv[3]) } });
     console.log(res.content[0].text);
   } else if (command === 'verify') {
     const res = await client.callTool({
       name: 'verify_deployment_safety',
-      arguments: { path: process.argv[3], url: process.argv[4], agents: 20, budgetSeconds: 60 },
+      arguments: { path: resolve(process.argv[3]), url: process.argv[4], agents: 20, budgetSeconds: 60 },
     });
     console.log(res.content[0].text);
   } else {
