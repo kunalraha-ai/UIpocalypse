@@ -321,7 +321,7 @@ function fileRoutes(rel: string, framework: string): RouteInfo[] {
   }
   // Vercel/Netlify serverless functions convention (framework-agnostic):
   // api/foo.ts → /api/foo, api/v1/[...path].ts → /api/v1/:...path (catch-all)
-  let m = norm.match(/^api\/(.*)\.(ts|js)$/);
+  const m = norm.match(/^api\/(.*)\.(ts|js)$/);
   if (m) {
     const rest = m[1] === 'index' ? [] : m[1]!.split('/');
     return [{ path: pathFromSegments(['api', ...rest]), kind: 'api', file: rel }];

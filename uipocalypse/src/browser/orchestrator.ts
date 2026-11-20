@@ -78,6 +78,8 @@ export type SwarmResult = {
   suppressedDeadVerdicts: number;
   /** controls that worked on some interactions this run but not others (inconsistent_feedback findings) */
   inconsistentFeedbackActions: string[];
+  /** LLM calls made by stalled agents (should be ~0 after the phase-6 fix) */
+  escalationCalls: number;
   aborted: boolean;
   warnings: string[];
 };

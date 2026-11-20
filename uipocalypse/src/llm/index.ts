@@ -129,7 +129,7 @@ class OpenAICompatLlm implements LLM {
     this.calls++;
     // walk the fallback chain while models are deprecated/unavailable (410/404)
     for (;;) {
-      let failure: Error | null = null;
+      let failure: Error;
       try {
         const text = await this.request(this.activeModel, opts);
         return this.parseAndValidate(text, opts.schema);
@@ -156,7 +156,7 @@ class OpenAICompatLlm implements LLM {
     return status !== undefined && MODEL_UNAVAILABLE.has(Number(status));
   }
 
-  private async request<T>(
+  private async request(
     model: string,
     opts: { system?: string; user: string; maxTokens?: number; label?: string },
   ): Promise<string> {
@@ -219,6 +219,7 @@ export async function healthCheck(llm: LLM, envVar: string): Promise<string> {
   } catch (e) {
     throw new Error(
       `LLM health check failed (model chain starting "${llm.model}"): ${String(e).slice(0, 200)}. Set ${envVar} in .env to a current catalog model — deprecations happen (both phase-5 models returned HTTP 410 on 2026-11-20).`,
+      { cause: e },
     );
   }
 }
