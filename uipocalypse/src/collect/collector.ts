@@ -40,9 +40,15 @@ export type Cluster = {
 };
 
 export type CoverageReport = {
+  /** reached (state,action) pairs ÷ discovered pairs in the runtime graph */
   coverage: number;
+  /** reached app-map interactive elements ÷ ALL interactive elements the static analyzer found in the code */
+  appMapCoverage: number;
   reachedActions: number;
   discoveredActions: number;
+  appMapTotal: number;
+  appMapReached: number;
+  appMapUnreached?: string[];
   unreached: Array<{ label: string; route: string; riskClass: string; reason: string }>;
 };
 
@@ -297,9 +303,48 @@ export function computeCoverage(db: Db, routes: string[]): CoverageReport {
 
   return {
     coverage: stats.actions === 0 ? 0 : stats.performed / stats.actions,
+    appMapCoverage: 0,
     reachedActions: stats.performed,
     discoveredActions: stats.actions,
+    appMapTotal: 0,
+    appMapReached: 0,
     unreached: unreached.slice(0, 30),
+  };
+}
+
+/**
+ * Second coverage denominator (benchmark §0): every interactive element the
+ * STATIC analyzer found in the code (excluding aria-hidden). Reached = an
+ * element whose masked label matches a runtime action that was actually
+ * performed. This catches "the swarm never even saw the button in the code."
+ */
+export function computeAppMapCoverage(db: Db, appMap: AppMap): { coverage: number; total: number; reached: number; unreachedLabels: string[] } {
+  const performed = new Set(
+    (
+      db
+        .prepare(
+          `SELECT DISTINCT a.label FROM actions a
+           JOIN transitions t ON t.action_id = a.id`,
+        )
+        .all() as Array<{ label: string | null }>
+    )
+      .map((r) => mask((r.label ?? '').toLowerCase()))
+      .filter(Boolean),
+  );
+  const interactive = appMap.elements.filter((e) => !e.ariaHidden && /button|a|input|select|textarea|form/i.test(e.tag));
+  let reached = 0;
+  const unreachedLabels: string[] = [];
+  for (const el of interactive) {
+    const key = mask(el.label.toLowerCase().trim());
+    if (!key) continue;
+    if (performed.has(key)) reached++;
+    else unreachedLabels.push(`${el.tag} "${el.label.slice(0, 40)}" (${el.file})`);
+  }
+  return {
+    coverage: interactive.length === 0 ? 0 : reached / interactive.length,
+    total: interactive.length,
+    reached,
+    unreachedLabels: unreachedLabels.slice(0, 40),
   };
 }
 
@@ -322,10 +367,19 @@ export function collectRun(db: Db, runId: number, appMap: AppMap): CollectedRun 
   });
   tx();
 
+  const graphCoverage = computeCoverage(db, routes);
+  const appMapCoverage = computeAppMapCoverage(db, appMap);
+
   return {
     runId,
     clusters,
-    coverage: computeCoverage(db, routes),
+    coverage: {
+      ...graphCoverage,
+      appMapCoverage: appMapCoverage.coverage,
+      appMapTotal: appMapCoverage.total,
+      appMapReached: appMapCoverage.reached,
+      appMapUnreached: appMapCoverage.unreachedLabels,
+    },
     findingClusters: clusters.filter((c) => c.classification === 'finding'),
     correctRejections: clusters.filter((c) => c.classification === 'correct_rejection'),
     artifacts: clusters.filter((c) => c.classification === 'cancellation_artifact'),

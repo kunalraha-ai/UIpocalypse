@@ -79,7 +79,15 @@ function collected(over: Partial<CollectedRun> = {}): CollectedRun {
       cluster({ key: 'ep:/api/auth/login:req:401', title: 'correct rejection (401) on /api/auth/login', severity: 'info', classification: 'correct_rejection', observations: 58, codeRefs: [] }),
     ],
     artifacts: over.artifacts ?? [],
-    coverage: over.coverage ?? { coverage: 1, reachedActions: 42, discoveredActions: 42, unreached: [] },
+    coverage: over.coverage ?? {
+      coverage: 1,
+      appMapCoverage: 1,
+      reachedActions: 42,
+      discoveredActions: 42,
+      appMapTotal: 42,
+      appMapReached: 42,
+      unreached: [],
+    },
   };
 }
 
@@ -142,7 +150,7 @@ describe('reviewer + report (TRD §3.7 FR-R1, LLM call #2)', () => {
     expect(md).toContain('# UIpocalypse report — run 7');
     expect(md).toContain('**Fix prompt:**');
     expect(md).toContain('## Correct rejections');
-    expect(md).toMatch(/Coverage:\*\* 100%/);
+    expect(md).toMatch(/Coverage \(app map\):\*\* 100%/);
   });
 
   it('reports are cached per run: repeated get_report costs zero LLM calls', () => {

@@ -66,6 +66,12 @@ export type Report = {
   correctRejections: Array<{ key: string; title: string; observations: number }>;
   artifacts: Array<{ key: string; title: string; observations: number }>;
   coverage: CollectedRun['coverage'];
+  /** both coverage figures, with their denominators spelled out */
+  coverageFigures?: {
+    graph: { reached: number; total: number };
+    appMap: { reached: number; total: number };
+    appMapUnreached?: string[];
+  };
 };
 
 const REVIEWER_SYSTEM = [
@@ -236,6 +242,11 @@ export function assembleReport(collected: CollectedRun, review: Review, run: Run
     correctRejections: collected.correctRejections.map((c) => ({ key: c.key, title: c.title, observations: c.observations })),
     artifacts: collected.artifacts.map((c) => ({ key: c.key, title: c.title, observations: c.observations })),
     coverage: collected.coverage,
+    coverageFigures: {
+      graph: { reached: collected.coverage.reachedActions, total: collected.coverage.discoveredActions },
+      appMap: { reached: collected.coverage.appMapReached, total: collected.coverage.appMapTotal },
+      appMapUnreached: collected.coverage.appMapUnreached,
+    },
   };
 }
 
@@ -244,7 +255,7 @@ export function markdownReport(report: Report): string {
   lines.push(`# UIpocalypse report — run ${report.runId}`);
   lines.push('');
   const models = report.run.llmModels ? ` · **Models:** ${report.run.llmModels}` : '';
-  lines.push(`**Target:** ${report.run.targetUrl} · **Agents:** ${report.run.agents} · **Swarm wall:** ${(report.run.wallMs / 1000).toFixed(1)} s · **LLM calls:** ${report.run.llmCalls}${models} · **Coverage:** ${(report.coverage.coverage * 100).toFixed(0)}% (${report.coverage.reachedActions}/${report.coverage.discoveredActions} actions)`);
+  lines.push(`**Target:** ${report.run.targetUrl} · **Agents:** ${report.run.agents} · **Swarm wall:** ${(report.run.wallMs / 1000).toFixed(1)} s · **LLM calls:** ${report.run.llmCalls}${models} · **Coverage (runtime graph):** ${(report.coverage.coverage * 100).toFixed(0)}% (${report.coverage.reachedActions}/${report.coverage.discoveredActions} discovered actions) · **Coverage (app map):** ${(report.coverage.appMapCoverage * 100).toFixed(0)}% (${report.coverage.appMapReached}/${report.coverage.appMapTotal} code-declared interactive elements)`);
   lines.push('');
   lines.push(`## Summary`);
   lines.push('');
@@ -293,6 +304,15 @@ export function markdownReport(report: Report): string {
     lines.push(`## Not tested (${report.coverage.unreached.length})`);
     lines.push('');
     for (const u of report.coverage.unreached) lines.push(`- "${u.label}" (${u.route}) — ${u.reason}`);
+    lines.push('');
+  }
+  const amUnreached = report.coverageFigures?.appMapUnreached ?? [];
+  if (amUnreached.length) {
+    lines.push(`## Code-declared but never exercised (${amUnreached.length} of ${report.coverageFigures?.appMap.total ?? 0})`);
+    lines.push('');
+    lines.push('_Interactive elements the static analyzer found in the code that no runtime action matched:_');
+    lines.push('');
+    for (const u of amUnreached) lines.push(`- ${u}`);
     lines.push('');
   }
   return lines.join('\n');
