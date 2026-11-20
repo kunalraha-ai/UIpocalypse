@@ -1,11 +1,24 @@
 # Plain Pages — the Phase 6 held-out detector check
 
-**Do not run any UIpocalypse detector, swarm, spike, or gate against this app
-before Phase 6.** It exists to answer one question: do the Phase 4 dead-click
-exclusion/suppression rules generalize to an app they were never tuned on?
-Messy Mart was the held-out app once, but the repeat-activation suppression and
-the native-dialog wrap were designed with its source in view, so it is now a
-tuning fixture like CreditCraft. This app is untouched.
+**Status: USED (2026-11-20).** UIpocalypse ran once against this app during the
+Phase 6 benchmark. Results: 2 of 3 planted dead controls detected ("Save note"
+×192 obs, "Clear filters" ×98 obs), 0 false positives, 1 miss ("Reset
+preferences" — below the fold, the swarm didn't reach that page section in
+60 s). No tuning was performed after the run. The app remains a fixture; any
+future changes to it should be logged here as post-hoc.
+
+**Scope of what was tested:** dead_click detection on vanilla-JS controls.
+The app has no backend, no API routes, no auth — so this check only exercises
+the browser-side detectors (dead_click, inconsistent_feedback, navigation).
+Static-scan rules, race mode, duplicate detection, and auth-gated flows were
+NOT tested by this fixture.
+
+**What GrowthSent history testing can and cannot see (scope):**
+GrowthSent is a tuning fixture. Of the 5 picked historical bugs, 2 are
+deployment-specific (invisible locally), 1 is infrastructure-level (invisible
+to a browser), and only 2 are potentially browser-visible — of which 1 run
+was interrupted and 1 was never attempted. The history detection rate of
+0-of-1 says more about GrowthSent's bug distribution than the tool.
 
 ## Why this one
 
