@@ -119,6 +119,7 @@ export async function swarm(opts: SwarmOptions): Promise<SwarmResult> {
   const inconsistentFeedbackSeen = new Set<string>();
   const inconsistentFeedbackActions: string[] = [];
   const shotCounter = { n: 0 };
+  const escalationCallCounter = { n: 0 };
 
   /** failure screenshot (TRD §3.6: every finding may carry a screenshot path) */
   async function screenshot(page: Page): Promise<string | null> {
@@ -149,6 +150,8 @@ export async function swarm(opts: SwarmOptions): Promise<SwarmResult> {
     stalledSteps: number;
     escalated: boolean;
     respawns: number;
+    /** the agent's most recent graph state ID (for policy-based stall handling) */
+    graphStateId: number;
   };
 
   const agents: Agent[] = [];
@@ -165,6 +168,7 @@ export async function swarm(opts: SwarmOptions): Promise<SwarmResult> {
       stalledSteps: 0,
       escalated: false,
       respawns: 0,
+      graphStateId: 0,
     });
   }
 
@@ -323,6 +327,7 @@ export async function swarm(opts: SwarmOptions): Promise<SwarmResult> {
 
       const after = await currentState(page);
       const toState = graph.getOrCreateState({ hash: after.hash, url: after.url, signature: '' });
+      agent.graphStateId = toState.id;
       graph.recordTransition({
         fromState: graphState.id,
         actionId: graphAction.id,
@@ -434,26 +439,36 @@ export async function swarm(opts: SwarmOptions): Promise<SwarmResult> {
       agent.steps++;
       stepsCounter.n++;
       if (!progressed) break;
-      // FR-W3 escalation: no new states for a while → one LLM call, globally capped
-      if (agent.stalledSteps >= 15 && !agent.escalated && opts.llm.configured && opts.llm.calls < opts.llm.maxCalls) {
-        agent.escalated = true;
-        try {
-          const esc = await opts.llm.completeJSON({
-            system: 'You are helping a stuck test agent. Reply done: true if the app is fully explored, or pick a seed route.',
-            user: JSON.stringify({
-              url: agent.page?.url() ?? '',
-              history: agent.history.slice(-6),
-              seeds: seedUrls,
-            }) + '\n\nJSON shape: { "actionId"?: number, "input"?: string, "done"?: boolean }',
-            schema: ScoutDecisionSchema,
-            maxTokens: 200,
-            label: 'escalation',
-          });
-          if (esc.done) break;
-        } catch {
-          /* budget or bad reply — fall through to abandon below */
+
+      // FR-W3 escalation (revised, phase 6): agents on known states do NOT
+      // burn LLM calls — that alone blew the PRD's ≤-20-per-rerun metric at
+      // ~40 calls on a saturated graph. Policy handles every stall case:
+      //   unvisited actions in this state → keep exploring (reset the counter)
+      //   state saturated, graph has a frontier → restart from a seed route
+      //   whole graph saturated → abandon
+      // LLM escalation is reserved for genuinely unknown situations (dead
+      // pages with no enumerable actions), which agentStep already handles
+      // via the progressed=false path.
+      if (agent.stalledSteps >= 15 && !agent.escalated) {
+        agent.escalated = true; // one policy intervention per agent, zero LLM
+        const stateActions = graph.actionsWithVisits(agent.graphStateId);
+        const hasUnvisitedHere = stateActions.some((a) => a.visits === 0);
+        if (hasUnvisitedHere) {
+          // the agent is cycling visited transitions while unvisited actions
+          // exist in this state — reset the counter, the persona's
+          // coverage-guided weighting will find them
+          agent.stalledSteps = 0;
+          agent.escalated = false; // not a real intervention
+        } else if (graph.frontierStates(1).length > 0) {
+          // this state is done but the graph has unexplored states — restart
+          // from a seed route (pure policy, no LLM)
+          const seed = seedUrls[agent.index % seedUrls.length] ?? opts.url;
+          await agent.page?.goto(seed, { waitUntil: 'domcontentloaded', timeout: 15000 }).catch(() => {});
+          agent.stalledSteps = 0;
+        } else {
+          // the entire graph is saturated — abandon (log and move on, no LLM)
+          break;
         }
-        if (agent.stalledSteps >= 30) break; // abandon (log and move on, no more LLM)
       }
     }
   }
@@ -656,6 +671,7 @@ export async function swarm(opts: SwarmOptions): Promise<SwarmResult> {
     racePreExisting,
     suppressedDeadVerdicts: suppressedDeadVerdicts.n,
     inconsistentFeedbackActions,
+    escalationCalls: escalationCallCounter.n,
     aborted,
     warnings: decision.warnings,
   };
