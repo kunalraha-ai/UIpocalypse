@@ -1,0 +1,285 @@
+{
+  "contender": "C",
+  "run": 3,
+  "totalMs": 147534,
+  "staticIssues": 19,
+  "llmCalls": {
+    "planner": 40,
+    "scout": 40
+  },
+  "coverageGraph": "101/101 (100%)",
+  "coverageAppMap": "11/30 (37%)",
+  "findingClusters": 24,
+  "correctRejections": 3,
+  "artifacts": 8,
+  "clusters": [
+    {
+      "key": "ep:/api/orders:req:500",
+      "type": "failed_request",
+      "obs": 95,
+      "cls": "finding",
+      "sev": "high"
+    },
+    {
+      "key": "ep:/profile:page:TypeError: Cannot read properties of undefined (reading '#')",
+      "type": "page_error",
+      "obs": 5,
+      "cls": "finding",
+      "sev": "high"
+    },
+    {
+      "key": "ep:/profile:page:Uncaught TypeError: Cannot read properties of undefined (reading '#')",
+      "type": "page_error",
+      "obs": 5,
+      "cls": "finding",
+      "sev": "high"
+    },
+    {
+      "key": "ep:/api/search:req:500",
+      "type": "failed_request",
+      "obs": 3,
+      "cls": "finding",
+      "sev": "high"
+    },
+    {
+      "key": "ep:/checkout/success:page:TypeError: Cannot read properties of null (reading 'id')",
+      "type": "page_error",
+      "obs": 3,
+      "cls": "finding",
+      "sev": "high"
+    },
+    {
+      "key": "ep:/checkout:page:Uncaught TypeError: Cannot read properties of null (reading 'id')",
+      "type": "page_error",
+      "obs": 2,
+      "cls": "finding",
+      "sev": "high"
+    },
+    {
+      "key": "dup:table:coupon_redemptions",
+      "type": "race_violation",
+      "obs": 1,
+      "cls": "finding",
+      "sev": "high"
+    },
+    {
+      "key": "dup:table:orders",
+      "type": "duplicate_effect",
+      "obs": 1,
+      "cls": "finding",
+      "sev": "high"
+    },
+    {
+      "key": "dup:table:transactions",
+      "type": "duplicate_effect",
+      "obs": 1,
+      "cls": "finding",
+      "sev": "high"
+    },
+    {
+      "key": "ep:/api/promo:req:404",
+      "type": "failed_request",
+      "obs": 51,
+      "cls": "finding",
+      "sev": "medium"
+    },
+    {
+      "key": "ep:/api/recommendations:req:net::ERR_ABORTED",
+      "type": "failed_request",
+      "obs": 26,
+      "cls": "cancellation_artifact",
+      "sev": "medium"
+    },
+    {
+      "key": "act:Save profile",
+      "type": "dead_click",
+      "obs": 15,
+      "cls": "finding",
+      "sev": "medium"
+    },
+    {
+      "key": "dup:/api/coupon/redeem",
+      "type": "duplicate_request",
+      "obs": 15,
+      "cls": "finding",
+      "sev": "medium"
+    },
+    {
+      "key": "dup:/api/checkout",
+      "type": "duplicate_request",
+      "obs": 7,
+      "cls": "finding",
+      "sev": "medium"
+    },
+    {
+      "key": "ep:/settings:req:net::ERR_ABORTED",
+      "type": "failed_request",
+      "obs": 7,
+      "cls": "cancellation_artifact",
+      "sev": "medium"
+    },
+    {
+      "key": "ep:/profile:req:net::ERR_ABORTED",
+      "type": "failed_request",
+      "obs": 5,
+      "cls": "cancellation_artifact",
+      "sev": "medium"
+    },
+    {
+      "key": "ep:/:req:net::ERR_ABORTED",
+      "type": "failed_request",
+      "obs": 4,
+      "cls": "cancellation_artifact",
+      "sev": "medium"
+    },
+    {
+      "key": "ep:/checkout:req:net::ERR_ABORTED",
+      "type": "failed_request",
+      "obs": 4,
+      "cls": "cancellation_artifact",
+      "sev": "medium"
+    },
+    {
+      "key": "ep:/credits:req:net::ERR_ABORTED",
+      "type": "failed_request",
+      "obs": 4,
+      "cls": "cancellation_artifact",
+      "sev": "medium"
+    },
+    {
+      "key": "ep:/login:req:net::ERR_ABORTED",
+      "type": "failed_request",
+      "obs": 4,
+      "cls": "cancellation_artifact",
+      "sev": "medium"
+    },
+    {
+      "key": "ep:/orders:req:net::ERR_ABORTED",
+      "type": "failed_request",
+      "obs": 3,
+      "cls": "cancellation_artifact",
+      "sev": "medium"
+    },
+    {
+      "key": "ep:/orders:console:Failed to load resource: the server responded with a status of # (Internal Serve",
+      "type": "console_error",
+      "obs": 89,
+      "cls": "finding",
+      "sev": "low"
+    },
+    {
+      "key": "ep:/login:console:Failed to load resource: the server responded with a status of # (Unauthorized)",
+      "type": "console_error",
+      "obs": 53,
+      "cls": "finding",
+      "sev": "low"
+    },
+    {
+      "key": "ep:/:console:Failed to load resource: the server responded with a status of # (Not Found)",
+      "type": "console_error",
+      "obs": 52,
+      "cls": "finding",
+      "sev": "low"
+    },
+    {
+      "key": "ep:/checkout:console:Failed to load resource: the server responded with a status of # (Bad Request)",
+      "type": "console_error",
+      "obs": 37,
+      "cls": "finding",
+      "sev": "low"
+    },
+    {
+      "key": "ep:/:console:Failed to load resource: the server responded with a status of # (Internal Serve",
+      "type": "console_error",
+      "obs": 5,
+      "cls": "finding",
+      "sev": "low"
+    },
+    {
+      "key": "ep:/credits:console:Failed to load resource: the server responded with a status of # (Internal Serve",
+      "type": "console_error",
+      "obs": 2,
+      "cls": "finding",
+      "sev": "low"
+    },
+    {
+      "key": "act:Notification preferences",
+      "type": "inconsistent_feedback",
+      "obs": 1,
+      "cls": "finding",
+      "sev": "low"
+    },
+    {
+      "key": "ep:/:console:Failed to load resource: the server responded with a status of # (Unauthorized)",
+      "type": "console_error",
+      "obs": 1,
+      "cls": "finding",
+      "sev": "low"
+    },
+    {
+      "key": "ep:/checkout:console:Failed to load resource: the server responded with a status of # (Not Found)",
+      "type": "console_error",
+      "obs": 1,
+      "cls": "finding",
+      "sev": "low"
+    },
+    {
+      "key": "ep:/profile:console:Failed to load resource: the server responded with a status of # (Internal Serve",
+      "type": "console_error",
+      "obs": 1,
+      "cls": "finding",
+      "sev": "low"
+    },
+    {
+      "key": "ep:/settings:console:Failed to load resource: the server responded with a status of # (Internal Serve",
+      "type": "console_error",
+      "obs": 1,
+      "cls": "finding",
+      "sev": "low"
+    },
+    {
+      "key": "ep:/api/auth/login:req:401",
+      "type": "failed_request",
+      "obs": 53,
+      "cls": "correct_rejection",
+      "sev": "info"
+    },
+    {
+      "key": "ep:/api/coupon/redeem:req:400",
+      "type": "failed_request",
+      "obs": 37,
+      "cls": "correct_rejection",
+      "sev": "info"
+    },
+    {
+      "key": "ep:/api/coupon/redeem:req:404",
+      "type": "failed_request",
+      "obs": 1,
+      "cls": "correct_rejection",
+      "sev": "info"
+    }
+  ],
+  "report": "# UIpocalypse report — run 1\n\n**Target:** http://localhost:3124 · **Agents:** 1 · **Swarm wall:** 77.3 s · **LLM calls:** 0 · **Models:** planner=@cf/zai-org/glm-5.3;scout=@cf/meta/llama-3.2-3b-instruct · **Coverage (runtime graph):** 100% (101/101 discovered actions) · **Coverage (app map):** 37% (11/30 code-declared interactive elements)\n\n## Summary\n\n24 clustered issues (9 high severity) over 101 discovered actions; coverage 100%.\n\n## Findings (24)\n\n### 1. request 500 on /api/orders\n\n`ep:/api/",
+  "models": {
+    "planner": "@cf/zai-org/glm-5.3",
+    "scout": "@cf/meta/llama-3.2-3b-instruct"
+  },
+  "raceFired": 20,
+  "duplicateEffects": [
+    {
+      "name": "no duplicate purchase transactions within 1 s (double-submit damage)",
+      "sql": "select count(*) from transactions t1 join transactions t2 on t1.id < t2.id and t1.user_id = t2.user_id and t2.created_at - t1.created_at < interval '1 second'",
+      "atMost": 0,
+      "actual": 2,
+      "pass": false
+    },
+    {
+      "name": "no duplicate orders within 1 s (double-submit damage)",
+      "sql": "select count(*) from orders o1 join orders o2 on o1.id < o2.id and o1.user_id = o2.user_id and o2.created_at - o1.created_at < interval '1 second'",
+      "atMost": 0,
+      "actual": 17,
+      "pass": false
+    }
+  ],
+  "aborted": false
+}
