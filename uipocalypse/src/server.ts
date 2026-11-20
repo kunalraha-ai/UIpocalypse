@@ -6,7 +6,7 @@ import { createLogger } from './logger.js';
 import { openDb, listRuns, type Db } from './db/index.js';
 import { scanCodebase } from './tools/scan-codebase.js';
 import { loadConfig } from './config.js';
-import { createLlm, createLlmSet } from './llm/index.js';
+import { createLlm, createLlmSet, healthCheck } from './llm/index.js';
 import { analyze } from './analyzer/analyzer.js';
 import { createPlan, loadPlan } from './plan/planner.js';
 import { DEFAULT_NASTY_INPUTS, PlanSchema, type Plan } from './plan/schema.js';
@@ -180,6 +180,9 @@ export function createServer(opts: { workspaceRoot?: string } = {}): ServerConte
       llms.planner.maxCalls = config.llm.maxCallsPerRun;
       llms.scout.maxCalls = config.llm.maxCallsPerRun;
       try {
+        // model health FIRST (fail with an actionable message, not mid-run)
+        if (llms.planner.configured) await healthCheck(llms.planner, 'LLM_MODEL');
+        if (llms.scout.configured) await healthCheck(llms.scout, 'LLM_SCOUT_MODEL');
         // FR-P1: drafted invariants preflight against the DB before the run
         const inv = await effectiveInvariants(config, plan, logger);
         // phase 1: scouts fill the graph (single context, fast model)
@@ -333,6 +336,9 @@ export function createServer(opts: { workspaceRoot?: string } = {}): ServerConte
       llms.scout.maxCalls = config.llm.maxCallsPerRun;
       try {
         const t0 = Date.now();
+        // model health FIRST (fail with an actionable message, not mid-run)
+        if (llms.planner.configured) await healthCheck(llms.planner, 'LLM_MODEL');
+        if (llms.scout.configured) await healthCheck(llms.scout, 'LLM_SCOUT_MODEL');
         const { appMap, issues } = await scanCodebase({ path }, { logger });
         const planning = await createPlan({ appMap, targetUrl: url, llm: llms.planner, workspacePlansDir: workspace.plans });
         const inv = await effectiveInvariants(config, planning.plan, logger);

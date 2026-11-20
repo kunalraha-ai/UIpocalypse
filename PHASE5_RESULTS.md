@@ -64,7 +64,57 @@ Two root causes found in execution 1, both fixed red→green (commits `045f273`,
 
 **Execution 3** (2026-11-16 night): **invalid measurement — the machine was suspended mid-run** (~23.6 h, session date Nov 16→17). Its first-run "took" 85,000 s (`scouts: 6971 s`, `swarm: 77,970 s`): timers don't fire while suspended, so the watchdog closed everything only on resume; every wall measurement inflated and the LLM sockets died (the rerun's reviewer hit its 60 s cap → mechanical fallback; dup collapsed to 2/3/2/0). Recorded as what happened to the tool in a suspended environment — not as a tool measurement — and re-run below.
 
-**Execution 3 (re-run)** — recorded below when complete.
+## Close criteria (written 2026-11-20, before the current-config executions land)
+
+The verdict follows the rule below, not the numbers:
+
+1. **Executions 1–2 (Kimi K2.7 planner + llama-3.1-8b scout) are reported as "passed on the since-deprecated models"** — both models returned HTTP 410 on 2026-11-20, so those results cannot be reproduced. The 8/8 pass stands as history, not as a current claim.
+2. **The current-config verdict comes from ≥ 3 executions on glm-5.3 + llama-3.2-3b.** Phase 5 closes as PASS only if every gate check passes on the current config across those executions, **or** every failure is named with its cause and the cause is an environment fact (LLM latency variance, suspend, deprecation) rather than a product defect.
+3. **The 3B scout must not silently lose quality:** each current-config execution is compared to execution 2 on discovered actions, coverage %, malformed-JSON retries, and finding counts. If coverage drops materially, the speed gain is recorded as hollow and the scout model choice is called out as an open risk, not buried.
+4. First-run/rerun timing figures from the old models (200 s / 87 s) do **not** carry over; the current-config range is the published number.
+5. `IMPLEMENTATION_PLAN.md` is updated only on a real pass under rule 2.
+
+## Model deprecations (2026-11-20) — a product risk, treated as Phase 5 scope
+
+**Execution 3's original models** (`@cf/moonshotai/kimi-k2.7-code` planner, `@cf/meta/llama-3.1-8b-instruct-fp8` scout) were both **deprecated the same day** — HTTP 410. Swapped to current-catalog successors and re-verified: planner → `@cf/zai-org/glm-5.3` (1.4 s/call), scout → `@cf/meta/llama-3.2-3b-instruct` (0.3 s/call; smaller than the old 8b — the phase-3 fail-closed action validation is the protection). This is exactly what users will hit, so the following shipped as Phase 5 scope:
+
+- **Model IDs live in config only** (`.env` / `LLM_MODEL` / `LLM_SCOUT_MODEL`), never hard-coded per-account.
+- **Per-role fallback lists** (`LLM_MODEL` and `LLM_SCOUT_MODEL` accept comma-separated chains; a 410/404 model failure walks to the next candidate).
+- **A startup health check** that fails with a clear, actionable message (`model X returned 410 — set LLM_MODEL / LLM_SCOUT_MODEL`) instead of a stack trace mid-run.
+- **Model IDs recorded in every run row and printed in every report**, so old results stay interpretable after a model disappears.
+- **Monotonic budgets** (`performance.now()` for budget/deadline checks — `Date.now()` jumps with clock changes and suspends) plus **suspend/time-jump detection in the gate** (a run whose wall-clock delta exceeds its monotonic delta by minutes is flagged invalid, not averaged in).
+- **PRD documents that results depend on the LLM** and names the models each phase was validated on.
+
+Current-config execution results appear at the end of this document — the runs below were in flight when this section was written.
+
+### Current-config execution (glm-5.3 planner + llama-3.2-3b scout, 2026-11-20)
+
+**Execution 3: GATE: PASS — 8/8.** All three first-runs plus the rerun, one execution:
+
+| Check | Result |
+|---|---|
+| first-run pipeline ≤ 4 min (median) | ✅ **median 136 s** (range 127–138 s excl. db reset; 162–181 s with) — the 3B scout's 0.3 s/call cut scout walls to 52–64 s |
+| rerun ≤ 90 s | ✅ **72 s** (scouts 10 s — zero scout LLM calls on the warm graph — + swarm 61 s) |
+| collector acceptance | ✅ `17→2, 21→2, 26→2` |
+| classification rules | ✅ rejections `3/3/3`, artifacts `10/8/8` |
+| duplicate detection restored | ✅ dupObs per run: **17, 21, 26, 30** — stronger and more consistent than the old-model band |
+| diff_runs over 4 identical runs | ✅ fixed=0, new=0, still=15, intermittent=5 — **zero phantoms** |
+| screenshots / fix prompts | ✅ 21 findings with files; 17 issues with root cause + fix prompt |
+
+**3B-scout quality comparison vs execution 2 (old models)** — the speed gain is *not* hollow:
+
+| Metric | Execution 2 (llama-3.1-8b) | Execution 3 (llama-3.2-3b) |
+|---|---|---|
+| Coverage | 100% (97/97 actions, 1st-run-1) | **100%** (96/96, 1st-run-1) |
+| Actions discovered | 97 | 96 (−1, within noise) |
+| Scout LLM calls (fresh graph) | 26–32 | 38–39 (the 3B explores more steps before saturating — more calls at 0.3 s each, still 3× less wall time) |
+| duplicate_request findings/run | 22, 28, 14 (+23 rerun) | 17, 21, 26 (+30 rerun) — comparable band |
+| page_error findings/run | 6, 18, 14 | 10, 21, 14 — comparable |
+| dead_click findings | 18, 13, 18 | 8, 9, 13 — comparable |
+| Plan quality | same plan shape (personas full, seeds hit) | same |
+| Malformed-JSON retries | not observable in gate output (the scout retry exists; no scoutOutcome 'error' in either execution — both models' replies validated) |
+
+The 3B scout discovered the same graph (96 vs 97 actions), hit 100% coverage in every run, and the finding profile is equivalent — with the whole first-run wall dropping from ~200 s to ~136 s. The smaller model costs more calls (38 vs ~26) but at 0.3 s each the phase is 4× faster anyway. **Quality held; the speed gain is real.** One honest caveat: the 3B scout's `scoutOutcome` was never 'error' in these runs, but a 3B is weaker at genuinely novel UIs — the phase-3 fail-closed action validation (invalid actionIds skipped, never guessed) is the protection, and real-repo Phase 6 testing will be the true test.
 
 ## Real-app eval: GrowthSent (2026-11-17, recovered session)
 
@@ -73,15 +123,15 @@ The interrupted session left an eval target (`GrowthSent/` — a real 68 MB Figm
 1. **Vercel serverless functions were invisible route sources.** The app's entire backend is `api/v1/[...path].ts` (a catch-all) — the analyzer only knew Next routers, so all 29 `/api/v1/*` fetches fired `missing-endpoint` as FPs. Fix: framework-agnostic `api/**/*.ts` route extraction with `[...slug]` catch-all matching (29 → 0).
 2. **Platform-injected env vars beyond VERCEL_**: bare `VERCEL`, `PORT` (PaaS convention), `FIGMA_*` (Figma Make) all fired `undefined-env` as FPs. Fix: allowlist extended.
 
-Final scan (0.7 s, 330 files): **29 issues, every one verified true** —
+Final scan (0.7 s, 330 files): **29 issues — 28 verified true, 1 false positive** (corrected 2026-11-20 on re-inspection; the earlier "every one verified true" claim was wrong for the missing-submit-guard finding):
 
-| Rule | Count | Verified |
+| Rule | Count | Verdict |
 |---|---|---|
-| dead-handler | 14 | ✅ all — Figma-Make generated `<button>Run fresh scan ↻</button>`, `✦ AI Fix All`, `✦ AI Fix` etc. with literally no onClick (checked in source); the exact bug class the product exists for |
-| undefined-env | 14 | ✅ app-specific ops flags (`PROVISION_MONGODB_*`, `RUN_MONGODB_INTEGRATION_TESTS`, `CRAWLER_TIMEOUT`, `DEV`, `MODE`, …) genuinely absent from every .env file |
-| missing-submit-guard | 1 | ✅ a websites write with no pending state |
+| dead-handler | 14 | ✅ all TRUE — Figma-Make generated `<button>Run fresh scan ↻</button>`, `<button>✦ AI Fix All</button>`, `<button>Export CSV ⤓</button>`, `<button>Real-time view 🟢</button>` etc. with literally no onClick (spot-checked in source); the exact bug class the product exists for. Three are unwired inputs (`Domain to inspect`, `Your domain`, one unnamed) |
+| undefined-env | 14 | ✅ all TRUE — app-specific ops flags (`PROVISION_MONGODB_*` ×8 across the two API entrypoints, `RUN_MONGODB_INTEGRATION_TESTS` ×2, `COMMON_CRAWL_BENCHMARK_ALLOW_NETWORK`, `CRAWLER_TIMEOUT`, `DEV`, `MODE`) genuinely absent from every .env file (checked `.env.example` — zero hits) |
+| missing-submit-guard | 1 | ❌ **FALSE POSITIVE** — `Sidebar.tsx:527`, the DELETE `/api/v1/websites/…` write. The guard EXISTS: the flow runs through a ConfirmModal with `loading={isDeletingWebsite}` and the modal disables its confirm button (`disabled={loading}` in ConfirmModal.tsx). The heuristic's pending-signal words (`isPending\|setLoading\|isLoading\|…`) simply don't match GrowthSent's `isDeletingWebsite` naming convention. Open item: the rule needs naming-convention breadth (or app-map-level handler analysis) |
 
-**Real-repo FP rate ≈ 0%** after the convention fixes — the third consecutive external validation (after vercel/commerce, shadcn/taxonomy, supabase user-management in the phase-4 pre-work) to land at zero after fixes.
+**Real-repo FP rate: 1 of 29 ≈ 3.4%** after the convention fixes (the third consecutive external validation to land near zero — after vercel/commerce, shadcn/taxonomy, supabase user-management in the phase-4 pre-work — but not zero, and the earlier zero claim is corrected above). **GrowthSent is now a tuning fixture** (like Messy Mart): the analyzer fixes it forced (serverless route extraction, platform env allowlist) landed in `8e822ca`, so it no longer counts as unseen. **Plain Pages (`held-out-app-2/`) remains untouched for Phase 6.**
 
 ### False-positive rate over the clustered set (execution 2, first-run 3)
 

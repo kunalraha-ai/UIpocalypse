@@ -48,7 +48,8 @@ CREATE TABLE IF NOT EXISTS runs (
   agents INTEGER NOT NULL,
   duration_ms INTEGER,
   llm_calls INTEGER,
-  coverage REAL
+  coverage REAL,
+  llm_models TEXT
 );
 
 CREATE TABLE IF NOT EXISTS findings (

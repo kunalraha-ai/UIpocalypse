@@ -39,6 +39,8 @@ export type RunMeta = {
   wallMs: number;
   llmCalls: number;
   startedAt?: string;
+  /** model ids used, from the run row — so results stay interpretable after a model disappears */
+  llmModels?: string | null;
 };
 
 export type Report = {
@@ -241,7 +243,8 @@ export function markdownReport(report: Report): string {
   const lines: string[] = [];
   lines.push(`# UIpocalypse report — run ${report.runId}`);
   lines.push('');
-  lines.push(`**Target:** ${report.run.targetUrl} · **Agents:** ${report.run.agents} · **Swarm wall:** ${(report.run.wallMs / 1000).toFixed(1)} s · **LLM calls:** ${report.run.llmCalls} · **Coverage:** ${(report.coverage.coverage * 100).toFixed(0)}% (${report.coverage.reachedActions}/${report.coverage.discoveredActions} actions)`);
+  const models = report.run.llmModels ? ` · **Models:** ${report.run.llmModels}` : '';
+  lines.push(`**Target:** ${report.run.targetUrl} · **Agents:** ${report.run.agents} · **Swarm wall:** ${(report.run.wallMs / 1000).toFixed(1)} s · **LLM calls:** ${report.run.llmCalls}${models} · **Coverage:** ${(report.coverage.coverage * 100).toFixed(0)}% (${report.coverage.reachedActions}/${report.coverage.discoveredActions} actions)`);
   lines.push('');
   lines.push(`## Summary`);
   lines.push('');
@@ -352,6 +355,7 @@ function toMeta(run: RunRow): RunMeta {
     wallMs: run.duration_ms ?? 0,
     llmCalls: run.llm_calls ?? 0,
     startedAt: run.started_at,
+    llmModels: run.llm_models,
   };
 }
 

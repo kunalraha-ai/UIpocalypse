@@ -15,6 +15,11 @@ export function openDb(dir: string): Db {
   const db = new Database(join(dir, 'db.sqlite'));
   db.pragma('journal_mode = WAL');
   db.exec(SCHEMA_SQL);
+  // migration: runs.llm_models (project DBs created before model recording)
+  const runCols = db.prepare('PRAGMA table_info(runs)').all() as Array<{ name: string }>;
+  if (!runCols.some((c) => c.name === 'llm_models')) {
+    db.exec('ALTER TABLE runs ADD COLUMN llm_models TEXT');
+  }
   return db;
 }
 
@@ -90,10 +95,13 @@ export function getTransition(
 
 // ---------------------------------------------------------------- runs
 
-export function createRun(db: Db, input: { targetUrl: string; agents: number }): number {
+export function createRun(
+  db: Db,
+  input: { targetUrl: string; agents: number; llmModels?: string },
+): number {
   const info = db
-    .prepare('INSERT INTO runs (started_at, target_url, agents) VALUES (?, ?, ?)')
-    .run(new Date().toISOString(), input.targetUrl, input.agents);
+    .prepare('INSERT INTO runs (started_at, target_url, agents, llm_models) VALUES (?, ?, ?, ?)')
+    .run(new Date().toISOString(), input.targetUrl, input.agents, input.llmModels ?? null);
   return Number(info.lastInsertRowid);
 }
 
@@ -117,17 +125,22 @@ export type RunRow = {
   duration_ms: number | null;
   llm_calls: number | null;
   coverage: number | null;
+  llm_models: string | null;
 };
 
 export function listRuns(db: Db): RunRow[] {
   return db
-    .prepare('SELECT id, started_at, target_url, agents, duration_ms, llm_calls, coverage FROM runs ORDER BY id')
+    .prepare(
+      'SELECT id, started_at, target_url, agents, duration_ms, llm_calls, coverage, llm_models FROM runs ORDER BY id',
+    )
     .all() as RunRow[];
 }
 
 export function getRun(db: Db, id: number): RunRow | null {
   return db
-    .prepare('SELECT id, started_at, target_url, agents, duration_ms, llm_calls, coverage FROM runs WHERE id = ?')
+    .prepare(
+      'SELECT id, started_at, target_url, agents, duration_ms, llm_calls, coverage, llm_models FROM runs WHERE id = ?',
+    )
     .get(id) as RunRow | null;
 }
 

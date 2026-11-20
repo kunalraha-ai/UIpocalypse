@@ -86,7 +86,7 @@ A **local MCP server** (plus CLI) exposing tools an AI coding agent calls:
 
 | Metric | Target |
 |---|---|
-| Time-to-report, first run / rerun | First run ≤ 4 min *median* — **full pipeline measured once at 3.4 min** (scan + plan + scouts + swarm, no report step yet — PHASE4_RESULTS exit gate); scout-phase-only first runs measured 2.1–6.0 min over 3 runs. One full-pipeline data point is not a median: **Phase 5 records several full-pipeline runs and publishes median + range.** Dominated by scout-LLM latency; the **`LLM_SCOUT_MODEL` swap** (fast non-reasoning llama-3.1-8b, ~1.2 s/call, vs ~10 s/call for the reasoning model) is what brought this inside the target. Rerun ≤ 90 s — **components measured, end-to-end not yet demonstrated**: cached plan + graph → scout saturation in 0–10 LLM calls (16–39 s, 3 runs) + swarm bounded by `budgetSeconds` (default 60 s) ⇒ ~60–105 s at current speeds; the full-pipeline rerun is a Phase 5 measurement |
+| Time-to-report, first run / rerun | **Results depend on the LLM.** Current-config measurements (glm-5.3 planner + llama-3.2-3b scout via Workers AI, 2026-11-20): first run **median 136 s** (range 127–138 s excl. db reset) over 3 gate pipelines; rerun **72 s** — both inside the targets (≤ 4 min / ≤ 90 s). Previously validated on Kimi K2.7 + llama-3.1-8b (first-run median 200 s, rerun 87 s — both models deprecated with HTTP 410 on 2026-11-20, so those numbers are history, not current claims). Scout latency dominates: model IDs live in config (`LLM_MODEL`/`LLM_SCOUT_MODEL`, comma-separated fallback chains supported) and are recorded in every run row and report |
 | Real bugs found per repo (median, on 10 test repos) | ≥ 3 |
 | False-positive rate | ≤ 20% |
 | LLM calls per rerun | ≤ 20 |

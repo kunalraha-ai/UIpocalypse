@@ -15,6 +15,7 @@ import { resolve } from 'node:path';
 import { analyze } from '../src/analyzer/analyzer.js';
 import { createPlan } from '../src/plan/planner.js';
 import { createLlmSet } from '../src/llm/index.js';
+import { healthCheck } from '../src/llm/index.js';
 import { explore } from '../src/browser/runner.js';
 import { swarm } from '../src/browser/orchestrator.js';
 import { mergeDraftedInvariants } from '../src/browser/race.js';
@@ -30,6 +31,14 @@ process.env.SUPABASE_DB_URL ??= 'postgresql://postgres:postgres@127.0.0.1:54322/
 
 const url = 'http://localhost:3123';
 const repo = resolve('../sample-app');
+
+// Model health check FIRST (2026-11-20 lesson: both phase-5 models returned
+// HTTP 410 the morning of a gate run — fail with an actionable message, not
+// a stack trace mid-run)
+const healthLlms = createLlmSet();
+const planModel = await healthCheck(healthLlms.planner, 'LLM_MODEL');
+const scoutModel = await healthCheck(healthLlms.scout, 'LLM_SCOUT_MODEL');
+console.log(`LLM health OK: planner=${planModel} scout=${scoutModel}`);
 const RACE = {
   url: `${url}/checkout`,
   actionLabel: 'Redeem coupon',
@@ -198,13 +207,26 @@ async function fullPipeline(
 }
 
 const runs: RunRecord[] = [];
-runs.push(await fullPipeline('first-run 1 (fresh workspace)', { freshWorkspace: true }));
-runs.push(await fullPipeline('first-run 2 (fresh workspace)', { freshWorkspace: true }));
-runs.push(await fullPipeline('first-run 3 (fresh workspace)', { freshWorkspace: true }));
-runs.push(await fullPipeline('rerun (warm graph + cached plan)', { freshWorkspace: false, prevWsDir: runs[2]!.wsDir }));
+const gateWallStart = Date.now();
+const gateMonoStart = performance.now();
+runs.push(await fullPipeline('first-run 1 (fresh workspace)', { freshWorkspace: true, race: true }));
+runs.push(await fullPipeline('first-run 2 (fresh workspace)', { freshWorkspace: true, race: true }));
+runs.push(await fullPipeline('first-run 3 (fresh workspace)', { freshWorkspace: true, race: true }));
+runs.push(await fullPipeline('rerun (warm graph + cached plan)', { freshWorkspace: false, prevWsDir: runs[2]!.wsDir, race: false }));
+
+// suspend / clock-jump detection (execution 3's lesson: a 23.6 h suspend
+// invalidated every wall measurement). Monotonic time doesn't advance during
+// suspend, so wall − mono measures the jump.
+const gateWall = Date.now() - gateWallStart;
+const gateMono = performance.now() - gateMonoStart;
+const timeJumpMs = gateWall - gateMono;
+const SUSPENDED = timeJumpMs > 120_000; // >2 min of unexplained wall drift
 
 // ---------------------------------------------------------------- checks
 console.log('\n=== PHASE 5 GATE ===');
+if (SUSPENDED) {
+  console.log(`  INVALID  gate execution suspended/clock-jumped — wall ${Math.round(gateWall / 1000)}s vs monotonic ${Math.round(gateMono / 1000)}s (${Math.round(timeJumpMs / 1000)}s drift). Timing results below are NOT valid measurements.`);
+}
 const firsts = runs.slice(0, 3);
 const rerun = runs[3]!;
 const med = (xs: number[]) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)]!;
@@ -254,7 +276,10 @@ for (const [name, ok, detail] of checks) {
   console.log(`  ${ok ? 'PASS' : 'FAIL'}  ${name} — ${detail}`);
   if (!ok) pass = false;
 }
-console.log(`\nGATE: ${pass ? 'PASS' : 'FAIL'}`);
+if (SUSPENDED) {
+  console.log('  INVALID  timing results in this execution (suspend/clock jump detected) — see above');
+}
+console.log(`\nGATE: ${pass ? 'PASS' : 'FAIL'}${SUSPENDED ? ' (timing INVALID — suspended)' : ''}`);
 
 // timing record for PRD G1 (reviewer asked for medians + ranges, counts with percentages)
 console.log('\n=== timing record (PRD G1) ===');

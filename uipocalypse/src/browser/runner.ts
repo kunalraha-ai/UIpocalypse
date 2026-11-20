@@ -106,7 +106,14 @@ export async function explore(opts: ExploreOptions): Promise<ExploreResult> {
 
   const budgetMs = (opts.budgetSeconds ?? opts.config.budgetSeconds) * 1000;
   const started = Date.now();
-  const runId = opts.runId ?? createRun(opts.db, { targetUrl: opts.url, agents: 1 });
+  const monoStart = performance.now(); // monotonic: survives clock jumps/suspends
+  const runId =
+    opts.runId ??
+    createRun(opts.db, {
+      targetUrl: opts.url,
+      agents: 1,
+      llmModels: `planner=${opts.llm.model};scout=${(opts.scoutLlm ?? opts.llm).model}`,
+    });
   const log = opts.logger.child({ runId });
   const graph = new StateGraph(opts.db, opts.routes);
   const wanderer = new Wanderer(seedFrom(runId));
@@ -121,6 +128,10 @@ export async function explore(opts: ExploreOptions): Promise<ExploreResult> {
     budgetMs + 60_000,
     log,
   );
+  // Budgets are MONOTONIC (performance.now): a suspend or clock jump must not
+  // make a budget look expired (or a wall look inflated) — Date.now() jumps
+  // with the wall clock; the execution-3 suspend proved it (23.6 h).
+  const elapsedMono = () => performance.now() - monoStart;
   let context: BrowserContext;
   try {
     context = await browser.newContext();
@@ -314,12 +325,12 @@ export async function explore(opts: ExploreOptions): Promise<ExploreResult> {
     // never exceeds the overall phase budget.
     const seedUrls = [...new Set([opts.url, ...opts.plan.seedRoutes.map((r) => new URL(r, opts.url).href)])];
     const scoutBudget = opts.scoutBudgetSeconds ?? Math.min(opts.config.scoutBudgetSeconds, budgetMs / 1000);
-    const scoutDeadline = started + scoutBudget * 1000;
+    const scoutDeadline = scoutBudget * 1000; // monotonic ms from monoStart
     const scoutBudgetSteps = opts.scoutSteps ?? 24;
     let scoutOutcome = 'skipped';
     let scoutCalls = 0;
     for (const seed of seedUrls.slice(0, 4)) {
-      if (Date.now() >= scoutDeadline) {
+      if (elapsedMono() >= scoutDeadline) {
         scoutOutcome = 'budget';
         break;
       }
@@ -334,7 +345,7 @@ export async function explore(opts: ExploreOptions): Promise<ExploreResult> {
           plan: opts.plan,
           seedUrl: seed,
           maxSteps: Math.min(scoutBudgetSteps, 12),
-          deadlineMs: scoutDeadline,
+          deadlineMs: scoutDeadline - elapsedMono(), // remaining budget, monotonic
           getActions,
           perform: async (id, input) => stepAndRecord(id, input),
           currentState,
@@ -353,14 +364,14 @@ export async function explore(opts: ExploreOptions): Promise<ExploreResult> {
         continue;
       }
     }
-    if (Date.now() >= scoutDeadline && scoutOutcome !== 'error') scoutOutcome = 'budget';
-    log.info('scout phase done', { outcome: scoutOutcome, llmCalls: scoutCalls, wallMs: Date.now() - started, capMs: scoutBudget * 1000 });
+    if (elapsedMono() >= scoutDeadline && scoutOutcome !== 'error') scoutOutcome = 'budget';
+    log.info('scout phase done', { outcome: scoutOutcome, llmCalls: scoutCalls, wallMs: elapsedMono(), capMs: scoutBudget * 1000 });
 
     // ---------------------------------------------------------- wanderer (code policy, no LLM)
     const maxWandererSteps = opts.wandererSteps ?? 40;
     const nasty = Object.values(opts.plan.nastyInputs).flat();
     for (let step = 0; step < maxWandererSteps; step++) {
-      if (Date.now() - started > budgetMs) break;
+      if (elapsedMono() > budgetMs) break;
       const state = await currentState();
       const graphState = graph.getOrCreateState({ hash: state.hash, url: state.url, signature: '' });
       const actions = await getActions();
