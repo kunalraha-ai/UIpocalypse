@@ -29,3 +29,17 @@ The one completed run (`9eb0e90^`) found 22 clusters — mostly dead_click on la
 **Why the detection rate is low here:** GrowthSent's fixed bugs are dominated by **deployment-specific issues** (Vercel ObjectId binding, CDN caching) and **infrastructure-level issues** (crawler auth, MongoDB transaction retries) — neither class is visible to a browser-based swarm running against a local dev server. The bugs that ARE browser-visible (social sign-in, dashboard glitches) either didn't complete (server restart) or weren't attempted.
 
 **Honest label:** this is a 0-of-1 detection on completed runs from a tuning fixture, with 4 of 5 picks unrunnable. It says nothing about the tool's ability to find historical real bugs in apps whose bugs ARE browser-visible.
+
+## Diff-verified archaeology (2026-11-20, post-closure) — 0 of 5 are valid local measurements
+
+Verifying each pick against the actual fix diff (not commit messages) shows **no pick could have been detected locally, by nature** — so the 0-of-1 is an artifact of bug distribution, not a tool measurement:
+
+| Pick | What the fix diff actually shows | Locally runnable? |
+|---|---|---|
+| 1 | `import { ObjectId } from "mongodb"` → namespace import. The named-import class **works fine in plain Node** — it breaks only in Vercel's runtime interop | **No, by nature** — the bug cannot reproduce on a local dev server |
+| 2 | Same class as P1 (`new ObjectId()` → `new mongodbDriver.ObjectId()` in scan/audit services) — not "this-binding" as first described | **No, by nature** — same Vercel-runtime interop class |
+| 3 | `lib/auth/social.ts` +46: Google-verified-email account linking with concurrent-callback convergence; the App.tsx hunk relocates the auth modal. Reproducing needs the **real Google OAuth round-trip** | **No** — provider-bound |
+| 4 | `vercel.json` cache headers — cross-user caching exists only on Vercel's edge; a local server never caches | **No, by nature** |
+| 5 | `lib/crawler/fetcher.ts` +40: outbound `X-GrowthSent-Audit-Token` for **first-party host crawls** — the pre-fix router already 401'd website-scoped audit requests. **Mis-picked:** not an API-auth bug, and not UI-visible to a swarm at all | The one completed run — its "not detected" outcome is now explained: there was nothing browser-visible to detect |
+
+**Methodology conclusions:** (1) history-based detection needs repos whose fixed bugs are runtime-agnostic (UI logic, state handling, form flows) — GrowthSent's fix history is deployment/infra classes, and its genuinely browser-visible bugs (14 dead Figma-Make buttons) are still unfixed at HEAD, so no fix-point exists for them; (2) commit messages are not ground truth — 2 of 5 picks were materially mis-described until diff-verified; (3) the platform-bound classes are real vibecoder pains, but detecting them belongs to a future deployed check, not the local swarm.

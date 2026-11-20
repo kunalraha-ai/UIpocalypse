@@ -32,7 +32,7 @@ The inconsistent_feedback clusters across all 4 apps are the same class: form-su
 
 ### GrowthSent history-based detection (tuning fixture — NOT held-out)
 
-**0 of 1 completed run detected the later-fixed bug.** 2 of 5 pre-fix states booted; 1 completed a swarm run; the others were killed by server restarts or not attempted. The bugs GrowthSent fixed are dominated by deployment-specific (Vercel ObjectId, CDN caching) and infrastructure-level (crawler auth, MongoDB retries) issues — neither class is visible to a browser-based swarm on a local dev server. [benchmarks/growthsent-history/result.md]
+**0 of 1 completed run detected the later-fixed bug — and diff-verified archaeology shows 0 of 5 picks were valid local measurements at all.** The five fixed bugs are platform/provider-bound classes (Vercel-runtime named-import breakage ×2, Google OAuth account-linking, Vercel edge caching, and one mis-picked crawler-outbound-auth commit that was never UI-visible). The bugs GrowthSent fixed are dominated by deployment-specific and infrastructure-level issues — neither class can reproduce on a local dev server, and the tool's genuinely browser-visible GrowthSent findings (14 dead Figma-Make buttons) remain unfixed at HEAD, so no fix-point exists for them. [benchmarks/growthsent-history/result.md]
 
 ---
 
