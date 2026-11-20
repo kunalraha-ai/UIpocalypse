@@ -77,6 +77,7 @@ Build in this order (review-directed; the fingerprint key is already decided in 
 8. **Timing record:** several full-pipeline first runs and reruns; publish medians + ranges for the PRD G1 numbers.
 
 **Deliverable:** end-to-end "verify deployment safety" from Claude Code on the sample app.
+**Gate: PASS (2026-11-20, current config glm-5.3 + llama-3.2-3b): 3 executions, 8/8 checks each.** First-run pipeline median 147 s (range 127–158 s over 9 runs), rerun 71–72 s; duplicate_request restored (9–41 obs/run, the phase-4 regression fixed); diff_runs over identical runs shows zero phantom fixed/new; clustered FP 2 of 16 ≈ 12.5%; every report issue carries root cause + fix prompt. Also shipped under review direction: model-deprecation resilience (fallback chains, health checks, model recording, monotonic budgets, suspend detection) after both phase-5 models returned HTTP 410; diff_runs intermittent semantics; Contender B benchmarked (8 of 13 dynamic bugs, ~10 warm minutes, structurally blind to races/static-safety). See PHASE5_RESULTS.md.
 
 ## Phase 6: Benchmark + hardening (Week 6)
 
@@ -117,7 +118,7 @@ Build in this order (review-directed; the fingerprint key is already decided in 
 | 2 | Real static scan | ≤ 3 s |
 | 3 | Single agent + graph | Run-2 LLM calls ≤ 50% of run 1 |
 | 4 | 50-agent swarm + races | ≤ 120 s swarm phase |
-| 5 | Full report | End-to-end demo |
+| 5 | Full report | End-to-end demo | ✅ PASS (2026-11-20): 3 current-config executions 8/8; first-run median 147 s, rerun 71 s |
 | 6 | Benchmark + real repos | ≥ 80% detection, ≤ 20% FP |
 | 7 | Public beta | |
 

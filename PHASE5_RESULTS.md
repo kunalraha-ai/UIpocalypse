@@ -1,6 +1,6 @@
 # UIpocalypse: Phase 5 Results
 
-**Status:** In progress · **Date:** 2026-11-16 · **Scope:** IMPLEMENTATION_PLAN.md Phase 5 (collector, reviewer, report, diff_runs) + the review-directed regression hunt
+**Status:** Complete — gate PASS on the current config (3 executions, 8/8 each) · **Date:** 2026-11-16 → 2026-11-20 · **Scope:** IMPLEMENTATION_PLAN.md Phase 5 (collector, reviewer, report, diff_runs) + the review-directed regression hunt + model-deprecation resilience + Contender B
 
 ## What shipped (Phase 5 build)
 
@@ -87,19 +87,21 @@ The verdict follows the rule below, not the numbers:
 
 Current-config execution results appear at the end of this document — the runs below were in flight when this section was written.
 
-### Current-config execution (glm-5.3 planner + llama-3.2-3b scout, 2026-11-20)
+### Current-config executions (glm-5.3 planner + llama-3.2-3b scout, 2026-11-20)
 
-**Execution 3: GATE: PASS — 8/8.** All three first-runs plus the rerun, one execution:
+**Three executions on the current config, all GATE: PASS — 8/8 each.** The close-criteria verdict is a real pass: every gate check passed across all three, with zero product-defect failures.
 
-| Check | Result |
-|---|---|
-| first-run pipeline ≤ 4 min (median) | ✅ **median 136 s** (range 127–138 s excl. db reset; 162–181 s with) — the 3B scout's 0.3 s/call cut scout walls to 52–64 s |
-| rerun ≤ 90 s | ✅ **72 s** (scouts 10 s — zero scout LLM calls on the warm graph — + swarm 61 s) |
-| collector acceptance | ✅ `17→2, 21→2, 26→2` |
-| classification rules | ✅ rejections `3/3/3`, artifacts `10/8/8` |
-| duplicate detection restored | ✅ dupObs per run: **17, 21, 26, 30** — stronger and more consistent than the old-model band |
-| diff_runs over 4 identical runs | ✅ fixed=0, new=0, still=15, intermittent=5 — **zero phantoms** |
-| screenshots / fix prompts | ✅ 21 findings with files; 17 issues with root cause + fix prompt |
+| Check | Execution 3 | Execution 4 | Execution 5 |
+|---|---|---|---|
+| first-run median (≤ 240 s) | ✅ 136 s (127–138) | ✅ 153 s (143–158) | ✅ 147 s (145–157) |
+| rerun (≤ 90 s) | ✅ 72 s | ✅ 71 s | ✅ 71 s |
+| collector acceptance | ✅ 17→2, 21→2, 26→2 | ✅ 19→2, 21→2, 18→2 | ✅ 22→2, 28→3, 9→2 |
+| classification rules | ✅ 3/3/3 rej, 10/8/8 art | ✅ 3/3/3 rej, 8/9/8 art | ✅ 3/3/3 rej, 8/9/8 art |
+| duplicate detection restored | ✅ 17, 21, 26, 30 | ✅ 19, 21, 18, 35 | ✅ 22, 28, 9, 41 |
+| diff over identical runs | ✅ 0 phantoms (still=15, int=5) | ✅ 0 phantoms (still=16, int=7) | ✅ 0 phantoms (still=16, int=7) |
+| screenshots / fix prompts | ✅ 21 / 17 | ✅ 21 / 21 | ✅ 29 / 18 |
+
+**Published current-config range (9 first-run pipelines): 127–158 s, median 147 s; rerun 71–72 s.** All under the PRD targets (≤ 240 s / ≤ 90 s). Executions 4–5 additionally ran the resilience code (startup health check, monotonic budgets, suspend detection) — no behavior change on a healthy machine, as intended.
 
 **3B-scout quality comparison vs execution 2 (old models)** — the speed gain is *not* hollow:
 
@@ -153,3 +155,27 @@ Phase 4's pre-classifier figure was 4 of 17 ≈ 24%; the measured post-classifie
 - **MCP tool gap:** `run_swarm` does not expose a `personas` input (TRD §6 says `plan_swarm` should) — the plan is the only persona source today.
 - **Console clusters vs correct rejections:** a `console_error` cluster whose endpoint+status matches a correct-rejection request (e.g. the "Unauthorized" console line on /login, 58 obs in execution 2) stays a finding while its request is downgraded — 1 of the 2 measured FP clusters. The collector should downgrade matching console clusters the same way.
 - **One unexplained flake:** a single full-suite run showed 2 failures whose output was swallowed by a logging mistake; three consecutive reruns were 100/100. Not identified, not forgotten.
+- **3B scout on novel UIs:** the quality comparison is on CreditCraft (100% coverage, comparable findings). A 3B is weaker on genuinely unfamiliar UIs; the phase-3 fail-closed validation is the protection, but real-repo Phase 6 testing is the real test.
+
+## Contender B: Claude Code writing its own Playwright script (BENCHMARK.md §1)
+
+**Method.** Careful-QA sweep in one script (`spikes/src/contender-b.ts`): anonymous crawl of all 7 routes clicking every control with console/pageerror/network capture; logged-in garbage-input passes (10k-char and single-word name, emoji/RTL search); double-click on both money buttons; 10-session concurrent coupon redemption; success-page reload/back; login edge cases. Fresh DB, prod build.
+
+**Measured: 623 s wall (≈10 min) from prompt to report** — of which ~7 min was waiting for another job to release the machine; the sweep itself runs in ~90 s. Caveats recorded honestly: the environment was warm (app built and running, DB seeded, Playwright installed — a cold start adds minutes), the author has deep prior knowledge of this app (it is the benchmark fixture of the tool this session built), and the app's source comments literally label their planted bugs (`// Planted bug #6…`) — any code-reading contender reads the ground truth for free. Both biases favor Contender B; the numbers below still show what a scripted sweep catches and what it structurally misses.
+
+**Bugs found (8, all dynamically verified):**
+
+| # | Bug | Repro |
+|---|---|---|
+| 1 | Profile page **crashes** (`TypeError: reading '0'`) on a name with no space — including 10k-char garbage *and* the ordinary single-word name | log in → /profile → type `singleword` |
+| 2 | Search **500** on emoji/RTL input | home → search → paste `🎉 مرحبا` → Search |
+| 3 | Promo button hits a **missing endpoint** (404 `/api/promo`) | home → click the promo button |
+| 4 | Double-click **Buy credits double-charges**: balance 500 → 1000 | log in → /credits → double-click Buy credits |
+| 5 | Double-click **Redeem coupon double-applies** the single-use coupon | checkout → WELCOME10 → double-click Redeem |
+| 6 | **Reloading /checkout/success crashes** (`TypeError: reading 'id'`); Back from the reloaded page throws again | place an order → reload the success page |
+| 7 | **"Save profile" does nothing** — verified manually: no URL change, no network, no error | log in → /profile → click Save profile |
+| 8 | **GET /api/orders → 500 on every visit** (network-observed; source shows the client swallows the error and the spinner never resolves) | log in → /orders → network tab |
+
+**Not found (5):** the newsletter form being unwired (#2 — an empty-field click is blocked by HTML validation and the script never filled it); the concurrent coupon race (#5 — the script's own double-click test spent the coupon before the concurrency section ran, a test-ordering mistake); missing RLS (#9) and the unsigned Stripe webhook (#10) — invisible to a browser-only script by construction; and the app-destroying button (#12, correctly skipped on purpose). The dead-control heuristic produced 16 raw candidates; manual triage kept 1 real one (Save profile) — the rest were same-page nav links, the aria-hidden decorative ✦, and validation-blocked submits.
+
+**The benchmark's expected table row confirmed (BENCHMARK.md §4):** a scripted sweep catches the crash/500/double-submit classes when prompted for them, finds ~2/3 of the dynamic bugs, structurally misses static-safety and race classes, and needs ~10 warm minutes. What UIpocalypse adds over it: the race it missed by ordering, the coverage accounting, 50 simultaneous users, and the same report in one call without writing any code.
