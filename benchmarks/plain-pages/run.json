@@ -1,0 +1,65 @@
+{
+  "explore": {
+    "runId": 1,
+    "summary": {
+      "scoutOutcome": "error",
+      "seeds": [
+        "http://localhost:4180",
+        "http://localhost:4180/"
+      ],
+      "findingsTotal": 6,
+      "suppressedDeadClicks": 2
+    },
+    "coverage": 1,
+    "findingCounts": {
+      "dead_click": 5,
+      "inconsistent_feedback": 1
+    },
+    "graph": {
+      "states": 2,
+      "actions": 14,
+      "transitions": 14
+    },
+    "llmCalls": 17,
+    "durationMs": 35713,
+    "warnings": []
+  },
+  "swarm": {
+    "runId": 1,
+    "agents": 20,
+    "steps": 1978,
+    "stepsPerSec": 32.99030972196741,
+    "wallMs": 59957,
+    "coverage": 1,
+    "findingCounts": {
+      "dead_click": 285,
+      "inconsistent_feedback": 4
+    },
+    "graph": {
+      "states": 3,
+      "actions": 14,
+      "transitions": 14
+    },
+    "ramp": {
+      "level": 20,
+      "maxAgents": 20,
+      "stopped": false,
+      "stopReason": null,
+      "currentErrorRate": 0,
+      "p95LatencyMs": 711
+    },
+    "llmCalls": 20,
+    "raceWallMs": 0,
+    "duplicateEffects": [],
+    "racePreExisting": [],
+    "suppressedDeadVerdicts": 189,
+    "inconsistentFeedbackActions": [
+      "you@example.com",
+      "Load more",
+      "Show books",
+      "Show tools"
+    ],
+    "aborted": false,
+    "warnings": []
+  }
+}
