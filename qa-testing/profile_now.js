@@ -1,0 +1,21 @@
+const { chromium } = require('playwright');
+const BASE = 'http://localhost:3124';
+(async () => {
+  const browser = await chromium.launch();
+  const page = await (await browser.newContext()).newPage();
+  await page.goto(BASE + '/login');
+  await page.getByRole('button', { name: 'Sign in as Alice' }).click();
+  await page.waitForTimeout(600);
+  await page.goto(BASE + '/profile'); await page.waitForTimeout(500);
+  console.log('ALICE /profile:', await page.evaluate(() => document.body.innerText.replace(/\n+/g, ' | ')));
+  await page.goto(BASE + '/credits'); await page.waitForTimeout(500);
+  console.log('ALICE /credits:', await page.evaluate(() => document.body.innerText.replace(/\n+/g, ' | ')).slice(0, 220));
+  await page.getByRole('button', { name: 'Sign out' }).click(); await page.waitForTimeout(500);
+  console.log('after sign out url:', page.url());
+  await page.getByRole('button', { name: 'Sign in as Bob' }).click(); await page.waitForTimeout(600);
+  await page.goto(BASE + '/profile'); await page.waitForTimeout(500);
+  console.log('BOB /profile:', await page.evaluate(() => document.body.innerText.replace(/\n+/g, ' | ')));
+  await page.goto(BASE + '/credits'); await page.waitForTimeout(500);
+  console.log('BOB /credits:', await page.evaluate(() => document.body.innerText.replace(/\n+/g, ' | ')).slice(0, 220));
+  await browser.close();
+})().catch(e => { console.log('ERR', e.message.split('\n')[0]); process.exit(1); });

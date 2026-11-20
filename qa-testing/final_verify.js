@@ -1,0 +1,21 @@
+const { chromium } = require('playwright');
+const BASE = 'http://localhost:3124';
+(async () => {
+  const browser = await chromium.launch();
+  const page = await (await browser.newContext()).newPage();
+  const reqs = [];
+  page.on('request', r => { if (!r.url().includes('_next/static')) reqs.push(`${r.method()} ${r.url().replace(BASE,'')}`); });
+  await page.goto(BASE + '/login');
+  await page.getByRole('button', { name: 'Sign in as Alice' }).click();
+  await page.waitForTimeout(600);
+  await page.goto(BASE + '/profile'); await page.waitForTimeout(500);
+  await page.locator('main input').fill('QA Final Check');
+  reqs.length = 0;
+  await page.getByRole('button', { name: 'Save profile' }).click();
+  await page.waitForTimeout(900);
+  console.log('network during Save:', reqs.length ? reqs.join(', ') : 'NONE');
+  console.log('UI initials after save:', await page.evaluate(() => document.querySelector('.nametag')?.textContent));
+  await page.reload(); await page.waitForTimeout(800);
+  console.log('after reload:', await page.evaluate(() => document.querySelector('main input')?.value), '| initials:', await page.evaluate(() => document.querySelector('.nametag')?.textContent));
+  await browser.close();
+})().catch(e => { console.log('ERR', e.message.split('\n')[0]); process.exit(1); });

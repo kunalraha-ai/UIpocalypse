@@ -150,7 +150,8 @@ export const RUNTIME_SOURCE = String.raw`
   function isTextLike(el) {
     if (el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement) return true;
     return el instanceof HTMLInputElement &&
-      ['text', 'email', 'password', 'number', 'search', 'tel', 'url'].indexOf(el.type) !== -1;
+      ['text', 'email', 'password', 'number', 'search', 'tel', 'url',
+       'date', 'month', 'week', 'time', 'datetime-local'].indexOf(el.type) !== -1;
   }
   function isSaturated(el) {
     return el instanceof HTMLInputElement && el.type === 'radio' && el.checked;

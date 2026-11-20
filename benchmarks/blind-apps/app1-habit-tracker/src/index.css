@@ -1,0 +1,559 @@
+/* ============================== Theme ============================== */
+
+:root {
+  --bg: #0a0e17;
+  --bg-glow-1: rgba(109, 94, 242, 0.14);
+  --bg-glow-2: rgba(255, 94, 58, 0.07);
+  --surface: #121826;
+  --surface-2: #1a2235;
+  --border: #232f4b;
+  --border-soft: #1c2540;
+  --text: #e8ecf5;
+  --muted: #8a94ad;
+  --accent: #6d5ef2;
+  --accent-strong: #8b7cff;
+  --accent-soft: rgba(109, 94, 242, 0.16);
+  --green: #34d399;
+  --green-soft: rgba(52, 211, 153, 0.14);
+  --red: #f87171;
+  --amber: #ffb347;
+  --radius: 14px;
+  --radius-sm: 10px;
+  --font: "Inter", "SF Pro Display", ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100vh;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font);
+  color: var(--text);
+  background:
+    radial-gradient(1000px 500px at 15% -10%, var(--bg-glow-1), transparent 60%),
+    radial-gradient(900px 500px at 110% 10%, var(--bg-glow-2), transparent 60%),
+    var(--bg);
+  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+p {
+  margin: 0;
+}
+
+a {
+  color: var(--accent-strong);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+/* ============================== Cards ============================== */
+
+.card {
+  background: linear-gradient(180deg, var(--surface-2), var(--surface));
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 22px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+}
+
+/* ============================= Buttons ============================= */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-family: inherit;
+  font-size: 0.925rem;
+  font-weight: 600;
+  line-height: 1;
+  padding: 11px 18px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease,
+    background-color 0.12s ease, border-color 0.12s ease, opacity 0.12s ease;
+  white-space: nowrap;
+}
+
+.btn:active {
+  transform: translateY(1px);
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  color: #fff;
+  background: linear-gradient(135deg, var(--accent-strong), var(--accent));
+  box-shadow: 0 6px 18px rgba(109, 94, 242, 0.35);
+}
+
+.btn-primary:hover {
+  box-shadow: 0 8px 24px rgba(109, 94, 242, 0.5);
+}
+
+.btn-success {
+  color: #06281c;
+  background: linear-gradient(135deg, #6ee7b7, var(--green));
+  box-shadow: 0 6px 18px rgba(52, 211, 153, 0.3);
+}
+
+.btn-ghost {
+  color: var(--text);
+  background: transparent;
+  border-color: var(--border);
+}
+
+.btn-ghost:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.btn-block {
+  width: 100%;
+  padding: 13px 18px;
+  margin-top: 6px;
+}
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+
+.icon-btn:hover {
+  background: rgba(248, 113, 113, 0.12);
+  color: var(--red);
+}
+
+/* ============================== Forms ============================== */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-bottom: 16px;
+}
+
+.field label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.field input,
+.field textarea {
+  font-family: inherit;
+  font-size: 0.95rem;
+  color: var(--text);
+  background: #0d1322;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  outline: none;
+  resize: vertical;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.field input::placeholder,
+.field textarea::placeholder {
+  color: #5b6478;
+}
+
+.field input:focus,
+.field textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.form-error {
+  color: var(--red);
+  font-size: 0.85rem;
+  font-weight: 500;
+  margin: 0 0 14px;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+/* ============================ Auth pages ============================ */
+
+.auth-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 420px;
+  padding: 34px 30px;
+}
+
+.auth-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 6px;
+  margin-bottom: 26px;
+}
+
+.auth-brand__flame {
+  display: grid;
+  place-items: center;
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 30%, rgba(255, 140, 60, 0.22), transparent 70%);
+  border: 1px solid var(--border);
+  margin-bottom: 8px;
+}
+
+.auth-brand h1 {
+  font-size: 1.45rem;
+}
+
+.auth-sub {
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.auth-switch {
+  margin-top: 22px;
+  text-align: center;
+  font-size: 0.88rem;
+  color: var(--muted);
+}
+
+/* ============================= Dashboard ============================= */
+
+.app-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 28px;
+  border-bottom: 1px solid var(--border-soft);
+  background: rgba(10, 14, 23, 0.75);
+  backdrop-filter: blur(10px);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.topbar__brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.topbar__right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.user-chip {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.85rem;
+  color: var(--muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 7px 14px;
+}
+
+.dashboard {
+  width: 100%;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 36px 28px 64px;
+  flex: 1;
+}
+
+.dashboard__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.dashboard__head h1 {
+  font-size: 1.7rem;
+}
+
+.dashboard__sub {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.stat-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-bottom: 26px;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 18px 20px;
+}
+
+.stat__value {
+  font-size: 1.6rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.stat__value--hot {
+  color: var(--amber);
+}
+
+.stat__value--green {
+  color: var(--green);
+}
+
+.stat__label {
+  color: var(--muted);
+  font-size: 0.83rem;
+}
+
+/* ============================== Habits ============================== */
+
+.habit-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
+  gap: 16px;
+}
+
+.habit-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: linear-gradient(180deg, var(--surface-2), var(--surface));
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3);
+  transition: border-color 0.15s ease, transform 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.habit-card:hover {
+  transform: translateY(-2px);
+  border-color: #2f3d63;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.42);
+}
+
+.habit-card--done {
+  border-color: rgba(52, 211, 153, 0.45);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(52, 211, 153, 0.18);
+}
+
+.habit-card__top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.habit-card__name {
+  font-size: 1.08rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.habit-card__desc {
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  flex: 1;
+}
+
+.habit-card__dots {
+  display: flex;
+  gap: 6px;
+}
+
+.dot {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #566079;
+  background: #0d1322;
+  border: 1px solid var(--border-soft);
+}
+
+.dot--on {
+  color: #06281c;
+  background: linear-gradient(135deg, #6ee7b7, var(--green));
+  border-color: transparent;
+}
+
+.dot--today:not(.dot--on) {
+  border-color: var(--accent);
+  color: var(--accent-strong);
+}
+
+.habit-card__bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: auto;
+}
+
+.streak-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-radius: 999px;
+  padding: 6px 12px;
+  white-space: nowrap;
+}
+
+.streak-badge--hot {
+  color: var(--amber);
+  border-color: rgba(255, 179, 71, 0.35);
+  background: rgba(255, 179, 71, 0.08);
+}
+
+/* ============================ New habit form ============================ */
+
+.new-habit {
+  margin-bottom: 22px;
+}
+
+.new-habit__title {
+  font-size: 1.1rem;
+  margin-bottom: 16px;
+}
+
+/* ============================ Empty state ============================ */
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 12px;
+  padding: 64px 24px;
+}
+
+.empty-state__icon {
+  font-size: 2.6rem;
+}
+
+.empty-state h2 {
+  font-size: 1.25rem;
+}
+
+.empty-state p {
+  color: var(--muted);
+  max-width: 380px;
+  line-height: 1.55;
+}
+
+.empty-state .btn {
+  margin-top: 6px;
+}
+
+/* ============================ Responsive ============================ */
+
+@media (max-width: 860px) {
+  .stat-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 560px) {
+  .topbar {
+    padding: 12px 16px;
+  }
+
+  .dashboard {
+    padding: 24px 16px 48px;
+  }
+
+  .dashboard__head {
+    flex-direction: column;
+  }
+
+  .stat-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .user-chip {
+    display: none;
+  }
+
+  .habit-card__bottom {
+    flex-wrap: wrap;
+  }
+}
