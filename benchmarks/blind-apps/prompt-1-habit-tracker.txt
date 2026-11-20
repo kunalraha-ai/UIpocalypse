@@ -1,0 +1,3 @@
+Build a habit-tracking web app. Features: sign up / log in with email and password, a dashboard showing the user's habits with a streak counter for each, the ability to create a new habit (name + description), mark a habit as done today, and delete a habit. Style it nicely with a dark theme.
+
+Stack: Vite + React + TypeScript. Store data in localStorage (no backend database needed — just persist to localStorage on the client). Use react-router for pages. Make it a single npm project in the current directory.

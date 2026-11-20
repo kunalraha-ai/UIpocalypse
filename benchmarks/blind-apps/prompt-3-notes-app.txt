@@ -1,0 +1,3 @@
+Build a notes app. Features: sign up / log in with email and password (Supabase Auth), create notes with a title and body (rich text not needed — plain textarea), edit and delete notes, and search across notes by title and content. Style with Tailwind CSS.
+
+Stack: Vite + React + Supabase (use the local Supabase instance already running — create the notes table in a migration). Make it a single npm project in the current directory.

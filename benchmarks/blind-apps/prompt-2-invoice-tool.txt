@@ -1,0 +1,3 @@
+Build an invoice management tool for freelancers. Features: create invoices with line items (description, quantity, price), a running total with tax calculation (10% default), mark invoices as sent or paid, a simple dashboard showing total outstanding vs paid, and the ability to send an invoice (just simulate sending — show a confirmation, no real email). Include Stripe checkout integration in TEST mode (use sk_test_ prefix keys — no real keys, just placeholder test-mode strings).
+
+Stack: Next.js App Router + TypeScript. Store invoice data in a local JSON file via API routes (no external database). Make it a single npm project in the current directory.

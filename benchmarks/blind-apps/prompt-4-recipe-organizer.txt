@@ -1,0 +1,3 @@
+Build a recipe organizer. Features: add recipes with name, ingredients list, and step-by-step instructions; browse all recipes; filter by ingredient; and a shopping list that aggregates ingredients from selected recipes. Style it however you like.
+
+Stack: SvelteKit + TypeScript. Store data in localStorage on the client. Make it a single npm project in the current directory.
