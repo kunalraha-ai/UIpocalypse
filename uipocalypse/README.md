@@ -2,14 +2,20 @@
 
 Local MCP server + CLI: chaotic-user QA for vibecoded apps. Status: **Phase 5** — 15 static rules, in-page runtime + detectors, state graph, Planner/Scouts, the 50-agent swarm (personas, race mode, Ctrl-C partial report), and the Phase 5 collector/reviewer: clustered reports with fix prompts, `get_report`/`list_runs`/`diff_runs`/`verify_deployment_safety`. See the repo-root docs (`PRD.md`, `TRD.md`, `ARCHITECTURE.md`, `SAFETY.md`, `IMPLEMENTATION_PLAN.md`, `PHASE0-5_RESULTS.md`).
 
+## Requirements
+
+- **Node.js 22 or newer** (`node --version`) — the bundled SQLite driver (better-sqlite3 v13) requires it
+- A Chromium for Playwright — installed by the step below (one-time, ~120 MB)
+
 ## Connect from Claude Code (or any MCP client)
 
 ```bash
 cd uipocalypse
 npm install && npm run build
+npx playwright install chromium   # one-time: the browser the swarm drives
 ```
 
-Then add to your MCP client config:
+Then add to your MCP client config (use the **absolute** path to this checkout):
 
 ```json
 {
@@ -22,7 +28,16 @@ Then add to your MCP client config:
 }
 ```
 
-Ask: *"scan this codebase with uipocalypse"* — `scan_codebase` runs the 15 static rules; `plan_swarm`/`run_swarm` run scouts + the swarm; `get_report` returns the clustered report with fix prompts; `diff_runs` is the fix-verify loop; `verify_deployment_safety` chains all of it in one call.
+Ask: *"use uipocalypse to verify deployment safety: the repo is /path/to/my-app and the app is running at http://localhost:3000"*. `verify_deployment_safety` needs both inputs — `path` (the repo root to scan) and `url` (where the app is served). It chains static scan → plan → scouts → swarm → clustered report in one call. The other tools: `scan_codebase` runs the 15 static rules alone; `plan_swarm`/`run_swarm` run scouts + the swarm; `get_report` returns the report; `diff_runs` is the fix-verify loop.
+
+**Optional LLM key:** without one everything runs fully local (the swarm and all findings work; you get a mechanical report with fix prompts instead of an LLM-written review). For the LLM-reviewed report, put a `.env` in the directory you run the MCP client from, or in `uipocalypse/.env`:
+
+```
+LLM_API_KEY=...
+LLM_BASE_URL=https://api.openai.com/v1     # any OpenAI-compatible API
+LLM_MODEL=gpt-4o-mini
+LLM_SCOUT_MODEL=gpt-4o-mini                # a fast, cheap model
+```
 
 ## Safety (v0)
 

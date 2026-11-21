@@ -4,19 +4,24 @@
 
 ## What you need
 
-- Node.js 20 or newer (`node --version`)
+- Node.js 22 or newer (`node --version`) — the bundled SQLite driver requires it
 - Your app running on `localhost` (any port)
 - 5 minutes
 
 ## Step 1: Install
 
+Get the repo, build it, and install the browser the swarm drives (one-time, ~120 MB):
+
 ```bash
-npx uipocalypse
+git clone <the repo you were given>
+cd UIpocalypse/uipocalypse
+npm install && npm run build
+npx playwright install chromium
 ```
 
-That's it. The first run installs Playwright's browser (~1 min).
+That's the whole install. Nothing is published to npm — you run it from this checkout.
 
-**Optional — LLM key:** UIpocalypse works without one (free mode, finds crashes and dead buttons). To also get a written report with fix prompts, set these in a `.env` file:
+**Optional — LLM key.** Everything works without one: the swarm, all bug detectors, and a mechanical report with fix prompts. To add the LLM-written review, create a `.env` file in `uipocalypse/` (or the directory you run your MCP client from):
 
 ```
 LLM_API_KEY=your-key
@@ -25,18 +30,18 @@ LLM_MODEL=gpt-4o-mini
 LLM_SCOUT_MODEL=gpt-4o-mini
 ```
 
-Any OpenAI-compatible API works (OpenAI, Cloudflare Workers AI, local Ollama, Groq). Without a key, you get the raw findings list but no LLM-written summary.
+Any OpenAI-compatible API works (OpenAI, Cloudflare Workers AI, local Ollama, Groq).
 
 ## Step 2: Add to Claude Code
 
-Copy this into your Claude Code MCP config (`.claude/claude_desktop_config.json` or `claude mcp add`):
+Copy this into your Claude Code MCP config (`.claude/claude_desktop_config.json` or `claude mcp add`), with the **absolute path** to your checkout:
 
 ```json
 {
   "mcpServers": {
     "uipocalypse": {
-      "command": "npx",
-      "args": ["-y", "uipocalypse"]
+      "command": "node",
+      "args": ["/absolute/path/to/UIpocalypse/uipocalypse/dist/index.cjs"]
     }
   }
 }
@@ -46,11 +51,12 @@ Copy this into your Claude Code MCP config (`.claude/claude_desktop_config.json`
 
 Open Claude Code in your app's repo and say:
 
-> "Use uipocalypse to verify deployment safety. My app is on localhost:3000."
+> "Use uipocalypse to verify deployment safety: the repo is /path/to/my-app and the app is running at http://localhost:3000."
 
-Claude will call `verify_deployment_safety` which runs:
+Claude needs to pass both the repo `path` and the app `url`. It runs:
+
 1. **Static scan** — reads your code for dead buttons, missing RLS, unwired forms, exposed secrets (~1 second)
-2. **Swarm** — 30 test users click everything in a real browser, try garbage input, double-click money buttons, and race each other (~2 min)
+2. **Swarm** — a few dozen test users click everything in a real browser, try garbage input, double-click money buttons, race each other (~1–2 min)
 3. **Report** — ranked bug list with reproduction steps and paste-ready fix prompts
 
 ## What you get
@@ -69,16 +75,22 @@ A report like:
 ## Safety
 
 - **Only targets localhost** (or hosts you explicitly allow in `uipocalypse.config.yaml`)
-- **Never clicks delete/remove buttons** unless you explicitly opt in
-- **Your code never leaves your machine** — only redacted summaries go to the LLM provider
-- **No database writes** unless your DB is local and explicitly allow-listed
+- **Never clicks delete/reset/remove-class buttons** unless you explicitly opt in — this also means dead buttons with those labels are invisible to the swarm (see the README "Scope and limits")
+- **Your code never leaves your machine** — only redacted summaries go to the LLM provider, and nothing goes anywhere if you set no LLM key (see WHAT_WE_SEE.md)
+- **No database writes** unless your DB is local and explicitly allow-listed; otherwise the run is read-only and the report says so up front
+
+## Before running against a real app
+
+If your app has a production database or live API keys, make a safe test copy first — see SAFE_TEST_COPY.md. It's a 5-minute setup you can paste into your own coding agent.
 
 ## Troubleshooting
 
 | Problem | Fix |
 |---|---|
-| "No LLM configured" | Free mode works; add `LLM_API_KEY` to `.env` for the written report |
+| `npm install` fails compiling `better-sqlite3` | Your Node is too old — the SQLite driver needs **Node 22+** (`node --version`) |
+| `Executable doesn't exist ... chromium` | `npx playwright install chromium` in `uipocalypse/` |
+| "No LLM configured" | Not an error — you're in fully-local mode. Add `LLM_API_KEY` to `.env` for the LLM-written review |
+| "Model returned 410 / health check failed" | Your LLM model was deprecated; set a current model in `LLM_MODEL` / `LLM_SCOUT_MODEL` |
 | "Safety Guard refused target" | Only localhost is allowed by default; add your host to `allowHosts` in `uipocalypse.config.yaml` |
-| "Model returned 410" | Your LLM model was deprecated; set a current model name in `LLM_MODEL` / `LLM_SCOUT_MODEL` |
-| "browserType.executable doesn't exist" | Run `npx playwright install chromium` |
-| "Port already in use" | The tool doesn't need a port; your app must already be running on its own port |
+| Tool error "Required at path" | You passed the `url` but not the repo `path` — `verify_deployment_safety` needs both |
+| "Port already in use" | The tool opens no ports; your app must already be running on its own port |

@@ -4,6 +4,9 @@
   "description": "50 chaotic users try to break your app in a couple of minutes — local MCP server + CLI for vibecoded-app QA",
   "type": "module",
   "private": true,
+  "engines": {
+    "node": ">=22"
+  },
   "bin": {
     "uipocalypse": "dist/index.cjs"
   },
