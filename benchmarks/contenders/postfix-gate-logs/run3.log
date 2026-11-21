@@ -1,0 +1,162 @@
+LLM health OK: planner=@cf/zai-org/glm-5.3 scout=@cf/meta/llama-3.2-3b-instruct
+
+=== first-run 1 (fresh workspace) ===
+plan cached=false seeds=7 draftedInvariants=0
+scouts: 38 calls / 56.9s
+swarm: 3548 steps / 75.2s, findings=duplicate_request:34 dead_click:11 page_error:9 inconsistent_feedback:1 duplicate_effect:2 race_violation:1 failed_request:355 console_error:272
+clusters: 36 total | findings 24 | rejections 3 | artifacts 9 | dupObs 34 → 3 clusters
+report: 24 issues, review=llm
+# UIpocalypse report — run 1
+
+**Target:** http://localhost:3123 · **Agents:** 1 · **Swarm wall:** 74.8 s · **LLM calls:** 0 · **Coverage (runtime graph):** 100% (103/103 discovered actions) · **Coverage (app map):** 37% (11/30 code-declared interactive elements)
+
+## Summary
+
+24 clustered issues (9 high severity) over 103 discovered actions; coverage 100%.
+
+## Findings (24)
+
+### 1. request 500 on /api/orders
+
+`ep:/api/orders:req:500` · **high** · confidence **high** · 127 observations · `app/api/orders/route.ts`
+
+**Root cause:** A request to /api/orders failed.
+
+**Fix prompt:**
+
+```
+Fix /api/or
+
+=== first-run 2 (fresh workspace) ===
+plan cached=false seeds=7 draftedInvariants=0
+scouts: 38 calls / 62.3s
+swarm: 3119 steps / 73.7s, findings=page_error:2 duplicate_request:1 dead_click:11 inconsistent_feedback:1 duplicate_effect:2 race_violation:1 failed_request:247 console_error:177
+clusters: 31 total | findings 19 | rejections 3 | artifacts 9 | dupObs 1 → 1 clusters
+report: 19 issues, review=llm
+# UIpocalypse report — run 1
+
+**Target:** http://localhost:3123 · **Agents:** 1 · **Swarm wall:** 73.4 s · **LLM calls:** 0 · **Coverage (runtime graph):** 100% (102/102 discovered actions) · **Coverage (app map):** 37% (11/30 code-declared interactive elements)
+
+## Summary
+
+19 clustered issues (7 high severity) over 102 discovered actions; coverage 100%.
+
+## Findings (19)
+
+### 1. request 500 on /api/orders
+
+`ep:/api/orders:req:500` · **high** · confidence **high** · 70 observations · `app/api/orders/route.ts`
+
+**Root cause:** A request to /api/orders failed.
+
+**Fix prompt:**
+
+```
+Fix /api/ord
+
+=== first-run 3 (fresh workspace) ===
+plan cached=false seeds=7 draftedInvariants=0
+scouts: 38 calls / 61.8s
+swarm: 2925 steps / 74.0s, findings=page_error:8 duplicate_request:8 dead_click:8 inconsistent_feedback:1 duplicate_effect:1 race_violation:1 failed_request:254 console_error:194
+clusters: 29 total | findings 17 | rejections 3 | artifacts 9 | dupObs 8 → 1 clusters
+report: 17 issues, review=llm
+# UIpocalypse report — run 1
+
+**Target:** http://localhost:3123 · **Agents:** 1 · **Swarm wall:** 73.7 s · **LLM calls:** 0 · **Coverage (runtime graph):** 100% (101/101 discovered actions) · **Coverage (app map):** 37% (11/30 code-declared interactive elements)
+
+## Summary
+
+17 clustered issues (6 high severity) over 101 discovered actions; coverage 100%.
+
+## Findings (17)
+
+### 1. request 500 on /api/orders
+
+`ep:/api/orders:req:500` · **high** · confidence **high** · 83 observations · `app/api/orders/route.ts`
+
+**Root cause:** A request to /api/orders failed.
+
+**Fix prompt:**
+
+```
+Fix /api/ord
+
+=== rerun (warm graph + cached plan) ===
+plan cached=true seeds=7 draftedInvariants=0
+scouts: 0 calls / 9.1s
+swarm: 1739 steps / 58.3s, findings=dead_click:4 duplicate_request:14 page_error:3 duplicate_effect:2 failed_request:221 console_error:128
+clusters: 28 total | findings 17 | rejections 2 | artifacts 9 | dupObs 14 → 3 clusters
+report: 17 issues, review=llm
+diff across 2 identical runs: fixed=0 new=0 still=13 intermittent=8
+# UIpocalypse report — run 2
+
+**Target:** http://localhost:3123 · **Agents:** 1 · **Swarm wall:** 58.1 s · **LLM calls:** 0 · **Coverage (runtime graph):** 100% (105/105 discovered actions) · **Coverage (app map):** 37% (11/30 code-declared interactive elements)
+
+## Summary
+
+17 clustered issues (7 high severity) over 105 discovered actions; coverage 100%.
+
+## Findings (17)
+
+### 1. request 500 on /api/orders
+
+`ep:/api/orders:req:500` · **high** · confidence **high** · 53 observations · `app/api/orders/route.ts`
+
+**Root cause:** A request to /api/orders failed.
+
+**Fix prompt:**
+
+```
+Fix /api/ord
+
+=== PHASE 5 GATE ===
+  PASS  first-run pipeline ≤ 4 min (median, PRD G1) — median 181 s, range 167–183 s (excl. db reset)
+  FAIL  rerun ≤ 90 s (PRD G1) — 93 s (scouts 9 s + swarm 58 s + report 26 s)
+  FAIL  collector acceptance: duplicate observations collapse to one cluster per endpoint — 34→3, 1→1, 8→1
+  PASS  classification: 4xx-on-existing-route downgraded, ERR_ABORTED filtered — rejections 3/3/3, artifacts 9/9/9
+  PASS  duplicate detection restored (the regression): every run has duplicate_request findings — dupObs per run: 34, 1, 8, 14
+  PASS  diff_runs over identical runs: no phantom fixed/new (variance must land in intermittent) — {"fixed":0,"new":0,"still":13,"intermittent":8,"phantoms":[]}
+  PASS  screenshots on failure exist — 14 screenshot findings, all files present
+  PASS  every reported issue carries a root cause + paste-ready fix prompt — 17 issues
+
+GATE: FAIL
+
+=== timing record (PRD G1) ===
+first-run pipeline (scan+plan+scouts+swarm+report, no db reset): 167, 181, 183 s → median 181 s
+first-run with db reset: 189, 203, 205 s
+rerun (cached plan + warm graph): 93 s (scout LLM 1, planner 1)
+phase breakdown (first-run 3): scan 63ms, plan 24369ms, scouts 62s, swarm 74s, review 23s
+LLM per run (planner+reviewer | scouts+escal): 40|40  40|40  40|40  1|1
+
+=== clusters (first-run 3) — for FP classification ===
+  [finding] ep:/api/orders:req:500 — 83 obs (high)
+  [finding] ep:/profile:page:TypeError: Cannot read properties of undefined (reading '#') — 4 obs (high)
+  [finding] ep:/profile:page:Uncaught TypeError: Cannot read properties of undefined (reading '#') — 4 obs (high)
+  [finding] ep:/api/search:req:500 — 3 obs (high)
+  [finding] dup:table:coupon_redemptions — 1 obs (high)
+  [finding] dup:table:orders — 1 obs (high)
+  [finding] ep:/api/promo:req:404 — 45 obs (medium)
+  [cancellation_artifact] ep:/api/recommendations:req:net::ERR_ABORTED — 16 obs (medium)
+  [finding] act:Save profile — 9 obs (medium)
+  [cancellation_artifact] ep:/orders:req:net::ERR_ABORTED — 9 obs (medium)
+  [finding] dup:/api/coupon/redeem — 8 obs (medium)
+  [cancellation_artifact] ep:/profile:req:net::ERR_ABORTED — 8 obs (medium)
+  [cancellation_artifact] ep:/checkout:req:net::ERR_ABORTED — 7 obs (medium)
+  [cancellation_artifact] ep:/settings:req:net::ERR_ABORTED — 7 obs (medium)
+  [cancellation_artifact] ep:/credits:req:net::ERR_ABORTED — 6 obs (medium)
+  [cancellation_artifact] ep:/login:req:net::ERR_ABORTED — 4 obs (medium)
+  [cancellation_artifact] ep:/:req:net::ERR_ABORTED — 2 obs (medium)
+  [cancellation_artifact] ep:/api/orders:req:net::ERR_ABORTED — 1 obs (medium)
+  [finding] ep:/orders:console:Failed to load resource: the server responded with a status of # (Internal Serve — 81 obs (low)
+  [finding] ep:/:console:Failed to load resource: the server responded with a status of # (Not Found) — 45 obs (low)
+  [finding] ep:/login:console:Failed to load resource: the server responded with a status of # (Unauthorized) — 44 obs (low)
+  [finding] ep:/checkout:console:Failed to load resource: the server responded with a status of # (Bad Request) — 20 obs (low)
+  [finding] ep:/:console:Failed to load resource: the server responded with a status of # (Internal Serve — 4 obs (low)
+  [finding] act:Notification preferences — 1 obs (low)
+  [finding] ep:/checkout:console:Failed to load resource: the server responded with a status of # (Not Found) — 1 obs (low)
+  [finding] ep:/credits:console:Failed to load resource: the server responded with a status of # (Internal Serve — 1 obs (low)
+  [correct_rejection] ep:/api/auth/login:req:401 — 44 obs (info)
+  [correct_rejection] ep:/api/coupon/redeem:req:400 — 20 obs (info)
+  [correct_rejection] ep:/api/coupon/redeem:req:404 — 1 obs (info)
+
+planner-drafted invariants: first-run 1 (fresh workspace): 0→0  first-run 2 (fresh workspace): 0→0  first-run 3 (fresh workspace): 0→0  rerun (warm graph + cached plan): 0→0

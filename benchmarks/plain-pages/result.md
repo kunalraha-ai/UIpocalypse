@@ -21,19 +21,23 @@ UIpocalypse ran ONCE against `held-out-app-2/` (Plain Pages), untouched since it
 
 ## Results
 
-285 dead_click observations, 4 inconsistent_feedback, 1,978 steps, 100% graph coverage (3 states, 14 actions), 60 s wall.
+285 dead_click observations, 4 inconsistent_feedback, 1,978 steps, graph coverage **87.5% (14/16)** — recorded at run time as 100% because the two Guard-skipped actions ("Reset preferences", "Delete account") were silently dropped from the denominator; recomputed 2026-11-21 after the skip-visibility fix (14 reached + 2 skipped-by-policy = 16 discovered). 60 s wall.
 
 | Action | Verdict | Count | Assessment |
 |---|---|---|---|
 | dead_click: **Save note** | **TRUE POSITIVE** ✅ (planted #3, the subtle one) | 192 | The handler-runs-but-touches-nothing case — found |
 | dead_click: **Clear filters** | **TRUE POSITIVE** ✅ (planted #2) | 98 | The empty-onclick case — found |
-| dead_click: **Reset preferences** | **NOT FOUND** ❌ (planted #1) | 0 | Missed — no dead_click verdict for this control |
+| dead_click: **Reset preferences** | **SKIPPED BY SAFETY POLICY** ⚠️ (planted #1) | 0 | Never clicked — destructively-labeled (regex matches "reset"). At run time this skip was invisible (the run predates the skip-visibility fix: not listed, and the action was dropped from the coverage denominator, which is why coverage read 100%); the skip-visibility fix now lists such actions and counts them as unreached |
 | inconsistent_feedback: Load more | benign | 2 | Idempotent when exhausted — correct classification, ranked low |
 | inconsistent_feedback: you@example.com | benign | 1 | Validation-blocked form — correct, not a dead click |
 | inconsistent_feedback: Show books | benign | 1 | Idempotent filter — correct |
 | inconsistent_feedback: Show tools | benign | 1 | Idempotent filter — correct |
 
-**Detection: 2 of 3 planted dead controls (66.7%). Missed the no-handler "Reset preferences" button.**
+**Detection: 2 of 2 REACHABLE planted dead controls (100%). The third, "Reset preferences", was never tested — skipped by safety policy (its label contains "reset", which the Guard's destructive-label regex matches). Reframed 2026-11-21 after the root cause was found; the original framing ("2 of 3, 66.7%, missed") counted a safety-policy skip as a detector miss.**
+
+**Reframed honestly:**
+- **Detector recall on reachable dead controls: 2 of 2.** Both controls the Guard allowed it to click, it correctly flagged — including the subtle handler-runs-but-touches-nothing case.
+- **1 control was skipped by safety policy, not tested.** "Reset preferences" is destructively-labeled by regex, so the Guard refused every attempt to click it. That is a coverage limitation of the safety-first design (dead buttons labeled reset/delete/remove are invisible without opt-in), not a detection failure. See the correction below and the README "Scope and limits".
 
 ## Why "Reset preferences" was missed
 

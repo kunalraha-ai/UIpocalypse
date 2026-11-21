@@ -1,0 +1,141 @@
+LLM health OK: planner=@cf/zai-org/glm-5.3 scout=@cf/meta/llama-3.2-3b-instruct
+
+=== first-run 1 (fresh workspace) ===
+plan cached=false seeds=7 draftedInvariants=0
+scouts: 0 calls / 2.0s
+swarm: 302 steps / 71.3s, findings=failed_request:305
+clusters: 8 total | findings 8 | rejections 0 | artifacts 0 | dupObs 0 → 0 clusters
+report: 8 issues, review=llm
+# UIpocalypse report — run 1
+
+**Target:** http://localhost:3123 · **Agents:** 1 · **Swarm wall:** 71.2 s · **LLM calls:** 0 · **Coverage (runtime graph):** 0% (0/0 discovered actions) · **Coverage (app map):** 0% (0/30 code-declared interactive elements)
+
+## Summary
+
+8 clustered issues (1 high severity) over 0 discovered actions; coverage 0%.
+
+## Findings (8)
+
+### 1. navigation_error on /
+
+`ep:/:navigation_error` · **high** · confidence **high** · 1 observation · `components/BuyCredits.tsx`:18
+
+**Root cause:** Clustered detector observations.
+
+**Fix prompt:**
+
+```
+Investigate navigation_error 
+
+=== first-run 2 (fresh workspace) ===
+plan cached=false seeds=7 draftedInvariants=0
+scouts: 0 calls / 1.8s
+swarm: 302 steps / 71.2s, findings=failed_request:305
+clusters: 8 total | findings 8 | rejections 0 | artifacts 0 | dupObs 0 → 0 clusters
+report: 8 issues, review=llm
+# UIpocalypse report — run 1
+
+**Target:** http://localhost:3123 · **Agents:** 1 · **Swarm wall:** 71.1 s · **LLM calls:** 0 · **Coverage (runtime graph):** 0% (0/0 discovered actions) · **Coverage (app map):** 0% (0/30 code-declared interactive elements)
+
+## Summary
+
+8 clustered issues (1 high severity) over 0 discovered actions; coverage 0%.
+
+## Findings (8)
+
+### 1. navigation_error on /
+
+`ep:/:navigation_error` · **high** · confidence **high** · 1 observation · `components/BuyCredits.tsx`:18
+
+**Root cause:** Clustered detector observations.
+
+**Fix prompt:**
+
+```
+Investigate navigation_error 
+
+=== first-run 3 (fresh workspace) ===
+plan cached=false seeds=7 draftedInvariants=0
+scouts: 0 calls / 1.8s
+swarm: 302 steps / 71.2s, findings=failed_request:305
+clusters: 8 total | findings 8 | rejections 0 | artifacts 0 | dupObs 0 → 0 clusters
+report: 8 issues, review=llm
+# UIpocalypse report — run 1
+
+**Target:** http://localhost:3123 · **Agents:** 1 · **Swarm wall:** 71.1 s · **LLM calls:** 0 · **Coverage (runtime graph):** 0% (0/0 discovered actions) · **Coverage (app map):** 0% (0/30 code-declared interactive elements)
+
+## Summary
+
+8 clustered issues (1 high severity) over 0 discovered actions; coverage 0%.
+
+## Findings (8)
+
+### 1. navigation_error on /
+
+`ep:/:navigation_error` · **high** · confidence **high** · 1 observation · `components/BuyCredits.tsx`:18
+
+**Root cause:** Clustered detector observations.
+
+**Fix prompt:**
+
+```
+Investigate navigation_error 
+
+=== rerun (warm graph + cached plan) ===
+plan cached=true seeds=7 draftedInvariants=0
+scouts: 0 calls / 2.0s
+swarm: 302 steps / 60.3s, findings=failed_request:305
+clusters: 8 total | findings 8 | rejections 0 | artifacts 0 | dupObs 0 → 0 clusters
+report: 8 issues, review=llm
+diff across 2 identical runs: fixed=0 new=0 still=8 intermittent=0
+# UIpocalypse report — run 2
+
+**Target:** http://localhost:3123 · **Agents:** 1 · **Swarm wall:** 60.1 s · **LLM calls:** 0 · **Coverage (runtime graph):** 0% (0/0 discovered actions) · **Coverage (app map):** 0% (0/30 code-declared interactive elements)
+
+## Summary
+
+8 clustered issues (1 high severity) over 0 discovered actions; coverage 0%.
+
+## Findings (8)
+
+### 1. navigation_error on /
+
+`ep:/:navigation_error` · **high** · confidence **high** · 1 observation · `components/BuyCredits.tsx`:18
+
+**Root cause:** Clustered detector observations.
+
+**Fix prompt:**
+
+```
+Investigate navigation_error 
+
+=== PHASE 5 GATE ===
+  PASS  first-run pipeline ≤ 4 min (median, PRD G1) — median 109 s, range 101–110 s (excl. db reset)
+  PASS  rerun ≤ 90 s (PRD G1) — 77 s (scouts 2 s + swarm 60 s + report 15 s)
+  FAIL  collector acceptance: duplicate observations collapse to one cluster per endpoint — 0→0, 0→0, 0→0
+  FAIL  classification: 4xx-on-existing-route downgraded, ERR_ABORTED filtered — rejections 0/0/0, artifacts 0/0/0
+  FAIL  duplicate detection restored (the regression): every run has duplicate_request findings — dupObs per run: 0, 0, 0, 0
+  PASS  diff_runs over identical runs: no phantom fixed/new (variance must land in intermittent) — {"fixed":0,"new":0,"still":8,"intermittent":0,"phantoms":[]}
+  FAIL  screenshots on failure exist — 0 screenshot findings, all files present
+  PASS  every reported issue carries a root cause + paste-ready fix prompt — 8 issues
+
+GATE: FAIL
+
+=== timing record (PRD G1) ===
+first-run pipeline (scan+plan+scouts+swarm+report, no db reset): 110, 101, 109 s → median 109 s
+first-run with db reset: 132, 123, 131 s
+rerun (cached plan + warm graph): 77 s (scout LLM 1, planner 1)
+phase breakdown (first-run 3): scan 35ms, plan 12745ms, scouts 2s, swarm 71s, review 23s
+LLM per run (planner+reviewer | scouts+escal): 2|2  2|2  2|2  1|1
+
+=== clusters (first-run 3) — for FP classification ===
+  [finding] ep:/:navigation_error — 1 obs (high)
+  [finding] ep:/:req:net::ERR_CONNECTION_REFUSED — 100 obs (medium)
+  [finding] ep:/profile:req:net::ERR_CONNECTION_REFUSED — 44 obs (medium)
+  [finding] ep:/credits:req:net::ERR_CONNECTION_REFUSED — 41 obs (medium)
+  [finding] ep:/login:req:net::ERR_CONNECTION_REFUSED — 37 obs (medium)
+  [finding] ep:/settings:req:net::ERR_CONNECTION_REFUSED — 31 obs (medium)
+  [finding] ep:/checkout:req:net::ERR_CONNECTION_REFUSED — 30 obs (medium)
+  [finding] ep:/orders:req:net::ERR_CONNECTION_REFUSED — 26 obs (medium)
+
+planner-drafted invariants: first-run 1 (fresh workspace): 0→0  first-run 2 (fresh workspace): 0→0  first-run 3 (fresh workspace): 0→0  rerun (warm graph + cached plan): 0→0
