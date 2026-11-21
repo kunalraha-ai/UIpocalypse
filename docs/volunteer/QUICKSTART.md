@@ -4,7 +4,7 @@
 
 ## What you need
 
-- The release tarball (`uipocalypse-0.0.1.tgz`) — the tool is not on npm
+- The release tarball you were given (e.g. `uipocalypse-0.0.4.tgz`) — the tool is not on npm
 - Node.js 22 or newer (`node --version`) — the bundled SQLite driver requires it
 - Your app running on `localhost` (any port)
 - 5 minutes
@@ -12,25 +12,25 @@
 ## Step 1: Install
 
 ```bash
-mkdir uipocalypse && tar -xzf uipocalypse-0.0.1.tgz -C uipocalypse --strip-components=1
+mkdir uipocalypse && tar -xzf <the-tarball-you-were-given>.tgz -C uipocalypse --strip-components=1
 cd uipocalypse
 npm install --omit=dev          # dependencies only; ignore npm-audit noise
 npx playwright install chromium # one-time: the browser the swarm drives
 ```
 
-That's the whole install. The full volunteer kit (this file, WHAT_WE_SEE.md,
-SAFE_TEST_COPY.md, FEEDBACK.md) is in `dist/docs/volunteer/`.
+That's the whole install. The full volunteer kit ships in `dist/docs/volunteer/` — this file, QUICKSTART_PROMPT (a paste-ready version of these steps), WHAT_WE_SEE, SAFE_TEST_COPY, FEEDBACK, LOG_TEMPLATE, plus test records (PROMPT_TEST, TARBALL_VERIFICATION, CLEANROOM_INSTALL_TEST).
 
 ## Step 2: Add to Claude Code (or any MCP client)
 
-Point your MCP client at the built server, with the **absolute path**:
+Point your MCP client at the built server. Config shapes vary by client (Claude Code / Cursor use `command`/`args`/`env`; others differ — check your client's MCP docs), but the universal parts are: the command `node`, the **absolute path** to `dist/index.cjs`, and the `env` block. **Set `UIP_WORKSPACE`** so the results (`.uipocalypse/` — SQLite DB, screenshots, reports) land where you want them instead of wherever the client happened to spawn the server; if a `uipocalypse` entry already exists in your config, replace it:
 
 ```json
 {
   "mcpServers": {
     "uipocalypse": {
       "command": "node",
-      "args": ["/absolute/path/to/uipocalypse/dist/index.cjs"]
+      "args": ["/absolute/path/to/uipocalypse/dist/index.cjs"],
+      "env": { "UIP_WORKSPACE": "/absolute/path/to/uipocalypse" }
     }
   }
 }
@@ -108,8 +108,7 @@ Claude needs to pass both the repo `path` and the app `url`. It runs:
 2. **Swarm** — a few dozen test users click everything in a real browser, try garbage input, double-click money buttons, race each other (~1–2 min)
 3. **Report** — ranked bug list with reproduction steps and paste-ready fix prompts
 
-Results land in `.uipocalypse/` under the server's working directory (or under
-`$UIP_WORKSPACE` if you set it).
+Results land in `.uipocalypse/` under `$UIP_WORKSPACE` (set in Step 2; falls back to the server's working directory if unset).
 
 ## What you get
 

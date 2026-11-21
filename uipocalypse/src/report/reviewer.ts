@@ -79,6 +79,8 @@ export type Report = {
   coverage: CollectedRun['coverage'];
   /** detection classes not run (read-only mode, no safe DB) */
   disabledClasses?: string[];
+  /** set when connection-refused observations dominate the run — the target was down */
+  targetUnreachable?: { refused: number; totalObservations: number };
   /** every action the Safety Guard refused, by label with reason — never silent */
   skippedActions?: Array<{ label: string; reason: string }>;
   /** both coverage figures, with their denominators spelled out */
@@ -222,6 +224,28 @@ export async function reviewRun(opts: {
   }
 }
 
+/**
+ * Target unreachability (fresh-eyes prompt-test finding): when a run's
+ * observations are dominated by connection refusals, the "findings" describe
+ * a dead server, not app bugs — a naive reader mistook exactly this for real
+ * findings. Attribute each cluster's observations proportionally to its
+ * refusal-bearing samples; flag only when refusals dominate (≥80% of all
+ * observations and at least 10 of them), so a healthy app with one refused
+ * request never trips it. Presentation only — no detector logic involved.
+ */
+function unreachableSummary(collected: CollectedRun): Report['targetUnreachable'] {
+  let refused = 0;
+  let total = 0;
+  for (const c of collected.clusters) {
+    total += c.observations;
+    if (!c.samples.length) continue;
+    const refusedSamples = c.samples.filter((s) => JSON.stringify(s).includes('ERR_CONNECTION_REFUSED')).length;
+    if (refusedSamples > 0) refused += Math.round((c.observations * refusedSamples) / c.samples.length);
+  }
+  if (refused >= 10 && refused / Math.max(1, total) >= 0.8) return { refused, totalObservations: total };
+  return undefined;
+}
+
 /** Assemble the final report (markdown + json share this structure). */
 export function assembleReport(collected: CollectedRun, review: Review | ReviewWithSource, run: RunMeta): Report {
   const byKey = new Map(collected.clusters.map((c) => [c.key, c] as const));
@@ -257,6 +281,7 @@ export function assembleReport(collected: CollectedRun, review: Review | ReviewW
     summary: review.summary,
     reviewedBy: (review as ReviewWithSource).reviewedBy ?? 'mechanical',
     reviewReason: (review as ReviewWithSource).mechanicalReason,
+    targetUnreachable: unreachableSummary(collected),
     issues,
     inconsistentFeedback: collected.findingClusters
       .filter((c) => c.types.includes('inconsistent_feedback'))
@@ -278,6 +303,14 @@ export function markdownReport(report: Report): string {
   const lines: string[] = [];
   lines.push(`# UIpocalypse report — run ${report.runId}`);
   lines.push('');
+  // target unreachability comes FIRST: everything below it is dead-server
+  // noise, and a reader skimming the findings must be stopped before that
+  if (report.targetUnreachable) {
+    lines.push(`> 🛑 **THE TARGET WAS UNREACHABLE for most of this run** — ${report.targetUnreachable.refused} of ${report.targetUnreachable.totalObservations} observations are connection-refused.`);
+    lines.push(`> The "findings" below describe a server that was down, not bugs in the app.`);
+    lines.push(`> Check that the app is running on the target URL/port, start it, and re-run. This report is not a bug list.`);
+    lines.push('');
+  }
   // SAFETY.md G4 + volunteer readiness: lead with what was NOT tested
   if (report.disabledClasses?.length) {
     lines.push(`> ⚠️ **NOT TESTED (no safe database confirmed):** ${report.disabledClasses.join(', ')}.`);

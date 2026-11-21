@@ -94,3 +94,44 @@ Stuck points found and fixed:
 6. Minor prompt polish: which folder should own the results (sensible default
    stated), expected call duration (~1–2 min at defaults), and "show me the
    markdown report" instead of ambiguous "the report".
+
+---
+
+# Prompt re-test 3 — fresh eyes on the 0.0.3 release candidate (2026-11-21)
+
+A third fresh-context agent ran the hardened prompt against the 0.0.3
+tarball. **5 min 46 s total**; the real run: 37 s, `LLM mode: off`, 0 LLM
+calls, Reviewed by: mechanical (reason stated), the planted dead button
+found at 102 observations, 4/4 coverage, nothing skipped (no
+destructive-labeled controls in this fixture). The stray-key protocol
+worked again (found the developer's ~/.uipocalypse/config, moved it aside,
+0 LLM calls, restored byte-identical, disclosed).
+
+Stuck points and shipped-doc defects found — all fixed for 0.0.4:
+
+1. **Stale version strings**: the shipped README and QUICKSTART said
+   `uipocalypse-0.0.1.tgz` inside the 0.0.3 tarball. Now version-neutral
+   with the current version as the example.
+2. **Dangling references**: the shipped README pointed at repo-root docs
+   (PRD/TRD/benchmarks) that don't ship. Now marked "source repository —
+   not in the release tarball".
+3. **The one genuinely missing step**: no shipped doc showed HOW to set the
+   results directory. Fixed: README and QUICKSTART config examples now set
+   `UIP_WORKSPACE` in the env block (client-agnostic, no cwd field needed),
+   with a note that config shapes vary by client.
+4. **QUICKSTART undercounted the shipped kit** (4 of 9 files). Fixed.
+5. **THE PRODUCT GAP**: the fixture app died mid-test, and run 1 reported
+   307 connection-refused observations as ordinary findings — a naive
+   reader could mistake them for bugs. Fixed in 0.0.4: reports whose
+   observations are dominated (≥80%, ≥10) by connection refusals now open
+   with a banner — "🛑 THE TARGET WAS UNREACHABLE for most of this run …
+   This report is not a bug list." (Presentation only; no detector or
+   threshold changed.)
+6. Minor, recorded without change: `planCached: true` across a dead-app run
+   (the cache key is the app-map hash from the repo scan, which is
+   legitimate — the plan was fine, the server was down); tarball mtimes
+   read as the reproducible-build epoch (cosmetic).
+
+Environment note: the fixture server's mid-test death was an artifact of
+this test rig (the harness reaps orphaned background processes between
+shell sessions) — which is exactly how it surfaced the unreachability gap.

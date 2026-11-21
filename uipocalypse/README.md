@@ -1,6 +1,6 @@
 # uipocalypse
 
-Local MCP server + CLI: chaotic-user QA for vibecoded apps. Status: **Phase 5** — 15 static rules, in-page runtime + detectors, state graph, Planner/Scouts, the 50-agent swarm (personas, race mode, Ctrl-C partial report), and the Phase 5 collector/reviewer: clustered reports with fix prompts, `get_report`/`list_runs`/`diff_runs`/`verify_deployment_safety`. See the repo-root docs (`PRD.md`, `TRD.md`, `ARCHITECTURE.md`, `SAFETY.md`, `IMPLEMENTATION_PLAN.md`, `PHASE0-5_RESULTS.md`).
+Local MCP server + CLI: chaotic-user QA for vibecoded apps. Status: **Phase 5** — 15 static rules, in-page runtime + detectors, state graph, Planner/Scouts, the 50-agent swarm (personas, race mode, Ctrl-C partial report), and the Phase 5 collector/reviewer: clustered reports with fix prompts, `get_report`/`list_runs`/`diff_runs`/`verify_deployment_safety`. (Development history docs — `PRD.md`, `TRD.md`, `ARCHITECTURE.md`, `SAFETY.md`, benchmark results — live in the source repository, not in this release tarball. The volunteer kit ships in `dist/docs/volunteer/`.)
 
 ## Requirements
 
@@ -9,8 +9,10 @@ Local MCP server + CLI: chaotic-user QA for vibecoded apps. Status: **Phase 5** 
 
 ## Install and connect (from the release tarball)
 
+Extract the tarball you were given (e.g. `uipocalypse-0.0.4.tgz`):
+
 ```bash
-mkdir uipocalypse && tar -xzf uipocalypse-0.0.1.tgz -C uipocalypse --strip-components=1
+mkdir uipocalypse && tar -xzf uipocalypse-<the-file-you-were-given>.tgz -C uipocalypse --strip-components=1
 cd uipocalypse
 npm install --omit=dev
 npx playwright install chromium   # one-time: the browser the swarm drives
@@ -18,14 +20,15 @@ npx playwright install chromium   # one-time: the browser the swarm drives
 
 (From a source checkout instead? `npm install && npm run build` — same result.)
 
-Then add to your MCP client config (use the **absolute** path):
+Then add to your MCP client config. Config shapes vary by client (Claude Code/Cursor use `command`/`args`/`env`; others differ — check your client's MCP docs): the universal parts are the command `node`, the **absolute path** to `dist/index.cjs`, and the `env` block. **Set `UIP_WORKSPACE`** so the results (`.uipocalypse/` — SQLite DB, screenshots, reports) land where you want them, not wherever the client happened to spawn the server:
 
 ```json
 {
   "mcpServers": {
     "uipocalypse": {
       "command": "node",
-      "args": ["/absolute/path/to/uipocalypse/dist/index.cjs"]
+      "args": ["/absolute/path/to/uipocalypse/dist/index.cjs"],
+      "env": { "UIP_WORKSPACE": "/absolute/path/to/uipocalypse" }
     }
   }
 }
@@ -48,7 +51,7 @@ Defaults are safe: localhost/staging only, destructive actions skipped, writes g
 
 ## Scope and limits
 
-Read this before trusting a clean report. The benchmark evidence for every claim below is in `../BENCHMARK_RESULTS.md`.
+Read this before trusting a clean report. The benchmark evidence for every claim below is in `../BENCHMARK_RESULTS.md` (source repository — not in the release tarball).
 
 **Detection blind spots (known, deliberate, unchanged):**
 
@@ -58,7 +61,7 @@ Read this before trusting a clean report. The benchmark evidence for every claim
 - **Chromium only, Linux only, local behavior only.** One browser engine; anything that only manifests in Safari/Firefox, in production infrastructure, or under real load is out of scope. **Developed and tested on Linux only — Windows and other non-Linux setups are untested** (Playwright prints a benign "OS not officially supported" fallback notice on some distros).
 - **Apps with only a production database get a read-only run.** When the Guard cannot confirm a safe (local, allow-listed) database, writes and form submits are skipped and the duplicate-write/race detectors are disabled. The report's first lines say exactly which detection classes were NOT run — a clean read-only report is never a clean bill of health.
 
-**Bug classes this tool cannot see (evidence: GrowthSent history run, `../benchmarks/growthsent-history/result.md`):**
+**Bug classes this tool cannot see (evidence: GrowthSent history run, in the source repository):**
 
 - **Deployment/platform-specific bugs** — e.g., a Vercel runtime module-resolution failure or CDN response caching that serves user A's data to user B. These don't reproduce on a local dev server.
 - **Infrastructure-level bugs** — outbound-service auth (a crawler missing its auth tokens), database retry/binding logic, queue/cron failures. Not browser-visible.
