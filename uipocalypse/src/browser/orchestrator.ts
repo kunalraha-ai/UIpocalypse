@@ -80,6 +80,8 @@ export type SwarmResult = {
   inconsistentFeedbackActions: string[];
   /** LLM calls made by stalled agents (should be ~0 after the phase-6 fix) */
   escalationCalls: number;
+  /** detection classes that were NOT run because the Guard could not confirm a safe DB */
+  disabledClasses: string[];
   aborted: boolean;
   warnings: string[];
 };
@@ -94,6 +96,16 @@ export async function swarm(opts: SwarmOptions): Promise<SwarmResult> {
   const decision = await guard.checkTarget(opts.url);
   if (!decision.allowed) {
     throw new Error(`Safety Guard refused target ${opts.url}: ${decision.reasons.join(' | ')}`);
+  }
+
+  // No-safe-DB read-only mode (SAFETY.md G4 + volunteer readiness): when
+  // the Guard cannot confirm a safe DB, the swarm still runs but writes
+  // and form submits are skipped. The Guard's refusal of write-heavy modes
+  // (race, fuzz) is NOT weakened — those are separate, stronger gates.
+  const dbWriteSafe = decision.isLocal && effectiveConfig.db.allowedHosts.length > 0;
+  const disabledClasses: string[] = [];
+  if (!dbWriteSafe) {
+    disabledClasses.push('duplicate_request', 'duplicate_effect', 'race_mode', 'form_submits');
   }
 
   const started = Date.now();
@@ -226,6 +238,16 @@ export async function swarm(opts: SwarmOptions): Promise<SwarmResult> {
       { dbOk: decision.isLocal },
     );
     const allowedIds = new Set(allowed.map((a) => a.id));
+    if (!dbWriteSafe) {
+      // read-only mode: also skip write-class actions (form submits, POST triggers)
+      // that the Guard would normally allow with a safe DB
+      for (const a of actions) {
+        if (allowedIds.has(a.id) && (a.textLike || /submit|send|save|create|add|buy|pay|order|checkout|redeem/i.test(a.name))) {
+          allowedIds.delete(a.id);
+          skipped.push({ action: { id: a.id, label: a.name }, reason: `read-only mode: no safe DB — writes and form submits skipped` });
+        }
+      }
+    }
     if (skipped.length) {
       log.info('safety: skipped actions', { actions: skipped.map((s) => s.action.label).slice(0, 8) });
     }
@@ -626,6 +648,7 @@ export async function swarm(opts: SwarmOptions): Promise<SwarmResult> {
     durationMs: agentWallMs + raceWallMs,
     llmCalls: opts.llm.calls - llmCallsAtStart,
     coverage: stats.coverage,
+    disabledClasses,
   });
 
   await browser.close().catch(() => {});
@@ -672,6 +695,7 @@ export async function swarm(opts: SwarmOptions): Promise<SwarmResult> {
     suppressedDeadVerdicts: suppressedDeadVerdicts.n,
     inconsistentFeedbackActions,
     escalationCalls: escalationCallCounter.n,
+    disabledClasses,
     aborted,
     warnings: decision.warnings,
   };

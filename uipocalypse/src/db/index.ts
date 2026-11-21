@@ -20,6 +20,10 @@ export function openDb(dir: string): Db {
   if (!runCols.some((c) => c.name === 'llm_models')) {
     db.exec('ALTER TABLE runs ADD COLUMN llm_models TEXT');
   }
+  // migration: runs.disabled_classes (project DBs created before read-only mode)
+  if (!runCols.some((c) => c.name === 'disabled_classes')) {
+    db.exec('ALTER TABLE runs ADD COLUMN disabled_classes TEXT');
+  }
   return db;
 }
 
@@ -107,12 +111,13 @@ export function createRun(
 
 export function finishRun(
   db: Db,
-  input: { id: number; durationMs: number; llmCalls: number; coverage: number },
+  input: { id: number; durationMs: number; llmCalls: number; coverage: number; disabledClasses?: string[] },
 ): void {
-  db.prepare('UPDATE runs SET duration_ms = ?, llm_calls = ?, coverage = ? WHERE id = ?').run(
+  db.prepare('UPDATE runs SET duration_ms = ?, llm_calls = ?, coverage = ?, disabled_classes = ? WHERE id = ?').run(
     input.durationMs,
     input.llmCalls,
     input.coverage,
+    input.disabledClasses?.join(',') ?? null,
     input.id,
   );
 }
@@ -126,12 +131,13 @@ export type RunRow = {
   llm_calls: number | null;
   coverage: number | null;
   llm_models: string | null;
+  disabled_classes: string | null;
 };
 
 export function listRuns(db: Db): RunRow[] {
   return db
     .prepare(
-      'SELECT id, started_at, target_url, agents, duration_ms, llm_calls, coverage, llm_models FROM runs ORDER BY id',
+      'SELECT id, started_at, target_url, agents, duration_ms, llm_calls, coverage, llm_models, disabled_classes FROM runs ORDER BY id',
     )
     .all() as RunRow[];
 }
@@ -139,7 +145,7 @@ export function listRuns(db: Db): RunRow[] {
 export function getRun(db: Db, id: number): RunRow | null {
   return db
     .prepare(
-      'SELECT id, started_at, target_url, agents, duration_ms, llm_calls, coverage, llm_models FROM runs WHERE id = ?',
+      'SELECT id, started_at, target_url, agents, duration_ms, llm_calls, coverage, llm_models, disabled_classes FROM runs WHERE id = ?',
     )
     .get(id) as RunRow | null;
 }

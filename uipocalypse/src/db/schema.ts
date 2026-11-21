@@ -49,7 +49,8 @@ CREATE TABLE IF NOT EXISTS runs (
   duration_ms INTEGER,
   llm_calls INTEGER,
   coverage REAL,
-  llm_models TEXT
+  llm_models TEXT,
+  disabled_classes TEXT
 );
 
 CREATE TABLE IF NOT EXISTS findings (

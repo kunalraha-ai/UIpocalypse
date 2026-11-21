@@ -41,6 +41,8 @@ export type RunMeta = {
   startedAt?: string;
   /** model ids used, from the run row — so results stay interpretable after a model disappears */
   llmModels?: string | null;
+  /** detection classes that were NOT run (read-only mode, no safe DB) */
+  disabledClasses?: string[];
 };
 
 export type Report = {
@@ -66,6 +68,8 @@ export type Report = {
   correctRejections: Array<{ key: string; title: string; observations: number }>;
   artifacts: Array<{ key: string; title: string; observations: number }>;
   coverage: CollectedRun['coverage'];
+  /** detection classes not run (read-only mode, no safe DB) */
+  disabledClasses?: string[];
   /** both coverage figures, with their denominators spelled out */
   coverageFigures?: {
     graph: { reached: number; total: number };
@@ -247,6 +251,7 @@ export function assembleReport(collected: CollectedRun, review: Review, run: Run
       appMap: { reached: collected.coverage.appMapReached, total: collected.coverage.appMapTotal },
       appMapUnreached: collected.coverage.appMapUnreached,
     },
+    disabledClasses: run.disabledClasses ?? [],
   };
 }
 
@@ -254,6 +259,13 @@ export function markdownReport(report: Report): string {
   const lines: string[] = [];
   lines.push(`# UIpocalypse report — run ${report.runId}`);
   lines.push('');
+  // SAFETY.md G4 + volunteer readiness: lead with what was NOT tested
+  if (report.disabledClasses?.length) {
+    lines.push(`> ⚠️ **NOT TESTED (no safe database confirmed):** ${report.disabledClasses.join(', ')}.`);
+    lines.push(`> This is a read-only run — writes, form submits, race tests, and duplicate-write`);
+    lines.push(`> detection were skipped. A clean report here is NOT a clean bill of health.`);
+    lines.push('');
+  }
   const models = report.run.llmModels ? ` · **Models:** ${report.run.llmModels}` : '';
   lines.push(`**Target:** ${report.run.targetUrl} · **Agents:** ${report.run.agents} · **Swarm wall:** ${(report.run.wallMs / 1000).toFixed(1)} s · **LLM calls:** ${report.run.llmCalls}${models} · **Coverage (runtime graph):** ${(report.coverage.coverage * 100).toFixed(0)}% (${report.coverage.reachedActions}/${report.coverage.discoveredActions} discovered actions) · **Coverage (app map):** ${(report.coverage.appMapCoverage * 100).toFixed(0)}% (${report.coverage.appMapReached}/${report.coverage.appMapTotal} code-declared interactive elements)`);
   lines.push('');
@@ -376,6 +388,7 @@ function toMeta(run: RunRow): RunMeta {
     llmCalls: run.llm_calls ?? 0,
     startedAt: run.started_at,
     llmModels: run.llm_models,
+    disabledClasses: run.disabled_classes?.split(',').filter(Boolean) ?? [],
   };
 }
 
