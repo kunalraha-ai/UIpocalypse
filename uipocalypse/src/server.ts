@@ -6,7 +6,7 @@ import { createLogger } from './logger.js';
 import { openDb, listRuns, type Db } from './db/index.js';
 import { scanCodebase } from './tools/scan-codebase.js';
 import { loadConfig } from './config.js';
-import { createLlm, createLlmSet, healthCheck } from './llm/index.js';
+import { createLlm, createLlmSet, healthCheck, llmModeLine } from './llm/index.js';
 import { analyze } from './analyzer/analyzer.js';
 import { createPlan, loadPlan } from './plan/planner.js';
 import { DEFAULT_NASTY_INPUTS, PlanSchema, type Plan } from './plan/schema.js';
@@ -66,6 +66,12 @@ export function createServer(opts: { workspaceRoot?: string } = {}): ServerConte
   const workspace = initWorkspace(opts.workspaceRoot);
   const logger = createLogger({ filePath: join(workspace.logs, 'server.jsonl') });
   const db = openDb(workspace.db);
+
+  // FIRST OUTPUT (stderr — stdout belongs to MCP): LLM mode, provider, key
+  // source — before any LLM call can happen, so a run's LLM status is never
+  // ambiguous (prompt-test finding: a silently-picked-up key made 16 real
+  // calls with no visible trace).
+  console.error(llmModeLine(createLlmSet().planner));
 
   const server = new McpServer(
     { name: 'uipocalypse', version: '0.0.2' },
@@ -180,6 +186,8 @@ export function createServer(opts: { workspaceRoot?: string } = {}): ServerConte
       llms.planner.maxCalls = config.llm.maxCallsPerRun;
       llms.scout.maxCalls = config.llm.maxCallsPerRun;
       try {
+        // run's first output: LLM mode, provider, key source — before any LLM call
+        console.error(llmModeLine(llms.planner));
         // model health FIRST (fail with an actionable message, not mid-run)
         if (llms.planner.configured) await healthCheck(llms.planner, 'LLM_MODEL');
         if (llms.scout.configured) await healthCheck(llms.scout, 'LLM_SCOUT_MODEL');
@@ -336,6 +344,8 @@ export function createServer(opts: { workspaceRoot?: string } = {}): ServerConte
       llms.scout.maxCalls = config.llm.maxCallsPerRun;
       try {
         const t0 = Date.now();
+        // run's first output: LLM mode, provider, key source — before any LLM call
+        console.error(llmModeLine(llms.planner));
         // model health FIRST (fail with an actionable message, not mid-run)
         if (llms.planner.configured) await healthCheck(llms.planner, 'LLM_MODEL');
         if (llms.scout.configured) await healthCheck(llms.scout, 'LLM_SCOUT_MODEL');

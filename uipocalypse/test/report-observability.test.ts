@@ -134,10 +134,11 @@ describe('report observability (prompt-test findings)', () => {
     expect(md).toMatch(/key from: \/somewhere\/\.env/);
   });
 
-  it('createLlm records where the key came from (cwd .env pickup made visible)', () => {
-    // from process env
+  it('createLlm records where the key came from (explicit sources only)', () => {
+    // from an explicit env block (what MCP clients pass)
     const fromEnv = createLlm({ LLM_API_KEY: 'k', LLM_BASE_URL: 'http://x', LLM_MODEL: 'm' });
-    expect(fromEnv.keySource).toBe('environment');
+    expect(fromEnv.keySource).toMatch(/MCP config env block/);
+    expect(fromEnv.provider).toBe('x');
     // not configured at all
     const none = createLlm({ LLM_API_KEY: '' });
     expect(none.keySource).toBeUndefined();

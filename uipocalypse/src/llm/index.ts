@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import { existsSync, readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { loadDotEnv } from '../envfile.js';
 
 /**
@@ -17,6 +19,8 @@ export interface LLM {
   maxCalls: number;
   /** where the key came from (environment or a .env path) — undefined when no key */
   readonly keySource?: string;
+  /** the provider host (from LLM_BASE_URL) — for the mode line */
+  readonly provider?: string;
   completeJSON<T>(opts: {
     system?: string;
     user: string;
@@ -69,29 +73,48 @@ export function createLlmSet(envOverrides?: Record<string, string>): LlmSet {
 }
 
 function mergedEnv(envOverrides?: Record<string, string>): Record<string, string | undefined> {
-  return {
-    ...loadDotEnv([`${process.cwd()}/.env`, `${process.cwd()}/uipocalypse/.env`]),
-    ...process.env,
-    ...(envOverrides ?? {}),
-  };
+  // SECURITY: never load a general .env from the working directory. The cwd
+  // may be the TARGET APP's repo, and its .env (Stripe keys, DB passwords,
+  // even an LLM_API_KEY) must never enter this process — the prompt-test
+  // incident had a silently-picked-up key make 16 real LLM calls.
+  // Explicit sources only: the MCP config env block (process env / caller
+  // overrides) and ~/.uipocalypse/config — and only the four variables.
+  const fileEnv = loadDotEnv([userConfigPath()]);
+  const out: Record<string, string | undefined> = {};
+  for (const key of LLM_ENV_KEYS) {
+    out[key] = envOverrides?.[key] ?? process.env[key] ?? fileEnv[key];
+  }
+  return out;
+}
+
+/** the only variables the LLM layer ever reads */
+const LLM_ENV_KEYS = ['LLM_API_KEY', 'LLM_BASE_URL', 'LLM_MODEL', 'LLM_SCOUT_MODEL'] as const;
+
+/** the explicit user-level config file — the ONLY file the LLM layer reads */
+function userConfigPath(): string {
+  return join(homedir(), '.uipocalypse', 'config');
 }
 
 /**
- * Where the LLM key came from — makes silent cwd-relative `.env` pickup
- * visible (the prompt-test finding: a volunteer with no key set got 16 real
- * LLM calls because the server's cwd happened to contain a dev `.env`).
+ * Where the LLM key came from — makes any pickup visible. Sources, in
+ * precedence order: the MCP config env block, then ~/.uipocalypse/config.
  */
 function llmKeySource(envOverrides?: Record<string, string>): string | undefined {
-  if (envOverrides?.LLM_API_KEY) return 'environment';
-  if (process.env.LLM_API_KEY) return 'environment';
-  for (const p of [`${process.cwd()}/.env`, `${process.cwd()}/uipocalypse/.env`]) {
-    try {
-      if (existsSync(p) && /^\s*LLM_API_KEY\s*=/m.test(readFileSync(p, 'utf8'))) return p;
-    } catch {
-      /* unreadable — ignore */
-    }
+  if (envOverrides?.LLM_API_KEY) return 'MCP config env block';
+  if (process.env.LLM_API_KEY) return 'MCP config env block (process environment)';
+  const config = userConfigPath();
+  try {
+    if (existsSync(config) && /^\s*LLM_API_KEY\s*=/m.test(readFileSync(config, 'utf8'))) return config;
+  } catch {
+    /* unreadable — ignore */
   }
   return undefined;
+}
+
+/** First output of any run: on|off, provider, key source — before any LLM call. */
+export function llmModeLine(llm: LLM): string {
+  if (!llm.configured) return 'LLM mode: off — no LLM_API_KEY configured (fully local run; mechanical report)';
+  return `LLM mode: on — provider ${llm.provider ?? 'unknown'}, key source: ${llm.keySource ?? 'unknown'}`;
 }
 
 class NullLlm implements LLM {
@@ -114,6 +137,7 @@ class OpenAICompatLlm implements LLM {
   private activeModel: string;
   private readonly tried: Set<string> = new Set();
   readonly keySource?: string;
+  readonly provider?: string;
   constructor(
     private readonly opts: {
       apiKey: string;
@@ -126,6 +150,11 @@ class OpenAICompatLlm implements LLM {
     this.shared = opts.counter ?? { calls: 0 };
     this.activeModel = opts.models[0]!;
     this.keySource = opts.keySource;
+    try {
+      this.provider = new URL(opts.baseURL).host;
+    } catch {
+      this.provider = opts.baseURL;
+    }
   }
   get model(): string {
     return this.activeModel;

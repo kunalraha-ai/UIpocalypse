@@ -15,7 +15,7 @@ import { resolve } from 'node:path';
 import { analyze } from '../src/analyzer/analyzer.js';
 import { createPlan } from '../src/plan/planner.js';
 import { createLlmSet } from '../src/llm/index.js';
-import { healthCheck } from '../src/llm/index.js';
+import { healthCheck, llmModeLine } from '../src/llm/index.js';
 import { explore } from '../src/browser/runner.js';
 import { swarm } from '../src/browser/orchestrator.js';
 import { mergeDraftedInvariants } from '../src/browser/race.js';
@@ -36,6 +36,7 @@ const repo = resolve('../sample-app');
 // HTTP 410 the morning of a gate run — fail with an actionable message, not
 // a stack trace mid-run)
 const healthLlms = createLlmSet();
+console.log(llmModeLine(healthLlms.planner)); // the run's first output: on|off, provider, key source
 const planModel = await healthCheck(healthLlms.planner, 'LLM_MODEL');
 const scoutModel = await healthCheck(healthLlms.scout, 'LLM_SCOUT_MODEL');
 console.log(`LLM health OK: planner=${planModel} scout=${scoutModel}`);
