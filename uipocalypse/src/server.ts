@@ -386,6 +386,7 @@ export function createServer(opts: { workspaceRoot?: string } = {}): ServerConte
           runsDir: workspace.runs,
         });
         return text({
+          llmMode: llmModeLine(llms.planner), // visible even when the client hides server stderr
           staticIssues: issues.length,
           runId: swarmResult.runId,
           planCached: planning.cached,

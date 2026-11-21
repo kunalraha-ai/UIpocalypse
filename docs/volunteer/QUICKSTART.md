@@ -82,17 +82,19 @@ none. Keys stay on your machine.
 
 ## Step 3: Check the mode line
 
-Start the server (or ask your MCP client to connect) and look at its first
-output line — before any run, before any LLM call:
+The server prints its first output line — before any run, before any LLM call:
 
 ```
 LLM mode: off — no LLM_API_KEY configured (fully local run; mechanical report)
 LLM mode: on — provider api.openai.com, key source: MCP config env block (process environment)
 ```
 
-If this doesn't match what you expect — e.g. you set no key but it says
-`on` — stop and check where the key is coming from. Every report also states
-whether it was **Reviewed by: LLM** or **Reviewed by: mechanical template**.
+**Your MCP client may hide this line** (it goes to the server's stderr). The same fact is visible in two other places that clients never hide:
+
+- every `verify_deployment_safety` result carries an `llmMode` field with this exact line
+- every report header states `Models: planner=none;scout=none` when off, and `Reviewed by: mechanical template (no LLM review — no LLM_API_KEY configured)` vs `Reviewed by: LLM` — with the ACTUAL reason spelled out
+
+If the mode doesn't match what you expect — e.g. you set no key but it says `on` — stop and check the two key sources above (the MCP config `env` block and `~/.uipocalypse/config`).
 
 ## Step 4: Ask Claude
 

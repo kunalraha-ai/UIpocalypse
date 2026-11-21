@@ -101,15 +101,33 @@ describe('report observability (prompt-test findings)', () => {
     await server.close();
   }, 60_000);
 
-  it('the report states whether the review was LLM-written or mechanical', async () => {
+  it('the report states whether the review was LLM-written or mechanical, and WHY mechanical', async () => {
     const collected = syntheticCollected(openDb(initWorkspace(mkdtempSync('/tmp/opencode/uip-obs2-')).db));
     const meta: RunMeta = { runId: 1, targetUrl: 'http://localhost:3000', agents: 5, wallMs: 1000, llmCalls: 0 };
 
-    // no LLM configured → mechanical, and the report says so
+    // no LLM configured → mechanical, with the actual reason (prompt-test finding:
+    // the old text listed three possible causes without saying which applied)
     const mech = await reviewRun({ collected, appMap: {} as never, llm: createLlm({ LLM_API_KEY: '' }), run: meta });
     expect(mech.reviewedBy).toBe('mechanical');
+    expect(mech.mechanicalReason).toBe('no LLM_API_KEY configured');
     const mechMd = markdownReport(assembleReport(collected, mech, meta));
-    expect(mechMd).toMatch(/Reviewed by: mechanical/i);
+    expect(mechMd).toMatch(/Reviewed by: mechanical template/i);
+    expect(mechMd).toMatch(/no LLM_API_KEY configured/);
+    expect(mechMd).not.toMatch(/no findings to review/);
+
+    // no findings to review → that reason (needs a CONFIGURED llm: with no
+    // key, "no key configured" is the honest first reason)
+    const empty: typeof collected = { ...collected, findingClusters: [] };
+    const emptyReview = await reviewRun({ collected: empty, appMap: {} as never, llm: new FakeLlm(), run: meta });
+    expect(emptyReview.mechanicalReason).toBe('no findings to review');
+
+    // reviewer call fails → mechanical fallback with that reason
+    const failing = new FakeLlm().script(() => {
+      throw new Error('budget exhausted');
+    });
+    const failed = await reviewRun({ collected, appMap: {} as never, llm: failing, run: meta });
+    expect(failed.reviewedBy).toBe('mechanical');
+    expect(failed.mechanicalReason).toMatch(/reviewer.*call failed/i);
 
     // configured LLM answering → LLM review, and the report says so
     const fake = new FakeLlm().script(() => ({

@@ -50,3 +50,47 @@ A competent agent with only the prompt produced a working install and a
 bug-finding run in five minutes. The blockers were all observability and
 expectation-setting, not the mechanics — each one is now addressed in
 QUICKSTART_PROMPT.md or the report format.
+
+---
+
+# Prompt re-test 2 — tarball flow (2026-11-21, after env hardening)
+
+The hardened QUICKSTART_PROMPT (tarball install, new env rules) was pasted to
+a second fresh-context agent. Result: **~6 minutes total, found the planted
+dead button ("Export data"), skipped "Reset preferences" by policy with the
+full NOT TESTED section + opt-in path, coverage 80% (4/5) with the skip in
+the denominator, llmCalls 0, Reviewed by: mechanical.** The tarball flow
+itself worked first try.
+
+**The mode line caught a live incident mid-test:** the agent saw
+`LLM mode: on — provider api.cloudflare.com, key source: /home/eclipse/.uipocalypse/config`
+while the volunteer prompt said no key was set — a developer config file
+created minutes earlier. Per its instructions it flagged the mismatch, made
+the run fully local, and restored the file exactly. That is precisely the
+failure mode the mode line exists for; the previous prompt test's 16 silent
+LLM calls would now be impossible to miss.
+
+Stuck points found and fixed:
+
+1. **The tarball shipped STALE docs** — it was packed before the env-hardening
+   rewrite, so its README still described the old `.env` behavior and
+   contradicted the prompt. Fixed: rebuilt as uipocalypse-0.0.2.tgz from the
+   current tree (version also aligned — the server handshake said 0.0.2 while
+   the package said 0.0.1).
+2. **The mode line is invisible through MCP clients that hide stderr** — the
+   agent had to write a stdio probe to see it. Fixed: every
+   `verify_deployment_safety` result now carries an `llmMode` field with the
+   exact line; QUICKSTART documents the report-header fallbacks.
+3. **"Reviewed by: mechanical template (no key configured, no findings, or
+   the reviewer call failed)" listed three causes without saying which** —
+   the report now states the actual reason (e.g. "no LLM_API_KEY configured").
+4. **Stale/conflicting MCP config entry** — the agent's client already had a
+   `uipocalypse` entry from the earlier test pointing at a dead path; a naive
+   volunteer would have tested the wrong binary. The prompt now says REPLACE
+   an existing entry.
+5. **Found-key protocol was undefined** — the prompt now has an explicit
+   clause: flag it, don't use it, move it aside only if you must proceed,
+   restore exactly after.
+6. Minor prompt polish: which folder should own the results (sensible default
+   stated), expected call duration (~1–2 min at defaults), and "show me the
+   markdown report" instead of ambiguous "the report".

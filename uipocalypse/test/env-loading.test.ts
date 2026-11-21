@@ -36,6 +36,11 @@ describe('LLM env loading: explicit sources only, never the working directory', 
     // also the legacy second location — must not load either
     mkdirSync(join(dir, 'uipocalypse'));
     writeFileSync(join(dir, 'uipocalypse', '.env'), `LLM_API_KEY=${CWD_ENV_KEY}\n`);
+    // hermetic: a fresh HOME so the developer's real ~/.uipocalypse/config
+    // can't make this test pass or fail for the wrong reason
+    const home = mkdtempSync('/tmp/opencode/uip-envcwdhome-');
+    const origHome = process.env.HOME;
+    process.env.HOME = home;
     process.chdir(dir);
     try {
       const llm = createLlm();
@@ -43,6 +48,8 @@ describe('LLM env loading: explicit sources only, never the working directory', 
       expect(llm.keySource).toBeUndefined();
     } finally {
       process.chdir(cwd);
+      if (origHome === undefined) delete process.env.HOME;
+      else process.env.HOME = origHome;
     }
   });
 
@@ -202,9 +209,12 @@ describe('spawned server: the TARGET APP\u2019s .env never enters the process', 
       // 1) the run completed, in fully-local mode: zero LLM calls
       expect(res.result?.isError).toBeFalsy();
       const text = res.result!.content.find((c) => c.type === 'text')!.text;
-      const parsed = JSON.parse(text) as { llmCalls: number; report: { run: { llmModels?: string } } };
+      const parsed = JSON.parse(text) as { llmCalls: number; llmMode?: string; report: { run: { llmModels?: string } } };
       expect(parsed.llmCalls).toBe(0);
       expect(parsed.report.run.llmModels).toMatch(/planner=none/);
+      // the mode is visible IN the tool result too — MCP clients that hide
+      // server stderr still show it (prompt-test finding #3)
+      expect(parsed.llmMode).toMatch(/^LLM mode: off/);
 
       // 2) the mode line was printed before anything else
       const firstLine = stderr.join('').split('\n').find((l) => l.trim()) ?? '';

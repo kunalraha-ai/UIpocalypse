@@ -33,7 +33,7 @@ export const ReviewSchema = z.object({
 export type Review = z.infer<typeof ReviewSchema>;
 /** which path produced the review — LLM-written or the mechanical template */
 export type ReviewedBy = 'llm' | 'mechanical';
-export type ReviewWithSource = Review & { reviewedBy: ReviewedBy };
+export type ReviewWithSource = Review & { reviewedBy: ReviewedBy; /** why the mechanical path ran — never leave three possible causes ambiguous */ mechanicalReason?: string };
 
 export type RunMeta = {
   runId: number;
@@ -57,6 +57,8 @@ export type Report = {
   summary: string;
   /** which path produced the review — 'llm' or 'mechanical' */
   reviewedBy: ReviewedBy;
+  /** why the mechanical path ran, when it did */
+  reviewReason?: string;
   issues: Array<{
     key: string;
     title: string;
@@ -152,7 +154,7 @@ function fallbackPrompt(cluster: Cluster): { rootCause: string; fixPrompt: strin
   };
 }
 
-export function mechanicalReview(collected: CollectedRun): ReviewWithSource {
+export function mechanicalReview(collected: CollectedRun, reason = 'no LLM_API_KEY configured'): ReviewWithSource {
   const issues = collected.findingClusters.map((c) => {
     const f = fallbackPrompt(c);
     const ref = c.codeRefs[0];
@@ -173,6 +175,7 @@ export function mechanicalReview(collected: CollectedRun): ReviewWithSource {
         : `${issues.length} clustered issue${issues.length === 1 ? '' : 's'} (${high} high severity) over ${collected.coverage.discoveredActions} discovered actions; coverage ${(collected.coverage.coverage * 100).toFixed(0)}%.`,
     issues,
     reviewedBy: 'mechanical',
+    mechanicalReason: reason,
   };
 }
 
@@ -184,7 +187,10 @@ export async function reviewRun(opts: {
 }): Promise<ReviewWithSource> {
   const { collected, llm } = opts;
   if (!llm.configured || collected.findingClusters.length === 0) {
-    return mechanicalReview(collected);
+    return mechanicalReview(
+      collected,
+      !llm.configured ? 'no LLM_API_KEY configured' : 'no findings to review',
+    );
   }
   const payload = redactForLlm({
     run: { url: opts.run.targetUrl, agents: opts.run.agents },
@@ -212,7 +218,7 @@ export async function reviewRun(opts: {
     return { ...review, reviewedBy: 'llm' };
   } catch {
     // budget or malformed reply — the mechanical review still ships
-    return mechanicalReview(collected);
+    return mechanicalReview(collected, 'the reviewer LLM call failed (budget exhausted or malformed reply) — template review shipped');
   }
 }
 
@@ -250,6 +256,7 @@ export function assembleReport(collected: CollectedRun, review: Review | ReviewW
     run,
     summary: review.summary,
     reviewedBy: (review as ReviewWithSource).reviewedBy ?? 'mechanical',
+    reviewReason: (review as ReviewWithSource).mechanicalReason,
     issues,
     inconsistentFeedback: collected.findingClusters
       .filter((c) => c.types.includes('inconsistent_feedback'))
@@ -282,7 +289,7 @@ export function markdownReport(report: Report): string {
   const reviewed =
     report.reviewedBy === 'llm'
       ? ' · Reviewed by: LLM (root causes and fix prompts are model-written)'
-      : ' · Reviewed by: mechanical template (no LLM review — no key configured, no findings, or the reviewer call failed)';
+      : ` · Reviewed by: mechanical template (no LLM review — ${report.reviewReason ?? 'reason unknown'})`;
   lines.push(`**Target:** ${report.run.targetUrl} · **Agents:** ${report.run.agents} · **Swarm wall:** ${(report.run.wallMs / 1000).toFixed(1)} s · **Swarm-phase LLM calls:** ${report.run.llmCalls}${models}${reviewed} · **Coverage (runtime graph):** ${(report.coverage.coverage * 100).toFixed(0)}% (${report.coverage.reachedActions}/${report.coverage.discoveredActions} discovered actions) · **Coverage (app map):** ${(report.coverage.appMapCoverage * 100).toFixed(0)}% (${report.coverage.appMapReached}/${report.coverage.appMapTotal} code-declared interactive elements)`);
   lines.push('');
   // Skip visibility: every Guard refusal, by label, with the opt-in path.
