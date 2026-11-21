@@ -22,3 +22,4 @@ GrowthSent/
 # supabase CLI internal state
 sample-app/supabase/.temp/
 releases/
+.temp/
