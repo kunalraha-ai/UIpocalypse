@@ -159,6 +159,14 @@ async function fullPipeline(
     wallMs: run.duration_ms ?? 0,
     llmCalls: run.llm_calls ?? 0,
     startedAt: run.started_at,
+    skippedActions: (() => {
+      try {
+        const parsed = JSON.parse(run.skipped_actions ?? '[]');
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    })(),
   };
   const review = await reviewRun({ collected, appMap, llm: llms.planner, run: meta });
   const report = assembleReport(collected, review, meta);

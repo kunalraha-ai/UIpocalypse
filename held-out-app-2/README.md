@@ -1,11 +1,6 @@
 # Plain Pages — the Phase 6 held-out detector check
 
-**Status: USED (2026-11-20).** UIpocalypse ran once against this app during the
-Phase 6 benchmark. Results: 2 of 3 planted dead controls detected ("Save note"
-×192 obs, "Clear filters" ×98 obs), 0 false positives, 1 miss ("Reset
-preferences" — below the fold, the swarm didn't reach that page section in
-60 s). No tuning was performed after the run. The app remains a fixture; any
-future changes to it should be logged here as post-hoc.
+**Status: USED (2026-11-20; root cause of the one non-detection found 2026-11-21, after the run).** UIpocalypse ran once against this app during the Phase 6 benchmark. Results: 2 of 2 REACHABLE planted dead controls detected ("Save note" ×192 obs, "Clear filters" ×98 obs), 0 false positives. The third planted control, "Reset preferences", was not a detection miss — it was skipped by the safety policy: its label contains "reset", which the Guard's destructive-label regex matches, so no agent was ever allowed to click it. (At run time this was misdiagnosed as "below the fold"; the fixture source has no lazy rendering and `isVisible` doesn't check viewport position — the regex skip is proven, see `benchmarks/plain-pages/result.md`.) No tuning was performed on this app before or after the run. The app remains a fixture; any future changes to it should be logged here as post-hoc.
 
 **Scope of what was tested:** dead_click detection on vanilla-JS controls.
 The app has no backend, no API routes, no auth — so this check only exercises

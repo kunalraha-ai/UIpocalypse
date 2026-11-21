@@ -55,5 +55,5 @@ You get the full bug list either way; the LLM only adds the prose that explains 
 ## Safety behaviors you should know about
 
 - Only `localhost` (or hosts you explicitly allow-list) can be targeted
-- Destructive-looking buttons (delete, remove, logout…) are **never clicked** unless you explicitly opt in
+- Destructive-looking buttons (delete, reset, remove…) are **never clicked** unless you explicitly opt in — the report lists every skipped control with its reason, so nothing is silently untested
 - If a safe database can't be confirmed, the run is **read-only**: writes and form submits are skipped, and the report's first lines say which detection classes were NOT run — a clean read-only report is never a clean bill of health
