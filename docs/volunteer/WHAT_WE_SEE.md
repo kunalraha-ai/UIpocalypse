@@ -29,6 +29,8 @@ Plain answers, no fine print. If anything here turns out to be wrong, that's a b
 2. **Scouts**: current URL, the names of buttons on the page, the last few clicks
 3. **Reviewer**: finding clusters — error messages, endpoint paths, click sequences
 
+The key is read **only** from two explicit places — the MCP config `env` block, or `~/.uipocalypse/config` — and only the four `LLM_*` variables are ever read. The tool deliberately does **not** load `.env` files from its working directory: that directory may be your app's repo, and your app's secrets must never enter the tool's process. The server prints its mode on startup (`LLM mode: off — …` / `LLM mode: on — provider …, key source: …`) before any LLM call, so a run's LLM status is never ambiguous, and every report states whether it was **Reviewed by: LLM** or **Reviewed by: mechanical template**.
+
 Every one of these payloads passes through a redaction filter (`redactForLlm`) that strips:
 
 - Stripe-style keys (`sk_live_...`, `pk_live_...`, `rk_...`)

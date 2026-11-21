@@ -11,7 +11,8 @@
     "uipocalypse": "dist/index.cjs"
   },
   "files": [
-    "dist"
+    "dist",
+    "TERMS.md"
   ],
   "scripts": {
     "build": "node build.mjs",

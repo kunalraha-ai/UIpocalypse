@@ -7,22 +7,25 @@ Local MCP server + CLI: chaotic-user QA for vibecoded apps. Status: **Phase 5** 
 - **Node.js 22 or newer** (`node --version`) — the bundled SQLite driver (better-sqlite3 v13) requires it
 - A Chromium for Playwright — installed by the step below (one-time, ~120 MB)
 
-## Connect from Claude Code (or any MCP client)
+## Install and connect (from the release tarball)
 
 ```bash
+mkdir uipocalypse && tar -xzf uipocalypse-0.0.1.tgz -C uipocalypse --strip-components=1
 cd uipocalypse
-npm install && npm run build
+npm install --omit=dev
 npx playwright install chromium   # one-time: the browser the swarm drives
 ```
 
-Then add to your MCP client config (use the **absolute** path to this checkout):
+(From a source checkout instead? `npm install && npm run build` — same result.)
+
+Then add to your MCP client config (use the **absolute** path):
 
 ```json
 {
   "mcpServers": {
     "uipocalypse": {
       "command": "node",
-      "args": ["/absolute/path/to/UIpocalypse/uipocalypse/dist/index.cjs"]
+      "args": ["/absolute/path/to/uipocalypse/dist/index.cjs"]
     }
   }
 }
@@ -30,14 +33,14 @@ Then add to your MCP client config (use the **absolute** path to this checkout):
 
 Ask: *"use uipocalypse to verify deployment safety: the repo is /path/to/my-app and the app is running at http://localhost:3000"*. `verify_deployment_safety` needs both inputs — `path` (the repo root to scan) and `url` (where the app is served). It chains static scan → plan → scouts → swarm → clustered report in one call. The other tools: `scan_codebase` runs the 15 static rules alone; `plan_swarm`/`run_swarm` run scouts + the swarm; `get_report` returns the report; `diff_runs` is the fix-verify loop.
 
-**Optional LLM key:** without one everything runs fully local (the swarm and all findings work; you get a mechanical report with fix prompts instead of an LLM-written review). For the LLM-reviewed report, put a `.env` in the directory you run the MCP client from, or in `uipocalypse/.env`:
+**Optional LLM key.** Without one, everything runs fully local: the swarm, all detectors, and a mechanical report with template fix prompts. With one, you additionally get the LLM-written review. The key is read **only** from these two places — never from `.env` files in the working directory (that may be your app's repo):
 
-```
-LLM_API_KEY=...
-LLM_BASE_URL=https://api.openai.com/v1     # any OpenAI-compatible API
-LLM_MODEL=gpt-4o-mini
-LLM_SCOUT_MODEL=gpt-4o-mini                # a fast, cheap model
-```
+1. the MCP config `env` block: `"env": { "LLM_API_KEY": "...", "LLM_BASE_URL": "https://api.openai.com/v1", "LLM_MODEL": "gpt-4o-mini", "LLM_SCOUT_MODEL": "gpt-4o-mini" }` — any OpenAI-compatible provider works (OpenAI, Cloudflare Workers AI, Groq, Together, OpenRouter, local Ollama)
+2. `~/.uipocalypse/config` — a plain `KEY=VALUE` file with the same four variables
+
+Only the four `LLM_*` variables are ever read. On startup, and before every run, the server prints its first output line — `LLM mode: off — no LLM_API_KEY configured…` or `LLM mode: on — provider <host>, key source: …` — so a run's LLM status is never ambiguous. Every report also states whether it was **Reviewed by: LLM** or **Reviewed by: mechanical template**.
+
+The volunteer kit (QUICKSTART, WHAT_WE_SEE, SAFE_TEST_COPY, FEEDBACK) ships in `dist/docs/volunteer/`.
 
 ## Safety (v0)
 
@@ -50,7 +53,7 @@ Read this before trusting a clean report. The benchmark evidence for every claim
 **Detection blind spots (known, deliberate, unchanged):**
 
 - **Destructive-labeled controls are never clicked without opt-in.** The Safety Guard skips any action whose label matches `delete|remove|reset|purge|destroy|unsubscribe|deactivate|cancel subscription` (and any `DELETE` request). That is safety-first by design — but it means **a dead "Reset…" or "Delete…" button is invisible to the swarm**. This is exactly how the one missed planted bug on the held-out Plain Pages app escaped (misdiagnosed at the time as "below the fold"; corrected in `../benchmarks/plain-pages/result.md` after the volunteer-readiness audit proved the regex skip). **Skipped actions are never silent:** every run lists them in a "Skipped by safety policy" section with the reason and the opt-in path, and counts them as UNREACHED in the graph coverage denominator (a run with skipped actions cannot read 100%). The static dead-handler rule can still catch such buttons — but only for apps the analyzer can scan.
-- **Post-escalation-fix regression: success-page revisit crash now rarely found.** The phase-6 escalation fix (LLM-directed restarts → policy restarts) changed how stalled agents spend their steps, and the checkout → success-page → revisit chain became rare: detection of planted bug #11 went from 2-of-3 runs (pre-fix) to 0-of-3 and then 1-of-3 across post-fix executions — **1 of 6 post-fix first-runs**, with the one hit at 1 observation. The exact pre-fix trajectory that reliably reached it was never identified. The ≥80% planted-detection gate still passes at 10/11, but this bug class (crash on revisiting a post-transaction success page) is now intermittent rather than reliable.
+- **Post-escalation-fix regression: bug #11 (success-page revisit crash) is unreliable.** The phase-6 escalation fix (LLM-directed restarts → policy restarts) changed how stalled agents spend their steps, and the checkout → success-page → revisit chain became rare: detection went from 2-of-3 runs (pre-fix) to **1 of 6 post-fix first-runs**, with the one hit at 1 observation. The exact pre-fix trajectory that reliably reached it was never identified. Planted-bug detection is stated as **10 of 11 with #11 unreliable**; the ≥80% gate passes at 10/11, but this bug class (crash on revisiting a post-transaction success page) is currently unreliable rather than dependably found.
 - **No scrolling.** The runtime never scrolls a page. Controls that only render when scrolled into view (lazy DOM via IntersectionObserver, infinite lists) are never enumerated and never clicked. (Plainly-visible below-the-fold elements ARE enumerated and clicked — `isVisible` doesn't check viewport position; the Plain Pages "below the fold" story was a misdiagnosis, see above.)
 - **Chromium only, local behavior only.** One browser engine; anything that only manifests in Safari/Firefox, in production infrastructure, or under real load is out of scope.
 

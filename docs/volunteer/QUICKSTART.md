@@ -4,24 +4,61 @@
 
 ## What you need
 
+- The release tarball (`uipocalypse-0.0.1.tgz`) — the tool is not on npm
 - Node.js 22 or newer (`node --version`) — the bundled SQLite driver requires it
 - Your app running on `localhost` (any port)
 - 5 minutes
 
 ## Step 1: Install
 
-Get the repo, build it, and install the browser the swarm drives (one-time, ~120 MB):
-
 ```bash
-git clone <the repo you were given>
-cd UIpocalypse/uipocalypse
-npm install && npm run build
-npx playwright install chromium
+mkdir uipocalypse && tar -xzf uipocalypse-0.0.1.tgz -C uipocalypse --strip-components=1
+cd uipocalypse
+npm install --omit=dev          # dependencies only; ignore npm-audit noise
+npx playwright install chromium # one-time: the browser the swarm drives
 ```
 
-That's the whole install. Nothing is published to npm — you run it from this checkout.
+That's the whole install. The full volunteer kit (this file, WHAT_WE_SEE.md,
+SAFE_TEST_COPY.md, FEEDBACK.md) is in `dist/docs/volunteer/`.
 
-**Optional — LLM key.** Everything works without one: the swarm, all bug detectors, and a mechanical report with template fix prompts. To add the LLM-written review, create a `.env` file in `uipocalypse/` (or the directory you run your MCP client from):
+## Step 2: Add to Claude Code (or any MCP client)
+
+Point your MCP client at the built server, with the **absolute path**:
+
+```json
+{
+  "mcpServers": {
+    "uipocalypse": {
+      "command": "node",
+      "args": ["/absolute/path/to/uipocalypse/dist/index.cjs"]
+    }
+  }
+}
+```
+
+**Optional — LLM key.** Everything works without one: the swarm, all bug
+detectors, and a mechanical report with template fix prompts. To add the
+LLM-written review, put the key in the MCP config's `env` block (recommended —
+it goes straight to the server process):
+
+```json
+{
+  "mcpServers": {
+    "uipocalypse": {
+      "command": "node",
+      "args": ["/absolute/path/to/uipocalypse/dist/index.cjs"],
+      "env": {
+        "LLM_API_KEY": "your-key",
+        "LLM_BASE_URL": "https://api.openai.com/v1",
+        "LLM_MODEL": "gpt-4o-mini",
+        "LLM_SCOUT_MODEL": "gpt-4o-mini"
+      }
+    }
+  }
+}
+```
+
+…or in `~/.uipocalypse/config` (a plain `KEY=VALUE` file):
 
 ```
 LLM_API_KEY=your-key
@@ -30,33 +67,34 @@ LLM_MODEL=gpt-4o-mini
 LLM_SCOUT_MODEL=gpt-4o-mini
 ```
 
-**Supported providers:** anything with an OpenAI-compatible `/chat/completions` endpoint — OpenAI (`https://api.openai.com/v1`), Cloudflare Workers AI, Groq, Together, OpenRouter, or a local Ollama (`http://localhost:11434/v1`, no key needed — set `LLM_API_KEY=ollama`). The four env vars: `LLM_API_KEY` (the key), `LLM_BASE_URL` (defaults to OpenAI), `LLM_MODEL` (planner/reviewer — a comma-separated fallback chain is allowed, e.g. `model-a,model-b`), `LLM_SCOUT_MODEL` (a fast, cheap model; defaults to `LLM_MODEL`).
+**These are the only two places the tool reads a key from.** It deliberately
+does NOT load `.env` files from the working directory — the directory your MCP
+client runs in may be your app's repo, and your app's secrets (Stripe keys, DB
+passwords) must never enter the tool's process. Only the four `LLM_*`
+variables above are ever read.
 
-**Never share the project owner's key.** The repository owner's key must not be given to volunteers or pasted anywhere — each tester uses their own key, or none. Keys stay in `.env` on your machine; nothing is uploaded anywhere by this tool.
+**Supported providers:** anything with an OpenAI-compatible `/chat/completions`
+endpoint — OpenAI, Cloudflare Workers AI, Groq, Together, OpenRouter, or a
+local Ollama (`http://localhost:11434/v1`, set `LLM_API_KEY=ollama`).
 
-**No key = a real, documented fallback, not a stub.** Without a key the run is fully local: the swarm and every detector still run, and the report still ranks findings with evidence, screenshots, and template root causes + fix prompts per bug type. What you lose: LLM-tailored root-cause prose and fix prompts, an app-aware plan (you get default personas and seed routes from the code scan instead), and LLM-guided scout exploration (scouts stop early; the swarm's wanderers still cover the app). The report records `planner=none;scout=none` so a degraded run is never mistaken for a reviewed one.
+**Never share the project owner's key.** Each volunteer uses their own key, or
+none. Keys stay on your machine.
 
-Verified failure messages (all three say what to do, and fail in under a second at startup — never mid-run):
-- **No key:** no error — you're in the local mode described above.
-- **Bad key (HTTP 401):** `Auth rejected — check LLM_API_KEY, and that LLM_BASE_URL points at the right provider/account.`
-- **Deprecated model (HTTP 410):** `Set LLM_MODEL in .env to a current catalog model — deprecations happen (both phase-5 models returned HTTP 410 on 2026-11-20).`
+## Step 3: Check the mode line
 
-## Step 2: Add to Claude Code
+Start the server (or ask your MCP client to connect) and look at its first
+output line — before any run, before any LLM call:
 
-Copy this into your Claude Code MCP config (`.claude/claude_desktop_config.json` or `claude mcp add`), with the **absolute path** to your checkout:
-
-```json
-{
-  "mcpServers": {
-    "uipocalypse": {
-      "command": "node",
-      "args": ["/absolute/path/to/UIpocalypse/uipocalypse/dist/index.cjs"]
-    }
-  }
-}
+```
+LLM mode: off — no LLM_API_KEY configured (fully local run; mechanical report)
+LLM mode: on — provider api.openai.com, key source: MCP config env block (process environment)
 ```
 
-## Step 3: Ask Claude
+If this doesn't match what you expect — e.g. you set no key but it says
+`on` — stop and check where the key is coming from. Every report also states
+whether it was **Reviewed by: LLM** or **Reviewed by: mechanical template**.
+
+## Step 4: Ask Claude
 
 Open Claude Code in your app's repo and say:
 
@@ -64,9 +102,12 @@ Open Claude Code in your app's repo and say:
 
 Claude needs to pass both the repo `path` and the app `url`. It runs:
 
-1. **Static scan** — reads your code for dead buttons, missing RLS, unwired forms, exposed secrets (~1 second)
+1. **Static scan** — reads your code for dead buttons, missing RLS, unwired forms, exposed secrets (~1 second; Next.js/Vite/Supabase code only — plain HTML gets 0 static issues)
 2. **Swarm** — a few dozen test users click everything in a real browser, try garbage input, double-click money buttons, race each other (~1–2 min)
 3. **Report** — ranked bug list with reproduction steps and paste-ready fix prompts
+
+Results land in `.uipocalypse/` under the server's working directory (or under
+`$UIP_WORKSPACE` if you set it).
 
 ## What you get
 
@@ -84,8 +125,8 @@ A report like:
 ## Safety
 
 - **Only targets localhost** (or hosts you explicitly allow in `uipocalypse.config.yaml`)
-- **Never clicks delete/reset/remove-class buttons** unless you explicitly opt in — this also means dead buttons with those labels are invisible to the swarm (see the README "Scope and limits")
-- **Your code never leaves your machine** — only redacted summaries go to the LLM provider, and nothing goes anywhere if you set no LLM key (see WHAT_WE_SEE.md)
+- **Never clicks delete/reset/remove-class buttons** unless you explicitly opt in — skipped controls are listed in the report with the opt-in path
+- **Your code never leaves your machine** — only redacted summaries go to the LLM provider, and nothing goes anywhere without a key (see WHAT_WE_SEE.md)
 - **No database writes** unless your DB is local and explicitly allow-listed; otherwise the run is read-only and the report says so up front
 
 ## Before running against a real app
@@ -97,9 +138,10 @@ If your app has a production database or live API keys, make a safe test copy fi
 | Problem | Fix |
 |---|---|
 | `npm install` fails compiling `better-sqlite3` | Your Node is too old — the SQLite driver needs **Node 22+** (`node --version`) |
-| `Executable doesn't exist ... chromium` | `npx playwright install chromium` in `uipocalypse/` |
-| "No LLM configured" | Not an error — you're in fully-local mode. Add `LLM_API_KEY` to `.env` for the LLM-written review |
+| `Executable doesn't exist ... chromium` | `npx playwright install chromium` in the uipocalypse directory |
+| "No LLM configured" | Not an error — fully-local mode. Add a key via the MCP env block or `~/.uipocalypse/config` |
+| Mode line says `on` but you set no key | A key exists in the MCP env block or `~/.uipocalypse/config` — check both |
 | "Model returned 410 / health check failed" | Your LLM model was deprecated; set a current model in `LLM_MODEL` / `LLM_SCOUT_MODEL` |
+| Auth rejected (HTTP 401) in the mode/health line | Wrong `LLM_API_KEY`, or `LLM_BASE_URL` points at the wrong provider/account |
 | "Safety Guard refused target" | Only localhost is allowed by default; add your host to `allowHosts` in `uipocalypse.config.yaml` |
 | Tool error "Required at path" | You passed the `url` but not the repo `path` — `verify_deployment_safety` needs both |
-| "Port already in use" | The tool opens no ports; your app must already be running on its own port |
