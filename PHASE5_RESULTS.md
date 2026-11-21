@@ -24,7 +24,7 @@
 
 **Empirical confirmation.** The phase 4 gate — committed, unchanged in substance since 4dde5df, explicit full persona roster — run at HEAD on the same machine: **6/6 PASS, duplicate_request = 35** (historical band 18–52), duplicate_effect CONFIRMED (8 transaction pairs + 21 order pairs), race 1→15 redemptions. The product was healthy at HEAD; there was nothing to `git bisect` — the regression lived in uncommitted gate-script code and never shipped in a commit.
 
-**Fixes (commit cf30396 + c9202db).**
+**Fixes (commit 8a1e820 + 3c3d426).**
 - `PlanSchema.personas` now defaults to the **full roster** — the real root cause. Any swarm honoring a plan without explicit personas (including the MCP `run_swarm` path) previously ran wanderer-only and was structurally blind to double-submits. The planner prompt now instructs the full roster unless the user narrows; degraded and CLI plans use it too.
 - The gate passes the roster explicitly and runs at the **default 60 s budget** (the 105 s budget alone made the 90 s rerun target unreachable).
 
@@ -133,7 +133,7 @@ Final scan (0.7 s, 330 files): **29 issues — 28 verified true, 1 false positiv
 | undefined-env | 14 | ✅ all TRUE — app-specific ops flags genuinely absent from every .env file |
 | missing-submit-guard | 1 | ❌ **FALSE POSITIVE** — a DELETE write whose guard EXISTS but uses a naming convention the heuristic's pending-signal words don't match. Open item: the rule needs naming-convention breadth (or app-map-level handler analysis) |
 
-**Real-repo FP rate: 1 of 29 ≈ 3.4%** after the convention fixes (the third consecutive external validation to land near zero — after vercel/commerce, shadcn/taxonomy, supabase user-management in the phase-4 pre-work — but not zero, and the earlier zero claim is corrected above). **The app is now a tuning fixture** (like Messy Mart): the analyzer fixes it forced (serverless route extraction, platform env allowlist) landed in `8e822ca`, so it no longer counts as unseen. **Plain Pages (`held-out-app-2/`) remains untouched for Phase 6.**
+**Real-repo FP rate: 1 of 29 ≈ 3.4%** after the convention fixes (the third consecutive external validation to land near zero — after vercel/commerce, shadcn/taxonomy, supabase user-management in the phase-4 pre-work — but not zero, and the earlier zero claim is corrected above). **The app is now a tuning fixture** (like Messy Mart): the analyzer fixes it forced (serverless route extraction, platform env allowlist) landed in `08f64dc`, so it no longer counts as unseen. **Plain Pages (`held-out-app-2/`) remains untouched for Phase 6.**
 
 ### False-positive rate over the clustered set (execution 2, first-run 3)
 
