@@ -132,6 +132,4 @@ Stuck points and shipped-doc defects found — all fixed for 0.0.4:
    legitimate — the plan was fine, the server was down); tarball mtimes
    read as the reproducible-build epoch (cosmetic).
 
-Environment note: the fixture server's mid-test death was an artifact of
-this test rig (the harness reaps orphaned background processes between
-shell sessions) — which is exactly how it surfaced the unreachability gap.
+Environment note — WHY the fixture app died mid-run (asked and answered with evidence): **the swarm did NOT cause it.** (1) The server's access log ends at 13:32:55 with a successful 200 and no traceback — a crash would print one; this was a clean external kill. (2) No OOM kills in the kernel journal for the window. (3) The identical replacement server (same software, same port, started from the agent's live session) survived the full 30-agent swarm at 13:35 and is still running. (4) The dead server was an orphaned `nohup … &` child of a harness shell command from two turns earlier — the harness reaps such orphans (nohup blocks SIGHUP only, not the session reaper's process-group SIGTERM); the same silent death took the nohup'd :3123 app mid-gate earlier. Production volunteers are unaffected: their MCP client owns the server process and their app runs outside any harness.

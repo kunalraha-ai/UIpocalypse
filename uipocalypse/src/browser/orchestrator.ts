@@ -677,6 +677,7 @@ export async function swarm(opts: SwarmOptions): Promise<SwarmResult> {
     disabledClasses,
     skippedActions: [...skippedActionMap.values()],
     agents: agentsWanted,
+    agentsAtCollapse: degradedAtLevel,
   });
 
   await browser.close().catch(() => {});

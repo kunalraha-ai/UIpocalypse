@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { cpus, totalmem } from 'node:os';
 import { SCHEMA_SQL } from './schema.js';
 
 /**
@@ -27,6 +28,19 @@ export function openDb(dir: string): Db {
   // migration: runs.skipped_actions (project DBs created before skip visibility)
   if (!runCols.some((c) => c.name === 'skipped_actions')) {
     db.exec('ALTER TABLE runs ADD COLUMN skipped_actions TEXT');
+  }
+  // migration: machine info + collapse level (volunteer-log comparability)
+  if (!runCols.some((c) => c.name === 'cpu')) {
+    db.exec('ALTER TABLE runs ADD COLUMN cpu TEXT');
+  }
+  if (!runCols.some((c) => c.name === 'cores')) {
+    db.exec('ALTER TABLE runs ADD COLUMN cores INTEGER');
+  }
+  if (!runCols.some((c) => c.name === 'ram_bytes')) {
+    db.exec('ALTER TABLE runs ADD COLUMN ram_bytes INTEGER');
+  }
+  if (!runCols.some((c) => c.name === 'agents_at_collapse')) {
+    db.exec('ALTER TABLE runs ADD COLUMN agents_at_collapse INTEGER');
   }
   // migration: actions.skip_reason (skipped actions count as UNREACHED, never dropped)
   const actionCols = db.prepare('PRAGMA table_info(actions)').all() as Array<{ name: string }>;
@@ -130,9 +144,22 @@ export function createRun(
   db: Db,
   input: { targetUrl: string; agents: number; llmModels?: string },
 ): number {
+  // machine info at run time — findings must stay interpretable against the
+  // hardware they were found on (volunteer log comparability)
+  const cpuList = cpus();
   const info = db
-    .prepare('INSERT INTO runs (started_at, target_url, agents, llm_models) VALUES (?, ?, ?, ?)')
-    .run(new Date().toISOString(), input.targetUrl, input.agents, input.llmModels ?? null);
+    .prepare(
+      'INSERT INTO runs (started_at, target_url, agents, llm_models, cpu, cores, ram_bytes) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    )
+    .run(
+      new Date().toISOString(),
+      input.targetUrl,
+      input.agents,
+      input.llmModels ?? null,
+      cpuList[0]?.model ?? null,
+      cpuList.length,
+      Math.round(totalmem()),
+    );
   return Number(info.lastInsertRowid);
 }
 
@@ -147,11 +174,13 @@ export function finishRun(
     skippedActions?: Array<{ label: string; reason: string }>;
     /** the swarm's true agent count — the run row is created in the scout phase with agents=1 */
     agents?: number;
+    /** ramp level at which the app degraded/collapsed under load, when recorded */
+    agentsAtCollapse?: number;
   },
 ): void {
   db.prepare(
     `UPDATE runs SET duration_ms = ?, llm_calls = ?, coverage = ?, disabled_classes = ?, skipped_actions = ?,
-     agents = COALESCE(?, agents) WHERE id = ?`,
+     agents = COALESCE(?, agents), agents_at_collapse = COALESCE(?, agents_at_collapse) WHERE id = ?`,
   ).run(
     input.durationMs,
     input.llmCalls,
@@ -159,6 +188,7 @@ export function finishRun(
     input.disabledClasses?.join(',') ?? null,
     input.skippedActions?.length ? JSON.stringify(input.skippedActions) : null,
     input.agents ?? null,
+    input.agentsAtCollapse ?? null,
     input.id,
   );
 }
@@ -174,9 +204,14 @@ export type RunRow = {
   llm_models: string | null;
   disabled_classes: string | null;
   skipped_actions: string | null;
+  cpu: string | null;
+  cores: number | null;
+  ram_bytes: number | null;
+  agents_at_collapse: number | null;
 };
 
-const RUN_COLS = 'id, started_at, target_url, agents, duration_ms, llm_calls, coverage, llm_models, disabled_classes, skipped_actions';
+const RUN_COLS =
+  'id, started_at, target_url, agents, duration_ms, llm_calls, coverage, llm_models, disabled_classes, skipped_actions, cpu, cores, ram_bytes, agents_at_collapse';
 
 export function listRuns(db: Db): RunRow[] {
   return db.prepare(`SELECT ${RUN_COLS} FROM runs ORDER BY id`).all() as RunRow[];

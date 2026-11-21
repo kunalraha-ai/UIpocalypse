@@ -81,7 +81,15 @@ describe('report observability (prompt-test findings)', () => {
     });
     expect(getRun(db, exploreResult.runId)!.agents).toBe(1); // the bug's origin
 
-    // the swarm must correct it to the swarm size
+    // the run row records the machine (volunteer-log comparability: findings
+    // must be interpretable against CPU/cores/RAM)
+    const row = getRun(db, exploreResult.runId)!;
+    expect(row.cpu).toBeTruthy();
+    expect(row.cpu!.length).toBeGreaterThan(3);
+    expect(row.cores!).toBeGreaterThan(0);
+    expect(row.ram_bytes!).toBeGreaterThan(1_000_000_000);
+
+    // the swarm must correct agents to the swarm size
     await swarm({
       url: server.url,
       config,
@@ -100,6 +108,17 @@ describe('report observability (prompt-test findings)', () => {
     db.close();
     await server.close();
   }, 60_000);
+
+  it('the report header shows the machine and the collapse agent count when present', async () => {
+    const collected = syntheticCollected(openDb(initWorkspace(mkdtempSync('/tmp/opencode/uip-obs4-')).db));
+    const meta: RunMeta = {
+      runId: 1, targetUrl: 'http://localhost:3000', agents: 5, wallMs: 1000, llmCalls: 0,
+      machine: { cpu: 'Test CPU 9990X', cores: 12, ramBytes: 32_000_000_000 },
+    };
+    const review = await reviewRun({ collected, appMap: {} as never, llm: createLlm({ LLM_API_KEY: '' }), run: meta });
+    const md = markdownReport(assembleReport(collected, review, meta));
+    expect(md).toMatch(/Test CPU 9990X · 12 cores · 29\.8 GB RAM/);
+  });
 
   it('the report states whether the review was LLM-written or mechanical, and WHY mechanical', async () => {
     const collected = syntheticCollected(openDb(initWorkspace(mkdtempSync('/tmp/opencode/uip-obs2-')).db));

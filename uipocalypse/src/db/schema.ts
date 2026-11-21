@@ -52,7 +52,11 @@ CREATE TABLE IF NOT EXISTS runs (
   coverage REAL,
   llm_models TEXT,
   disabled_classes TEXT,
-  skipped_actions TEXT
+  skipped_actions TEXT,
+  cpu TEXT,
+  cores INTEGER,
+  ram_bytes INTEGER,
+  agents_at_collapse INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS findings (

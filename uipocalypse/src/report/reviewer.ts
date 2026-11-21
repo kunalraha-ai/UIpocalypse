@@ -48,6 +48,10 @@ export type RunMeta = {
   disabledClasses?: string[];
   /** every action the Safety Guard refused, by label with reason */
   skippedActions?: Array<{ label: string; reason: string }>;
+  /** machine the run executed on — findings stay interpretable across volunteers */
+  machine?: { cpu: string; cores: number; ramBytes: number };
+  /** ramp level at which the app degraded/collapsed under load, when recorded */
+  agentsAtCollapse?: number;
 };
 
 export type Report = {
@@ -79,8 +83,13 @@ export type Report = {
   coverage: CollectedRun['coverage'];
   /** detection classes not run (read-only mode, no safe DB) */
   disabledClasses?: string[];
-  /** set when connection-refused observations dominate the run — the target was down */
-  targetUnreachable?: { refused: number; totalObservations: number };
+  /** set when connection-refused observations dominate the run — never reachable, or an app collapse mid-run */
+  targetUnreachable?: {
+    refused: number;
+    totalObservations: number;
+    mode: 'never' | 'collapse';
+    agentsAtCollapse?: number;
+  };
   /** every action the Safety Guard refused, by label with reason — never silent */
   skippedActions?: Array<{ label: string; reason: string }>;
   /** both coverage figures, with their denominators spelled out */
@@ -227,13 +236,18 @@ export async function reviewRun(opts: {
 /**
  * Target unreachability (fresh-eyes prompt-test finding): when a run's
  * observations are dominated by connection refusals, the "findings" describe
- * a dead server, not app bugs — a naive reader mistook exactly this for real
- * findings. Attribute each cluster's observations proportionally to its
- * refusal-bearing samples; flag only when refusals dominate (≥80% of all
- * observations and at least 10 of them), so a healthy app with one refused
- * request never trips it. Presentation only — no detector logic involved.
+ * a dead server, not app bugs. Two distinct shapes, distinguished by the
+ * graph: an EMPTY graph means the target was NEVER reachable; a non-empty
+ * graph with refusal dominance means the app was alive, got explored, and
+ * collapsed mid-run — reported with the ramp's agent count when recorded.
+ * Attribute each cluster's observations proportionally to its refusal-bearing
+ * samples; flag only when refusals dominate (≥80% of all observations and at
+ * least 10 of them). Presentation only — no detector logic involved.
  */
-function unreachableSummary(collected: CollectedRun): Report['targetUnreachable'] {
+function unreachableSummary(
+  collected: CollectedRun,
+  run: RunMeta,
+): Report['targetUnreachable'] {
   let refused = 0;
   let total = 0;
   for (const c of collected.clusters) {
@@ -242,14 +256,21 @@ function unreachableSummary(collected: CollectedRun): Report['targetUnreachable'
     const refusedSamples = c.samples.filter((s) => JSON.stringify(s).includes('ERR_CONNECTION_REFUSED')).length;
     if (refusedSamples > 0) refused += Math.round((c.observations * refusedSamples) / c.samples.length);
   }
-  if (refused >= 10 && refused / Math.max(1, total) >= 0.8) return { refused, totalObservations: total };
-  return undefined;
+  if (!(refused >= 10 && refused / Math.max(1, total) >= 0.8)) return undefined;
+  const neverReachable = collected.coverage.discoveredActions === 0;
+  return {
+    refused,
+    totalObservations: total,
+    mode: neverReachable ? ('never' as const) : ('collapse' as const),
+    agentsAtCollapse: neverReachable ? undefined : run.agentsAtCollapse,
+  };
 }
 
 /** Assemble the final report (markdown + json share this structure). */
 export function assembleReport(collected: CollectedRun, review: Review | ReviewWithSource, run: RunMeta): Report {
   const byKey = new Map(collected.clusters.map((c) => [c.key, c] as const));
-  const issues = review.issues
+  const unreachable = unreachableSummary(collected, run);
+  const issues: Report['issues'] = review.issues
     .map((i) => {
       const c = byKey.get(i.key);
       if (!c) return null;
@@ -274,6 +295,29 @@ export function assembleReport(collected: CollectedRun, review: Review | ReviewW
       return (rank[a.severity] ?? 9) - (rank[b.severity] ?? 9) || b.observations - a.observations;
     });
 
+  // an app that was alive, explored, and collapsed mid-run is itself a
+  // FINDING — the highest-value thing a load swarm can tell you (final task:
+  // report the agent count from the ramp's degradation point)
+  if (unreachable?.mode === 'collapse') {
+    const n = unreachable.agentsAtCollapse;
+    issues.unshift({
+      key: `app:collapse:${n ?? 'unknown'}`,
+      title: `app collapsed under load${n ? ` (unreachable at ~${n} agents)` : ''}`,
+      severity: 'high',
+      confidence: n ? 'high' : 'medium',
+      types: ['app_collapse'],
+      observations: unreachable.refused,
+      rootCause: n
+        ? `The app stopped responding while the swarm was at ~${n} concurrent agents — it crashed, saturated, or was killed under load.`
+        : 'The app stopped responding partway through the run — it crashed, saturated, or was killed under load (the ramp did not record the exact agent level).',
+      fixPrompt: n
+        ? `Reproduce: start the app, then apply load (re-run UIpocalypse with agents=${n}). Watch the app process and logs for a crash, OOM kill, or exit at that concurrency; fix the crash or add rate limiting/back-pressure.`
+        : 'Reproduce: start the app and re-run UIpocalypse with increasing agent counts until it stops responding; watch the app process and logs for a crash, OOM kill, or exit; fix the crash or add rate limiting/back-pressure.',
+      evidence: [{ note: `${unreachable.refused} of ${unreachable.totalObservations} observations are connection-refused after the app had been explored` }],
+      steps: [],
+    });
+  }
+
   return {
     runId: collected.runId,
     generatedAt: new Date().toISOString(),
@@ -281,7 +325,7 @@ export function assembleReport(collected: CollectedRun, review: Review | ReviewW
     summary: review.summary,
     reviewedBy: (review as ReviewWithSource).reviewedBy ?? 'mechanical',
     reviewReason: (review as ReviewWithSource).mechanicalReason,
-    targetUnreachable: unreachableSummary(collected),
+    targetUnreachable: unreachable,
     issues,
     inconsistentFeedback: collected.findingClusters
       .filter((c) => c.types.includes('inconsistent_feedback'))
@@ -306,8 +350,14 @@ export function markdownReport(report: Report): string {
   // target unreachability comes FIRST: everything below it is dead-server
   // noise, and a reader skimming the findings must be stopped before that
   if (report.targetUnreachable) {
-    lines.push(`> 🛑 **THE TARGET WAS UNREACHABLE for most of this run** — ${report.targetUnreachable.refused} of ${report.targetUnreachable.totalObservations} observations are connection-refused.`);
-    lines.push(`> The "findings" below describe a server that was down, not bugs in the app.`);
+    const u = report.targetUnreachable;
+    if (u.mode === 'never') {
+      lines.push(`> 🛑 **THE TARGET WAS NEVER REACHABLE — it was down for this entire run** (${u.refused} of ${u.totalObservations} observations are connection-refused; nothing was explored).`);
+      lines.push(`> The "findings" below describe a server that was down, not bugs in the app.`);
+    } else {
+      lines.push(`> 🛑 **THE TARGET BECAME UNREACHABLE during this run** — ${u.refused} of ${u.totalObservations} observations are connection-refused after the app had been explored${u.agentsAtCollapse ? `, at ~${u.agentsAtCollapse} concurrent agents` : ''}.`);
+      lines.push(`> The app likely collapsed under swarm load — this is reported as a finding, but everything else below describes a dead server, not app bugs.`);
+    }
     lines.push(`> Check that the app is running on the target URL/port, start it, and re-run. This report is not a bug list.`);
     lines.push('');
   }
@@ -319,11 +369,14 @@ export function markdownReport(report: Report): string {
     lines.push('');
   }
   const models = report.run.llmModels ? ` · **Models:** ${report.run.llmModels}` : '';
+  const machine = report.run.machine
+    ? ` · **Machine:** ${report.run.machine.cpu} · ${report.run.machine.cores} cores · ${(report.run.machine.ramBytes / 1024 ** 3).toFixed(1)} GB RAM`
+    : '';
   const reviewed =
     report.reviewedBy === 'llm'
       ? ' · Reviewed by: LLM (root causes and fix prompts are model-written)'
       : ` · Reviewed by: mechanical template (no LLM review — ${report.reviewReason ?? 'reason unknown'})`;
-  lines.push(`**Target:** ${report.run.targetUrl} · **Agents:** ${report.run.agents} · **Swarm wall:** ${(report.run.wallMs / 1000).toFixed(1)} s · **Swarm-phase LLM calls:** ${report.run.llmCalls}${models}${reviewed} · **Coverage (runtime graph):** ${(report.coverage.coverage * 100).toFixed(0)}% (${report.coverage.reachedActions}/${report.coverage.discoveredActions} discovered actions) · **Coverage (app map):** ${(report.coverage.appMapCoverage * 100).toFixed(0)}% (${report.coverage.appMapReached}/${report.coverage.appMapTotal} code-declared interactive elements)`);
+  lines.push(`**Target:** ${report.run.targetUrl} · **Agents:** ${report.run.agents} · **Swarm wall:** ${(report.run.wallMs / 1000).toFixed(1)} s · **Swarm-phase LLM calls:** ${report.run.llmCalls}${models}${machine}${reviewed} · **Coverage (runtime graph):** ${(report.coverage.coverage * 100).toFixed(0)}% (${report.coverage.reachedActions}/${report.coverage.discoveredActions} discovered actions) · **Coverage (app map):** ${(report.coverage.appMapCoverage * 100).toFixed(0)}% (${report.coverage.appMapReached}/${report.coverage.appMapTotal} code-declared interactive elements)`);
   lines.push('');
   // Skip visibility: every Guard refusal, by label, with the opt-in path.
   // These actions are counted as UNREACHED in the coverage figures above.
@@ -458,6 +511,8 @@ function toMeta(run: RunRow): RunMeta {
     llmModels: run.llm_models,
     disabledClasses: run.disabled_classes?.split(',').filter(Boolean) ?? [],
     skippedActions: parseSkipped(run.skipped_actions),
+    machine: run.cpu ? { cpu: run.cpu, cores: run.cores ?? 0, ramBytes: run.ram_bytes ?? 0 } : undefined,
+    agentsAtCollapse: run.agents_at_collapse ?? undefined,
   };
 }
 

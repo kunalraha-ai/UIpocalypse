@@ -4,14 +4,16 @@ One row per volunteer. Fill what you know; leave blank what you don't. Never
 put secrets, API keys, or report contents with sensitive paths in this file —
 counts and verdicts only.
 
-| # | Date | Stack | OS + ver | Node | Safe copy? | Min to 1st report | Findings (H/M/L) | Real / false / unsure | Fix prompts worked? | Run again? | Pay? | Notes |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 1 | | | | | | | | / / | | | | |
-| 2 | | | | | | | | / / | | | | |
-| 3 | | | | | | | | / / | | | | |
+| # | Date | Stack | OS + ver | Node | CPU / cores / RAM (copy from the report header) | Safe copy? | Min to 1st report | Findings (H/M/L) | Real / false / unsure | Fix prompts worked? | Run again? | Pay? | Notes |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | | | | | | | | | / / | | | | |
+| 2 | | | | | | | | | / / | | | | |
+| 3 | | | | | | | | | / / | | | | |
 
 Column notes:
 
+- **OS + ver / Node** — the volunteer's machine (the report header also records CPU model, core count, and RAM)
+- **CPU / cores / RAM** — copy the `Machine:` line from the report header (e.g. `AMD Ryzen 9 5900X · 12 cores · 31.2 GB RAM`)
 - **Safe copy?** — made a local/test DB copy before running (yes / no / n/a — no DB)
 - **Min to 1st report** — from receiving the tarball to the first bug report
 - **Findings (H/M/L)** — e.g. `2/3/1` from the report's severity counts
