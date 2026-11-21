@@ -37,15 +37,33 @@ UIpocalypse ran ONCE against `held-out-app-2/` (Plain Pages), untouched since it
 
 ## Why "Reset preferences" was missed
 
-"Reset preferences" is on `index.html` — the newsletter page. The runtime graph shows only 3 states / 14 actions, which maps to the catalog page + about + home. The button is a plain `<button>` with NO handler, NO form, and NO `type` — it's outside any form. The dead-handler static rule would catch it, but `scan_codebase` was not run against Plain Pages (it's a static app with no package.json — the analyzer doesn't know the framework). The dynamic swarm's 3 states suggest the scouts didn't fully explore the newsletter section of index.html (it's below the fold — the "Join list" form, "Reset preferences", and the FAQ are all on the same page but below the catalog content).
+**CORRECTION (2026-11-21, volunteer-readiness audit): the original "below the fold" explanation below was WRONG. The real cause is the Safety Guard's destructive-label filter.**
 
-## False positives
+The Guard's `DESTRUCTIVE_RE` (`src/guard/actions.ts`) includes the word `reset`:
 
-**0** — every non-planted control was either correctly exercised (no finding) or correctly classified as `inconsistent_feedback` (benign, low confidence). The "Delete account" button was correctly skipped by the Guard (destructive label).
+```
+/\b(delete|remove|cancel\s+subscription|unsubscribe|deactivate|destroy|purge|reset)\b/i
+```
+
+`"Reset preferences"` matches `\breset\b`, so the button was classified **destructive and skipped on every enumeration** — the same treatment "Delete account" correctly got. It was never offered to a single agent, which is why it has 0 observations. Verified against the fixture source: the button is a plain `<button id="dead1">` in static DOM at the top level of `index.html` — no lazy rendering, no IntersectionObserver; the runtime's `isVisible` doesn't check viewport position, so a below-the-fold placement would NOT have prevented enumeration. The `node -e` regex check confirms: `"Reset preferences" => DESTRUCTIVE (skipped)`.
+
+**Implication (a real detection blind spot, documented in the README "Scope and limits"):** any dead control whose label contains delete/remove/reset/purge/destroy/unsubscribe/deactivate is invisible to the dynamic swarm unless the user opts in to destructive actions. Safety-first by design; the cost is recorded here honestly. No detector or threshold was changed for this finding.
+
+---
+
+Original (wrong) explanation, kept for the record:
+
+> "Reset preferences" is on `index.html` — the newsletter page. The runtime graph shows only 3 states / 14 actions, which maps to the catalog page + about + home. The button is a plain `<button>` with NO handler, NO form, and NO `type` — it's outside any form. The dead-handler static rule would catch it, but `scan_codebase` was not run against Plain Pages (it's a static app with no package.json — the analyzer doesn't know the framework). The dynamic swarm's 3 states suggest the scouts didn't fully explore the newsletter section of index.html (it's below the fold — the "Join list" form, "Reset preferences", and the FAQ are all on the same page but below the catalog content).
+
+(One true part survives from the original: the static dead-handler rule would have caught this button if `scan_codebase` had run — but Plain Pages has no package.json, so the analyzer had no entry point. Two independent gaps, both now recorded.)
 
 ## Post-hoc change log
 
 None. No tuning was performed after this run. The miss is recorded as-is; if a fix is warranted (e.g., seeding the swarm to explore below-the-fold content), it would be logged here and the fixture would be marked "used" in its README.
+
+## False positives
+
+**0** — every non-planted control was either correctly exercised (no finding) or correctly classified as `inconsistent_feedback` (benign, low confidence). The "Delete account" button was correctly skipped by the Guard (destructive label).
 
 ## Raw output
 
