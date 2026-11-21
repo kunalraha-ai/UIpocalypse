@@ -61,11 +61,11 @@ Read this before trusting a clean report. The benchmark evidence for every claim
 - **Chromium only, Linux only, local behavior only.** One browser engine; anything that only manifests in Safari/Firefox, in production infrastructure, or under real load is out of scope. **Developed and tested on Linux only — Windows and other non-Linux setups are untested** (Playwright prints a benign "OS not officially supported" fallback notice on some distros).
 - **Apps with only a production database get a read-only run.** When the Guard cannot confirm a safe (local, allow-listed) database, writes and form submits are skipped and the duplicate-write/race detectors are disabled. The report's first lines say exactly which detection classes were NOT run — a clean read-only report is never a clean bill of health.
 
-**Bug classes this tool cannot see (evidence: GrowthSent history run, in the source repository):**
+**Bug classes this tool cannot see (evidence: a real app's fix-history test, recorded in the source repository):**
 
-- **Deployment/platform-specific bugs** — e.g., a Vercel runtime module-resolution failure or CDN response caching that serves user A's data to user B. These don't reproduce on a local dev server.
+- **Deployment/platform-specific bugs** — e.g., a serverless runtime module-resolution failure or edge caching that serves user A's data to user B. These don't reproduce on a local dev server.
 - **Infrastructure-level bugs** — outbound-service auth (a crawler missing its auth tokens), database retry/binding logic, queue/cron failures. Not browser-visible.
-- Of GrowthSent's 5 picked historical bugs, 2 were deployment-specific, 1 infrastructure-level, and only 2 were even potentially browser-visible — a browser swarm would have needed those 2 to score anything. A clean run on an app whose bugs live outside the browser proves little.
+- Of the 5 historical bugs picked from that app's fix history, 2 were deployment-specific, 1 infrastructure-level, and only 2 were even potentially browser-visible — a browser swarm would have needed those 2 to score anything. A clean run on an app whose bugs live outside the browser proves little.
 
 **Known measurement variance:**
 
@@ -74,7 +74,7 @@ Read this before trusting a clean report. The benchmark evidence for every claim
 **What a clean report does NOT mean:**
 
 - Read-only runs (no safe database) do not test writes, form submits, races, or duplicate-write damage — the report says so in its first lines.
-- No run against a real vibecoded repo has been verified yet: the "real bugs per real repo ≥ 3" gate is **FAIL (unevaluated)** — GrowthSent is a tuning fixture, and the held-out blind apps had no real bugs to find.
+- No run against a real vibecoded repo has been verified yet: the "real bugs per real repo ≥ 3" gate is **FAIL (unevaluated)** — the one real app evaluated is a tuning fixture, and the held-out blind apps had no real bugs to find.
 
 
 ## Development

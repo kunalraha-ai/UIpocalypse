@@ -118,22 +118,22 @@ Current-config execution results appear at the end of this document — the runs
 
 The 3B scout discovered the same graph (96 vs 97 actions), hit 100% coverage in every run, and the finding profile is equivalent — with the whole first-run wall dropping from ~200 s to ~136 s. The smaller model costs more calls (38 vs ~26) but at 0.3 s each the phase is 4× faster anyway. **Quality held; the speed gain is real.** One honest caveat: the 3B scout's `scoutOutcome` was never 'error' in these runs, but a 3B is weaker at genuinely novel UIs — the phase-3 fail-closed action validation (invalid actionIds skipped, never guessed) is the protection, and real-repo Phase 6 testing will be the true test.
 
-## Real-app eval: GrowthSent (2026-11-17, recovered session)
+## Real-app eval: a production vibecoded app (2026-11-17; app identity withheld at the owner's request)
 
-The interrupted session left an eval target (`GrowthSent/` — a real 68 MB Figma-Make vibecoded app, gitignored, not product code) and a stdio MCP-client driver (`eval-growthsent.mjs`). Running `scan_codebase` against it live surfaced **two analyzer convention gaps, both fixed with locked regression fixtures**:
+A real vibecoded app (a generator-built production app, gitignored, never product code of this project — identity withheld) was scanned live via a stdio MCP-client driver. It surfaced **two analyzer convention gaps, both fixed with locked regression fixtures**:
 
-1. **Vercel serverless functions were invisible route sources.** The app's entire backend is `api/v1/[...path].ts` (a catch-all) — the analyzer only knew Next routers, so all 29 `/api/v1/*` fetches fired `missing-endpoint` as FPs. Fix: framework-agnostic `api/**/*.ts` route extraction with `[...slug]` catch-all matching (29 → 0).
-2. **Platform-injected env vars beyond VERCEL_**: bare `VERCEL`, `PORT` (PaaS convention), `FIGMA_*` (Figma Make) all fired `undefined-env` as FPs. Fix: allowlist extended.
+1. **Serverless catch-all routes were invisible route sources.** The app's entire backend is a single catch-all serverless route — the analyzer only knew Next routers, so all 29 of its API fetches fired `missing-endpoint` as FPs. Fix: framework-agnostic `api/**/*.ts` route extraction with catch-all matching (29 → 0).
+2. **Platform-injected env vars.** Bare platform flags and generator-injected names all fired `undefined-env` as FPs. Fix: allowlist extended.
 
 Final scan (0.7 s, 330 files): **29 issues — 28 verified true, 1 false positive** (corrected 2026-11-20 on re-inspection; the earlier "every one verified true" claim was wrong for the missing-submit-guard finding):
 
 | Rule | Count | Verdict |
 |---|---|---|
-| dead-handler | 14 | ✅ all TRUE — Figma-Make generated `<button>Run fresh scan ↻</button>`, `<button>✦ AI Fix All</button>`, `<button>Export CSV ⤓</button>`, `<button>Real-time view 🟢</button>` etc. with literally no onClick (spot-checked in source); the exact bug class the product exists for. Three are unwired inputs (`Domain to inspect`, `Your domain`, one unnamed) |
-| undefined-env | 14 | ✅ all TRUE — app-specific ops flags (`PROVISION_MONGODB_*` ×8 across the two API entrypoints, `RUN_MONGODB_INTEGRATION_TESTS` ×2, `COMMON_CRAWL_BENCHMARK_ALLOW_NETWORK`, `CRAWLER_TIMEOUT`, `DEV`, `MODE`) genuinely absent from every .env file (checked `.env.example` — zero hits) |
-| missing-submit-guard | 1 | ❌ **FALSE POSITIVE** — `Sidebar.tsx:527`, the DELETE `/api/v1/websites/…` write. The guard EXISTS: the flow runs through a ConfirmModal with `loading={isDeletingWebsite}` and the modal disables its confirm button (`disabled={loading}` in ConfirmModal.tsx). The heuristic's pending-signal words (`isPending\|setLoading\|isLoading\|…`) simply don't match GrowthSent's `isDeletingWebsite` naming convention. Open item: the rule needs naming-convention breadth (or app-map-level handler analysis) |
+| dead-handler | 14 | ✅ all TRUE — generator-emitted action buttons with literally no onClick (spot-checked in source); the exact bug class the product exists for. Three are unwired inputs |
+| undefined-env | 14 | ✅ all TRUE — app-specific ops flags genuinely absent from every .env file |
+| missing-submit-guard | 1 | ❌ **FALSE POSITIVE** — a DELETE write whose guard EXISTS but uses a naming convention the heuristic's pending-signal words don't match. Open item: the rule needs naming-convention breadth (or app-map-level handler analysis) |
 
-**Real-repo FP rate: 1 of 29 ≈ 3.4%** after the convention fixes (the third consecutive external validation to land near zero — after vercel/commerce, shadcn/taxonomy, supabase user-management in the phase-4 pre-work — but not zero, and the earlier zero claim is corrected above). **GrowthSent is now a tuning fixture** (like Messy Mart): the analyzer fixes it forced (serverless route extraction, platform env allowlist) landed in `8e822ca`, so it no longer counts as unseen. **Plain Pages (`held-out-app-2/`) remains untouched for Phase 6.**
+**Real-repo FP rate: 1 of 29 ≈ 3.4%** after the convention fixes (the third consecutive external validation to land near zero — after vercel/commerce, shadcn/taxonomy, supabase user-management in the phase-4 pre-work — but not zero, and the earlier zero claim is corrected above). **The app is now a tuning fixture** (like Messy Mart): the analyzer fixes it forced (serverless route extraction, platform env allowlist) landed in `8e822ca`, so it no longer counts as unseen. **Plain Pages (`held-out-app-2/`) remains untouched for Phase 6.**
 
 ### False-positive rate over the clustered set (execution 2, first-run 3)
 

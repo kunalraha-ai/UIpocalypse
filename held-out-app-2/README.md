@@ -8,12 +8,13 @@ the browser-side detectors (dead_click, inconsistent_feedback, navigation).
 Static-scan rules, race mode, duplicate detection, and auth-gated flows were
 NOT tested by this fixture.
 
-**What GrowthSent history testing can and cannot see (scope):**
-GrowthSent is a tuning fixture. Of the 5 picked historical bugs, 2 are
-deployment-specific (invisible locally), 1 is infrastructure-level (invisible
-to a browser), and only 2 are potentially browser-visible — of which 1 run
-was interrupted and 1 was never attempted. The history detection rate of
-0-of-1 says more about GrowthSent's bug distribution than the tool.
+**What the real-app history testing can and cannot see (scope):**
+The one real app whose fix history was tested is a tuning fixture. Of the 5
+picked historical bugs, 2 are deployment-specific (invisible locally), 1 is
+infrastructure-level (invisible to a browser), and only 2 are potentially
+browser-visible — of which 1 run was interrupted and 1 was never attempted.
+The history detection rate of 0-of-1 says more about that app's bug
+distribution than the tool.
 
 ## Why this one
 

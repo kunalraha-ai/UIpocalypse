@@ -118,7 +118,7 @@ describe('static rule library (TRD §8, first 10 rules) — fixture mini-app', (
     expect(has('undefined-env', /FIGMA_PUBLIC_URL/)).toBe(false);
   });
 
-  it('serverless catch-all routes (api/v1/[...path].ts) resolve /api/v1/* fetches (GrowthSent eval)', () => {
+  it('serverless catch-all routes (api/v1/[...path].ts) resolve /api/v1/* fetches (real-app eval)', () => {
     // the fixture fetches /api/v1/auth/google/start — served by the catch-all
     expect(has('missing-endpoint', /api\/v1\/auth/)).toBe(false);
     // genuinely missing endpoints still fire (the catch-all is scoped to /api/v1)

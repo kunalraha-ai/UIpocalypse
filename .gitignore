@@ -18,7 +18,6 @@ dist/
 next-env.d.ts
 
 # local eval targets (68 MB real app — not part of the product)
-GrowthSent/
 # supabase CLI internal state
 sample-app/supabase/.temp/
 releases/

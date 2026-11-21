@@ -34,7 +34,7 @@ Both apps were well-built and contained no real bugs — so this pair proves the
 
 The inconsistent_feedback clusters across all 4 apps are the same class: form-submit buttons that produce feedback when fields are valid but nothing when browser validation blocks. Low severity, low confidence, ranked low by design.
 
-### GrowthSent history-based detection (analyzer tuning fixture; history methodology new)
+### Real-app history-based detection (analyzer tuning fixture; app identity withheld)
 
 **0 of 1 completed runs detected the later-fixed bug — and diff-verified archaeology shows 0 of 5 picks were valid local measurements at all.**
 
@@ -45,12 +45,12 @@ The inconsistent_feedback clusters across all 4 apps are the same class: form-su
 | Swarm runs completed | 1 |
 | Swarm runs interrupted (server restart) | 1 |
 | Booted but not swarmed (bug not locally detectable) | 1 |
-| Not attempted (Vercel-specific / never tried) | 2 |
+| Not attempted | 2 |
 | Unrunnable locally by design (deployment-specific) | 2 of 5 |
 | Wrong shape for a browser swarm (infrastructure-level) | 1 of 5 |
 | Potentially browser-visible | 2 of 5 — one interrupted, one never attempted |
 
-The five fixed bugs are platform/provider-bound classes (Vercel-runtime named-import breakage ×2, Google OAuth account-linking, Vercel edge caching, and one mis-picked crawler-outbound-auth commit that was never UI-visible). Neither class can reproduce on a local dev server, and the tool's genuinely browser-visible GrowthSent findings (14 dead Figma-Make buttons) remain unfixed at HEAD, so no fix-point exists for them. [benchmarks/growthsent-history/result.md]
+The picked fix history is dominated by platform-bound bug classes (deployment/runtime binding, edge caching, outbound-service auth) — none reproduce on a local dev server, and the tool's genuinely browser-visible findings in that app (a batch of dead generated buttons) remain unfixed at the app's HEAD, so no fix-point exists for them. The lesson recorded for scope: **a browser-based swarm running locally cannot see deployment-specific or infrastructure-level bugs, and a clean run on an app whose bugs live outside the browser proves little.** (The app's identity and bug specifics are withheld at the owner's request; the detailed private record exists in the local development history.)
 
 ---
 
@@ -88,7 +88,7 @@ The five fixed bugs are platform/provider-bound classes (Vercel-runtime named-im
 | False-positive rate | ≤ 20% (hard stop at 33%) | Cluster-level on CreditCraft: ~1 of ~14 primary clusters | ✅ PASS — tuning fixture |
 | Rerun time | ≤ 90 s | 85/86/93 s (exec 3) · 88 s (clean exec, 2026-11-21) | ✅ PASS 3-of-4 post-fix runs (one 3 s over — LLM reviewer latency variance) — tuning fixture |
 | LLM calls per rerun | ≤ 20 | **1** (was 40 pre-fix; the escalation fix eliminated stall-path LLM calls) | ✅ PASS |
-| Real bugs per real repo (median, on 10 test repos) | ≥ 3 | **Not evaluated.** No real vibecoded repos were tested: GrowthSent is a tuning fixture, and the held-out blind apps had no real bugs. | ❌ **FAIL (not evaluated — no real-repo sample)** |
+| Real bugs per real repo (median, on 10 test repos) | ≥ 3 | **Not evaluated.** No real vibecoded repos were tested: the one real app evaluated was later designated a tuning fixture, and the held-out blind apps had no real bugs. | ❌ **FAIL (not evaluated — no real-repo sample)** |
 | Safety | 0 destructive clicks without opt-in | 0 across all UIpocalypse runs | ✅ PASS |
 
 **The bug #11 regression (reported plainly, updated 2026-11-21):** planted-bug detection is stated as **10 of 11**, with bug #11 (success-page revisit crash) marked **unreliable**: detected in 2 of 3 pre-fix gate runs, 0 of 3 in the first post-fix execution, and 1 of 3 in the clean post-fix execution (2026-11-21, 1 obs in first-run 3) — so **1 of 6 post-fix first-runs**. The escalation fix (stalled agents take policy actions instead of one LLM-directed restart) made the checkout→success→revisit trajectory rare rather than impossible. The exact pre-fix trajectory was never identified. The ≥80% gate passes at 10/11 = 90.9% with #11 marked unreliable. Recorded in the README "Scope and limits"; no threshold was changed to hide it.
@@ -96,7 +96,7 @@ The five fixed bugs are platform/provider-bound classes (Vercel-runtime named-im
 **Post-fix gate summary: the clean 2026-11-21 execution PASSES 8/8** (first-run median 162 s, rerun 88 s, rerun LLM 1). The 2026-11-20 execution 3 failed on rerun time (93 s vs 90 s) and the collector-acceptance check — the latter because the old check asserted a 2–4 band on RAW duplicate-request counts, which vary with app state (identical seeds, DB reset, and plan still produced 16/13/34 — and now 26/38/19 — raw dupObs across executions). The collapse itself was correct in every run. The check was rewritten (test change only, commit c1eaca7) to assert on the collapsed result: no singleton duplicate clusters in first-runs, and invariant-confirmed duplicate_effect damage present — the clean execution passes it with dup_effect 2/2/2 and 0 singletons while raw dupObs ranged 19–38.
 
 **Gate-scoring corrections (2026-11-20/21):**
-- **"Real bugs per real repo ≥ 3"** — originally scored PASS on GrowthSent's 28 verified static findings. That was WRONG: GrowthSent is a tuning fixture and the gate demands real repos. No real vibecoded repos were tested. Marked FAIL (not evaluated).
+- **"Real bugs per real repo ≥ 3"** — originally scored PASS on a real app's 28 verified static findings. That was WRONG: that app is a tuning fixture and the gate demands real repos. No real vibecoded repos were tested. Marked FAIL (not evaluated).
 - **"Planted-bug detection ≥ 80%"** — CreditCraft is a tuning fixture; 10/11 post-fix passes, 11/11 pre-fix. Not a generalization claim.
 - **"False-positive rate ≤ 20%"** — measured on CreditCraft (tuning fixture). The held-out fixtures produced 0 FPs but had almost nothing to flag.
 - **"Rerun time ≤ 90 s"** — tuning fixture; passes 2 of 3 post-fix runs.
@@ -109,7 +109,7 @@ The five fixed bugs are platform/provider-bound classes (Vercel-runtime named-im
 - **One machine, one model configuration.** All runs on a 12-core Linux box with glm-5.3 + llama-3.2-3b. Different models, hardware, and network conditions will shift every number.
 - **Authorship bias.** CreditCraft was built by this project and its analyzer rules were tuned on it across 5 phases. The 11/11 (and post-fix 10/11) are tuning-fixture results, not generalization claims.
 - **The A-vs-B comparison never happened.** Playwright MCP is not available in this harness; the benchmark designed a three-way comparison and delivered a two-way one.
-- **GrowthSent's history bugs are the wrong shape.** Deployment-specific and infrastructure-level bugs dominate its fix history — a browser-based swarm running locally cannot see them. The 0-of-1 history detection says more about the bug distribution than the tool.
+- **The real app's history bugs are the wrong shape.** Deployment-specific and infrastructure-level bugs dominate its fix history — a browser-based swarm running locally cannot see them. The 0-of-1 history detection says more about the bug distribution than the tool.
 - **Safety-skipped controls are untestable without opt-in.** Any control whose label matches delete/remove/reset/purge/destroy/unsubscribe/deactivate is never clicked — a dead button among them is invisible (the Plain Pages case). The report now lists these explicitly; opt in only against a safe test copy.
 - **No scrolling.** The runtime never scrolls; controls that only render when scrolled into view (lazy DOM, IntersectionObserver) are never enumerated. Plainly-present below-the-fold elements ARE enumerated and clicked.
 - **App-map coverage needs work.** 11/30 (37%) on CreditCraft — the static analyzer's element list includes elements the runtime graph doesn't classify as "performed actions." The metric is honest but the denominator is fuzzy.
@@ -127,5 +127,5 @@ The five fixed bugs are platform/provider-bound classes (Vercel-runtime named-im
 - `benchmarks/contenders/gate-rerun1-invalid.md` — the invalid post-fix attempt (app down)
 - `benchmarks/plain-pages/result.md` + `run.json` — held-out fixture result (with the 2026-11-21 correction)
 - `benchmarks/blind-apps/held-out-findings.md` — held-out pair findings (verdict column blank)
-- `benchmarks/growthsent-history/picks.md` + `result.md` — history-based detection scope and results
+- `benchmarks/` — all raw benchmark data (contenders, plain-pages, blind-apps, creditcraft-stripped)
 - `benchmarks/creditcraft-stripped/` — the stripped benchmark copy (regenerate with make-stripped.mjs)
