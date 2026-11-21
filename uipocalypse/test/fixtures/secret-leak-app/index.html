@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8" /><title>Secret fixture</title></head>
+  <body>
+    <h1>Secret leak audit fixture</h1>
+    <button onclick="console.log('clicked')">Click me</button>
+    <form action="/api/echo" method="post">
+      <input type="email" name="email" placeholder="you@example.com" required />
+      <button type="submit">Submit</button>
+    </form>
+  </body>
+</html>
