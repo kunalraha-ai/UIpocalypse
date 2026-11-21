@@ -1,4 +1,5 @@
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { existsSync } from 'node:fs';
 import { initWorkspace } from './workspace.js';
 import { openDb } from './db/index.js';
 import { createLogger } from './logger.js';
@@ -100,11 +101,40 @@ async function main() {
     await runSwarmCli(process.argv);
     return;
   }
+  if (process.argv[2] === 'web') {
+    await runWebCli(process.argv);
+    return;
+  }
   const { createServer } = await import('./server.js');
   const { server, logger } = createServer();
   const transport = new StdioServerTransport();
   await server.connect(transport);
   logger.info('uipocalypse MCP server ready (stdio)');
+}
+
+/** `uipocalypse web [--port N] [--frontend <dist dir>]` — local web UI. */
+async function runWebCli(argv: string[]): Promise<void> {
+  const { resolve } = await import('node:path');
+  const args = argv.slice(3);
+  const flag = (name: string): string | undefined => {
+    const i = args.indexOf(name);
+    return i >= 0 ? args[i + 1] : undefined;
+  };
+  const port = Number(flag('--port') ?? process.env.UIP_WEB_PORT ?? 4310);
+  const frontendDir =
+    flag('--frontend') ??
+    process.env.UIP_FRONTEND ??
+    (existsSync(resolve('..', 'frontend', 'dist'))
+      ? resolve('..', 'frontend', 'dist')
+      : undefined);
+  const { startWebServer } = await import('./web/server.js');
+  const web = await startWebServer({ port, frontendDir });
+  console.error(`UIpocalypse web UI: http://${web.address}:${web.port}  (frontend: ${frontendDir ? 'served' : 'NOT BUILT — API only'})`);
+  const shutdown = () => {
+    void web.close().then(() => process.exit(0));
+  };
+  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', shutdown);
 }
 
 main().catch((err) => {

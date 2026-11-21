@@ -22,3 +22,5 @@ next-env.d.ts
 sample-app/supabase/.temp/
 releases/
 .temp/
+frontend/dist/
+frontend/node_modules/
