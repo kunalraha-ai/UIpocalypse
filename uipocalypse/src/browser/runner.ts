@@ -5,7 +5,7 @@ import type { BrowserContext } from 'playwright';
 import type { Logger } from '../logger.js';
 import type { LLM } from '../llm/index.js';
 import type { UiConfig } from '../config.js';
-import { createGuard } from '../guard/index.js';
+import { createGuard, classifyAction } from '../guard/index.js';
 import { RUNTIME_SOURCE } from '../runtime/runtime-source.js';
 import { StateGraph } from '../graph/graph.js';
 import { hashAriaSnapshot, normalizeRoute } from '../graph/hash.js';
@@ -175,7 +175,7 @@ export async function explore(opts: ExploreOptions): Promise<ExploreResult> {
     return { hash, url: normalizeRoute(page.url(), opts.routes) };
   }
 
-  async function getActions(): Promise<RuntimeAction[]> {
+  async function getActions(stateId?: number): Promise<RuntimeAction[]> {
     const raw = await withTimeout(
       page.evaluate(() => window.__uip.getActions()),
       OP_TIMEOUT_MS,
@@ -199,6 +199,26 @@ export async function explore(opts: ExploreOptions): Promise<ExploreResult> {
     const allowedIds = new Set(allowed.map((a) => a.id));
     if (skipped.length) {
       log.info('safety: skipped actions', { actions: skipped.map((s) => s.action.label).slice(0, 10) });
+      // Skip visibility: register refusals in the graph so they count as
+      // discovered-but-unreached in coverage — never silently dropped
+      const sid = stateId ?? (await (async () => {
+        const s = await currentState();
+        return graph.getOrCreateState({ hash: s.hash, url: s.url, signature: '' }).id;
+      })());
+      const skipReasonById = new Map<number, string>();
+      for (const s of skipped) skipReasonById.set(s.action.id, s.reason);
+      for (const a of actions) {
+        const reason = skipReasonById.get(a.id);
+        if (!reason) continue;
+        graph.getOrCreateAction({
+          stateId: sid,
+          locator: a.locator,
+          kind: a.role ?? 'unknown',
+          label: a.name.slice(0, 80),
+          riskClass: classifyAction({ id: a.id, label: a.name }),
+          skipReason: reason,
+        });
+      }
     }
     return actions.filter((a) => allowedIds.has(a.id));
   }

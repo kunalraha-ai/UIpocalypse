@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS actions (
   kind TEXT,
   label TEXT,
   risk_class TEXT,            -- safe | write | destructive | external
+  skip_reason TEXT,           -- set when the Safety Guard refused this action — counted as UNREACHED, never dropped
   UNIQUE(state_id, locator)
 );
 
@@ -50,7 +51,8 @@ CREATE TABLE IF NOT EXISTS runs (
   llm_calls INTEGER,
   coverage REAL,
   llm_models TEXT,
-  disabled_classes TEXT
+  disabled_classes TEXT,
+  skipped_actions TEXT
 );
 
 CREATE TABLE IF NOT EXISTS findings (

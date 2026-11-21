@@ -24,6 +24,15 @@ export function openDb(dir: string): Db {
   if (!runCols.some((c) => c.name === 'disabled_classes')) {
     db.exec('ALTER TABLE runs ADD COLUMN disabled_classes TEXT');
   }
+  // migration: runs.skipped_actions (project DBs created before skip visibility)
+  if (!runCols.some((c) => c.name === 'skipped_actions')) {
+    db.exec('ALTER TABLE runs ADD COLUMN skipped_actions TEXT');
+  }
+  // migration: actions.skip_reason (skipped actions count as UNREACHED, never dropped)
+  const actionCols = db.prepare('PRAGMA table_info(actions)').all() as Array<{ name: string }>;
+  if (!actionCols.some((c) => c.name === 'skip_reason')) {
+    db.exec('ALTER TABLE actions ADD COLUMN skip_reason TEXT');
+  }
   return db;
 }
 
@@ -54,17 +63,35 @@ export function getOrCreateAction(
     kind: string;
     label: string;
     riskClass: string;
+    /** Safety Guard refusal reason — records the action as discovered-but-not-tested */
+    skipReason?: string;
   },
 ): { id: number } {
   const stmt = db.prepare(
-    `INSERT INTO actions (state_id, locator, kind, label, risk_class) VALUES (?, ?, ?, ?, ?)
+    `INSERT INTO actions (state_id, locator, kind, label, risk_class, skip_reason) VALUES (?, ?, ?, ?, ?, ?)
      ON CONFLICT(state_id, locator) DO NOTHING`,
   );
-  const info = stmt.run(input.stateId, input.locator, input.kind, input.label, input.riskClass);
+  const info = stmt.run(
+    input.stateId,
+    input.locator,
+    input.kind,
+    input.label,
+    input.riskClass,
+    input.skipReason ?? null,
+  );
   if (info.changes > 0) return { id: Number(info.lastInsertRowid) };
   const row = db
     .prepare('SELECT id FROM actions WHERE state_id = ? AND locator = ?')
     .get(input.stateId, input.locator) as { id: number };
+  // the row already exists (seen in a prior step or run). If it has never
+  // been performed and carries no reason yet, backfill the skip reason — a
+  // performed action keeps its transitions and is reached regardless.
+  if (input.skipReason) {
+    db.prepare(
+      `UPDATE actions SET skip_reason = ? WHERE id = ? AND skip_reason IS NULL
+       AND NOT EXISTS (SELECT 1 FROM transitions WHERE action_id = actions.id)`,
+    ).run(input.skipReason, row.id);
+  }
   return { id: row.id };
 }
 
@@ -111,13 +138,23 @@ export function createRun(
 
 export function finishRun(
   db: Db,
-  input: { id: number; durationMs: number; llmCalls: number; coverage: number; disabledClasses?: string[] },
+  input: {
+    id: number;
+    durationMs: number;
+    llmCalls: number;
+    coverage: number;
+    disabledClasses?: string[];
+    skippedActions?: Array<{ label: string; reason: string }>;
+  },
 ): void {
-  db.prepare('UPDATE runs SET duration_ms = ?, llm_calls = ?, coverage = ?, disabled_classes = ? WHERE id = ?').run(
+  db.prepare(
+    'UPDATE runs SET duration_ms = ?, llm_calls = ?, coverage = ?, disabled_classes = ?, skipped_actions = ? WHERE id = ?',
+  ).run(
     input.durationMs,
     input.llmCalls,
     input.coverage,
     input.disabledClasses?.join(',') ?? null,
+    input.skippedActions?.length ? JSON.stringify(input.skippedActions) : null,
     input.id,
   );
 }
@@ -132,22 +169,17 @@ export type RunRow = {
   coverage: number | null;
   llm_models: string | null;
   disabled_classes: string | null;
+  skipped_actions: string | null;
 };
 
+const RUN_COLS = 'id, started_at, target_url, agents, duration_ms, llm_calls, coverage, llm_models, disabled_classes, skipped_actions';
+
 export function listRuns(db: Db): RunRow[] {
-  return db
-    .prepare(
-      'SELECT id, started_at, target_url, agents, duration_ms, llm_calls, coverage, llm_models, disabled_classes FROM runs ORDER BY id',
-    )
-    .all() as RunRow[];
+  return db.prepare(`SELECT ${RUN_COLS} FROM runs ORDER BY id`).all() as RunRow[];
 }
 
 export function getRun(db: Db, id: number): RunRow | null {
-  return db
-    .prepare(
-      'SELECT id, started_at, target_url, agents, duration_ms, llm_calls, coverage, llm_models, disabled_classes FROM runs WHERE id = ?',
-    )
-    .get(id) as RunRow | null;
+  return db.prepare(`SELECT ${RUN_COLS} FROM runs WHERE id = ?`).get(id) as RunRow | null;
 }
 
 // ---------------------------------------------------------------- findings

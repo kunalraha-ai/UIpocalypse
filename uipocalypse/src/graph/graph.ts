@@ -43,6 +43,8 @@ export class StateGraph {
     kind: string;
     label: string;
     riskClass: string;
+    /** Safety Guard refusal reason — records the action as discovered-but-not-tested */
+    skipReason?: string;
   }): { id: number } {
     return getOrCreateAction(this.db, input);
   }

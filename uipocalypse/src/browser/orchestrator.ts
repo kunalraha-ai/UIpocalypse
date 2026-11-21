@@ -7,7 +7,7 @@ import type { UiConfig } from '../config.js';
 import type { LLM } from '../llm/index.js';
 import type { Plan } from '../plan/schema.js';
 import { ScoutDecisionSchema } from '../plan/schema.js';
-import { createGuard } from '../guard/index.js';
+import { createGuard, classifyAction } from '../guard/index.js';
 import { createRateLimiter, createRampMonitor, type RampReport } from '../guard/ramp.js';
 import { RUNTIME_SOURCE } from '../runtime/runtime-source.js';
 import { StateGraph } from '../graph/graph.js';
@@ -82,6 +82,8 @@ export type SwarmResult = {
   escalationCalls: number;
   /** detection classes that were NOT run because the Guard could not confirm a safe DB */
   disabledClasses: string[];
+  /** every action the Safety Guard refused, by label — visible in the report, never silent */
+  skippedActions: Array<{ label: string; reason: string }>;
   aborted: boolean;
   warnings: string[];
 };
@@ -132,6 +134,8 @@ export async function swarm(opts: SwarmOptions): Promise<SwarmResult> {
   const inconsistentFeedbackActions: string[] = [];
   const shotCounter = { n: 0 };
   const escalationCallCounter = { n: 0 };
+  // every Guard refusal, by label+reason — reported, and stored on the run row
+  const skippedActionMap = new Map<string, { label: string; reason: string }>();
 
   /** failure screenshot (TRD §3.6: every finding may carry a screenshot path) */
   async function screenshot(page: Page): Promise<string | null> {
@@ -220,7 +224,7 @@ export async function swarm(opts: SwarmOptions): Promise<SwarmResult> {
     return { hash, url: normalizeRoute(page.url(), opts.routes) };
   }
 
-  async function getActions(page: Page) {
+  async function getActions(page: Page, stateId: number) {
     const raw = await withTimeout(
       page.evaluate(() => window.__uip.getActions()),
       OP_TIMEOUT_MS,
@@ -238,18 +242,40 @@ export async function swarm(opts: SwarmOptions): Promise<SwarmResult> {
       { dbOk: decision.isLocal },
     );
     const allowedIds = new Set(allowed.map((a) => a.id));
+    const skipReasonById = new Map<number, string>();
+    for (const s of skipped) skipReasonById.set(s.action.id, s.reason);
     if (!dbWriteSafe) {
       // read-only mode: also skip write-class actions (form submits, POST triggers)
       // that the Guard would normally allow with a safe DB
       for (const a of actions) {
         if (allowedIds.has(a.id) && (a.textLike || /submit|send|save|create|add|buy|pay|order|checkout|redeem/i.test(a.name))) {
           allowedIds.delete(a.id);
-          skipped.push({ action: { id: a.id, label: a.name }, reason: `read-only mode: no safe DB — writes and form submits skipped` });
+          const reason = 'read-only mode: no safe DB — writes and form submits skipped';
+          skipReasonById.set(a.id, reason);
+          skipped.push({ action: { id: a.id, label: a.name }, reason });
         }
       }
     }
     if (skipped.length) {
       log.info('safety: skipped actions', { actions: skipped.map((s) => s.action.label).slice(0, 8) });
+    }
+    // Skip visibility: a Guard refusal must never vanish. Register the skipped
+    // action in the state graph as discovered-but-not-tested — it stays in the
+    // coverage DENOMINATOR (unreached, with its reason) instead of being
+    // silently dropped, and it is reported by label with the opt-in path.
+    for (const a of actions) {
+      const reason = skipReasonById.get(a.id);
+      if (!reason) continue;
+      graph.getOrCreateAction({
+        stateId,
+        locator: a.locator,
+        kind: a.role ?? 'unknown',
+        label: a.name.slice(0, 80),
+        riskClass: classifyAction({ id: a.id, label: a.name }),
+        skipReason: reason,
+      });
+      const key = `${a.name}::${reason}`;
+      if (!skippedActionMap.has(key)) skippedActionMap.set(key, { label: a.name, reason });
     }
     return actions.filter((a) => allowedIds.has(a.id));
   }
@@ -264,7 +290,7 @@ export async function swarm(opts: SwarmOptions): Promise<SwarmResult> {
     try {
       const state = await currentState(page);
       const graphState = graph.getOrCreateState({ hash: state.hash, url: state.url, signature: '' });
-      const actions = await getActions(page);
+      const actions = await getActions(page, graphState.id);
       const dbActions = graph.actionsWithVisits(graphState.id);
       const ctx = {
         step: agent.steps,
@@ -649,6 +675,7 @@ export async function swarm(opts: SwarmOptions): Promise<SwarmResult> {
     llmCalls: opts.llm.calls - llmCallsAtStart,
     coverage: stats.coverage,
     disabledClasses,
+    skippedActions: [...skippedActionMap.values()],
   });
 
   await browser.close().catch(() => {});
@@ -696,6 +723,7 @@ export async function swarm(opts: SwarmOptions): Promise<SwarmResult> {
     inconsistentFeedbackActions,
     escalationCalls: escalationCallCounter.n,
     disabledClasses,
+    skippedActions: [...skippedActionMap.values()],
     aborted,
     warnings: decision.warnings,
   };

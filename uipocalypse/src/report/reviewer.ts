@@ -43,6 +43,8 @@ export type RunMeta = {
   llmModels?: string | null;
   /** detection classes that were NOT run (read-only mode, no safe DB) */
   disabledClasses?: string[];
+  /** every action the Safety Guard refused, by label with reason */
+  skippedActions?: Array<{ label: string; reason: string }>;
 };
 
 export type Report = {
@@ -70,6 +72,8 @@ export type Report = {
   coverage: CollectedRun['coverage'];
   /** detection classes not run (read-only mode, no safe DB) */
   disabledClasses?: string[];
+  /** every action the Safety Guard refused, by label with reason — never silent */
+  skippedActions?: Array<{ label: string; reason: string }>;
   /** both coverage figures, with their denominators spelled out */
   coverageFigures?: {
     graph: { reached: number; total: number };
@@ -252,6 +256,7 @@ export function assembleReport(collected: CollectedRun, review: Review, run: Run
       appMapUnreached: collected.coverage.appMapUnreached,
     },
     disabledClasses: run.disabledClasses ?? [],
+    skippedActions: run.skippedActions ?? [],
   };
 }
 
@@ -269,6 +274,18 @@ export function markdownReport(report: Report): string {
   const models = report.run.llmModels ? ` · **Models:** ${report.run.llmModels}` : '';
   lines.push(`**Target:** ${report.run.targetUrl} · **Agents:** ${report.run.agents} · **Swarm wall:** ${(report.run.wallMs / 1000).toFixed(1)} s · **LLM calls:** ${report.run.llmCalls}${models} · **Coverage (runtime graph):** ${(report.coverage.coverage * 100).toFixed(0)}% (${report.coverage.reachedActions}/${report.coverage.discoveredActions} discovered actions) · **Coverage (app map):** ${(report.coverage.appMapCoverage * 100).toFixed(0)}% (${report.coverage.appMapReached}/${report.coverage.appMapTotal} code-declared interactive elements)`);
   lines.push('');
+  // Skip visibility: every Guard refusal, by label, with the opt-in path.
+  // These actions are counted as UNREACHED in the coverage figures above.
+  if (report.skippedActions?.length) {
+    lines.push(`## Skipped by safety policy (${report.skippedActions.length}) — NOT TESTED`);
+    lines.push('');
+    for (const s of report.skippedActions) {
+      lines.push(`- "${s.label}" — ${s.reason}`);
+    }
+    lines.push('');
+    lines.push('_To test these controls anyway, set `destructiveOptIn: true` (or `externalOptIn: true`) in `uipocalypse.config.yaml`, or remove the label from the default skip list via `skipActions` — and re-run against a SAFE test copy, never production. See docs/volunteer/SAFE_TEST_COPY.md._');
+    lines.push('');
+  }
   lines.push(`## Summary`);
   lines.push('');
   lines.push(report.summary);
@@ -389,7 +406,19 @@ function toMeta(run: RunRow): RunMeta {
     startedAt: run.started_at,
     llmModels: run.llm_models,
     disabledClasses: run.disabled_classes?.split(',').filter(Boolean) ?? [],
+    skippedActions: parseSkipped(run.skipped_actions),
   };
+}
+
+/** skipped_actions is a JSON array on the run row — missing/corrupt means none */
+function parseSkipped(raw: string | null | undefined): Array<{ label: string; reason: string }> {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((s) => s && typeof s.label === 'string' && typeof s.reason === 'string') : [];
+  } catch {
+    return [];
+  }
 }
 
 /**

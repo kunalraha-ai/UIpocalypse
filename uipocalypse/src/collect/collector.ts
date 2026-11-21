@@ -278,11 +278,11 @@ export function computeCoverage(db: Db, routes: string[]): CoverageReport {
 
   const all = db
     .prepare(
-      `SELECT a.id, a.label, a.risk_class, a.kind, s.route AS route,
+      `SELECT a.id, a.label, a.risk_class, a.kind, a.skip_reason, s.route AS route,
               EXISTS(SELECT 1 FROM transitions t WHERE t.action_id = a.id) AS reached
        FROM actions a JOIN states s ON s.id = a.state_id`,
     )
-    .all() as Array<{ id: number; label: string; risk_class: string; kind: string; route: string; reached: number }>;
+    .all() as Array<{ id: number; label: string; risk_class: string; kind: string; skip_reason: string | null; route: string; reached: number }>;
 
   stats.actions = all.length;
   for (const a of all) {
@@ -290,8 +290,11 @@ export function computeCoverage(db: Db, routes: string[]): CoverageReport {
       stats.performed++;
       continue;
     }
-    const reason =
-      a.risk_class === 'destructive'
+    // a recorded Guard refusal is the authoritative reason — the action was
+    // DISCOVERED but never tested, by policy, and must not be dropped
+    const reason = a.skip_reason
+      ? `${a.skip_reason} — skipped by safety policy, not tested`
+      : a.risk_class === 'destructive'
         ? 'destructive — skipped by safety policy'
         : /textbox|combobox|searchbox|spinbutton/i.test(a.kind)
           ? 'requires input — needs a goal agent or auth storage state to complete the flow'

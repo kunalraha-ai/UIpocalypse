@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8" /><title>Skipped actions fixture</title></head>
+  <body>
+    <h1>Skipped actions fixture</h1>
+    <button onclick="document.getElementById('out').textContent = 'saved ' + Date.now()">Save draft</button>
+    <button onclick="document.getElementById('out').textContent = 'shared ' + Date.now()">Share link</button>
+    <!-- dead + destructively-labeled: the exact Plain Pages blind-spot shape -->
+    <button id="dead1">Reset preferences</button>
+    <button onclick="alert('bye')">Delete account</button>
+    <p id="out"></p>
+  </body>
+</html>
