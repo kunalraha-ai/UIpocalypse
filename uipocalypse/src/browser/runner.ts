@@ -112,7 +112,9 @@ export async function explore(opts: ExploreOptions): Promise<ExploreResult> {
     createRun(opts.db, {
       targetUrl: opts.url,
       agents: 1,
-      llmModels: `planner=${opts.llm.model};scout=${(opts.scoutLlm ?? opts.llm).model}`,
+      llmModels: `planner=${opts.llm.model};scout=${(opts.scoutLlm ?? opts.llm).model}${
+        opts.llm.keySource ? ` (key from: ${opts.llm.keySource})` : ''
+      }`,
     });
   const log = opts.logger.child({ runId });
   const graph = new StateGraph(opts.db, opts.routes);

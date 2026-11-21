@@ -31,6 +31,9 @@ export const ReviewSchema = z.object({
 });
 
 export type Review = z.infer<typeof ReviewSchema>;
+/** which path produced the review — LLM-written or the mechanical template */
+export type ReviewedBy = 'llm' | 'mechanical';
+export type ReviewWithSource = Review & { reviewedBy: ReviewedBy };
 
 export type RunMeta = {
   runId: number;
@@ -52,6 +55,8 @@ export type Report = {
   generatedAt: string;
   run: RunMeta;
   summary: string;
+  /** which path produced the review — 'llm' or 'mechanical' */
+  reviewedBy: ReviewedBy;
   issues: Array<{
     key: string;
     title: string;
@@ -147,7 +152,7 @@ function fallbackPrompt(cluster: Cluster): { rootCause: string; fixPrompt: strin
   };
 }
 
-export function mechanicalReview(collected: CollectedRun): Review {
+export function mechanicalReview(collected: CollectedRun): ReviewWithSource {
   const issues = collected.findingClusters.map((c) => {
     const f = fallbackPrompt(c);
     const ref = c.codeRefs[0];
@@ -167,6 +172,7 @@ export function mechanicalReview(collected: CollectedRun): Review {
         ? 'No findings survived clustering and classification.'
         : `${issues.length} clustered issue${issues.length === 1 ? '' : 's'} (${high} high severity) over ${collected.coverage.discoveredActions} discovered actions; coverage ${(collected.coverage.coverage * 100).toFixed(0)}%.`,
     issues,
+    reviewedBy: 'mechanical',
   };
 }
 
@@ -175,7 +181,7 @@ export async function reviewRun(opts: {
   appMap: AppMap;
   llm: LLM;
   run: RunMeta;
-}): Promise<Review> {
+}): Promise<ReviewWithSource> {
   const { collected, llm } = opts;
   if (!llm.configured || collected.findingClusters.length === 0) {
     return mechanicalReview(collected);
@@ -203,7 +209,7 @@ export async function reviewRun(opts: {
       maxTokens: 2500,
       label: 'reviewer',
     });
-    return review;
+    return { ...review, reviewedBy: 'llm' };
   } catch {
     // budget or malformed reply — the mechanical review still ships
     return mechanicalReview(collected);
@@ -211,7 +217,7 @@ export async function reviewRun(opts: {
 }
 
 /** Assemble the final report (markdown + json share this structure). */
-export function assembleReport(collected: CollectedRun, review: Review, run: RunMeta): Report {
+export function assembleReport(collected: CollectedRun, review: Review | ReviewWithSource, run: RunMeta): Report {
   const byKey = new Map(collected.clusters.map((c) => [c.key, c] as const));
   const issues = review.issues
     .map((i) => {
@@ -243,6 +249,7 @@ export function assembleReport(collected: CollectedRun, review: Review, run: Run
     generatedAt: new Date().toISOString(),
     run,
     summary: review.summary,
+    reviewedBy: (review as ReviewWithSource).reviewedBy ?? 'mechanical',
     issues,
     inconsistentFeedback: collected.findingClusters
       .filter((c) => c.types.includes('inconsistent_feedback'))
@@ -272,7 +279,11 @@ export function markdownReport(report: Report): string {
     lines.push('');
   }
   const models = report.run.llmModels ? ` · **Models:** ${report.run.llmModels}` : '';
-  lines.push(`**Target:** ${report.run.targetUrl} · **Agents:** ${report.run.agents} · **Swarm wall:** ${(report.run.wallMs / 1000).toFixed(1)} s · **LLM calls:** ${report.run.llmCalls}${models} · **Coverage (runtime graph):** ${(report.coverage.coverage * 100).toFixed(0)}% (${report.coverage.reachedActions}/${report.coverage.discoveredActions} discovered actions) · **Coverage (app map):** ${(report.coverage.appMapCoverage * 100).toFixed(0)}% (${report.coverage.appMapReached}/${report.coverage.appMapTotal} code-declared interactive elements)`);
+  const reviewed =
+    report.reviewedBy === 'llm'
+      ? ' · Reviewed by: LLM (root causes and fix prompts are model-written)'
+      : ' · Reviewed by: mechanical template (no LLM review — no key configured, no findings, or the reviewer call failed)';
+  lines.push(`**Target:** ${report.run.targetUrl} · **Agents:** ${report.run.agents} · **Swarm wall:** ${(report.run.wallMs / 1000).toFixed(1)} s · **Swarm-phase LLM calls:** ${report.run.llmCalls}${models}${reviewed} · **Coverage (runtime graph):** ${(report.coverage.coverage * 100).toFixed(0)}% (${report.coverage.reachedActions}/${report.coverage.discoveredActions} discovered actions) · **Coverage (app map):** ${(report.coverage.appMapCoverage * 100).toFixed(0)}% (${report.coverage.appMapReached}/${report.coverage.appMapTotal} code-declared interactive elements)`);
   lines.push('');
   // Skip visibility: every Guard refusal, by label, with the opt-in path.
   // These actions are counted as UNREACHED in the coverage figures above.

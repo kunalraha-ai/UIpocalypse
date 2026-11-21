@@ -676,6 +676,7 @@ export async function swarm(opts: SwarmOptions): Promise<SwarmResult> {
     coverage: stats.coverage,
     disabledClasses,
     skippedActions: [...skippedActionMap.values()],
+    agents: agentsWanted,
   });
 
   await browser.close().catch(() => {});

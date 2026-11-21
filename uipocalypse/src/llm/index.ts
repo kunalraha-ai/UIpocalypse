@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { existsSync, readFileSync } from 'node:fs';
 import { loadDotEnv } from '../envfile.js';
 
 /**
@@ -14,6 +15,8 @@ export interface LLM {
   /** LLM calls made through this instance — the Phase 3 gate metric. */
   calls: number;
   maxCalls: number;
+  /** where the key came from (environment or a .env path) — undefined when no key */
+  readonly keySource?: string;
   completeJSON<T>(opts: {
     system?: string;
     user: string;
@@ -32,7 +35,7 @@ export function createLlm(envOverrides?: Record<string, string>): LLM {
     .split(',')
     .map((m) => m.trim())
     .filter(Boolean);
-  return new OpenAICompatLlm({ apiKey, baseURL, models });
+  return new OpenAICompatLlm({ apiKey, baseURL, models, keySource: llmKeySource(envOverrides) });
 }
 
 /**
@@ -60,8 +63,8 @@ export function createLlmSet(envOverrides?: Record<string, string>): LlmSet {
   const plannerModel = env.LLM_MODEL ?? 'gpt-4o-mini';
   const scoutModel = env.LLM_SCOUT_MODEL ?? plannerModel;
   return {
-    planner: new OpenAICompatLlm({ apiKey, baseURL, models: chain(env.LLM_MODEL, plannerModel), counter }),
-    scout: new OpenAICompatLlm({ apiKey, baseURL, models: chain(env.LLM_SCOUT_MODEL, scoutModel), counter }),
+    planner: new OpenAICompatLlm({ apiKey, baseURL, models: chain(env.LLM_MODEL, plannerModel), counter, keySource: llmKeySource(envOverrides) }),
+    scout: new OpenAICompatLlm({ apiKey, baseURL, models: chain(env.LLM_SCOUT_MODEL, scoutModel), counter, keySource: llmKeySource(envOverrides) }),
   };
 }
 
@@ -71,6 +74,24 @@ function mergedEnv(envOverrides?: Record<string, string>): Record<string, string
     ...process.env,
     ...(envOverrides ?? {}),
   };
+}
+
+/**
+ * Where the LLM key came from — makes silent cwd-relative `.env` pickup
+ * visible (the prompt-test finding: a volunteer with no key set got 16 real
+ * LLM calls because the server's cwd happened to contain a dev `.env`).
+ */
+function llmKeySource(envOverrides?: Record<string, string>): string | undefined {
+  if (envOverrides?.LLM_API_KEY) return 'environment';
+  if (process.env.LLM_API_KEY) return 'environment';
+  for (const p of [`${process.cwd()}/.env`, `${process.cwd()}/uipocalypse/.env`]) {
+    try {
+      if (existsSync(p) && /^\s*LLM_API_KEY\s*=/m.test(readFileSync(p, 'utf8'))) return p;
+    } catch {
+      /* unreadable — ignore */
+    }
+  }
+  return undefined;
 }
 
 class NullLlm implements LLM {
@@ -92,16 +113,19 @@ class OpenAICompatLlm implements LLM {
   /** candidate chain; activeModel is sticky after the first success */
   private activeModel: string;
   private readonly tried: Set<string> = new Set();
+  readonly keySource?: string;
   constructor(
     private readonly opts: {
       apiKey: string;
       baseURL: string;
       models: string[];
       counter?: { calls: number };
+      keySource?: string;
     },
   ) {
     this.shared = opts.counter ?? { calls: 0 };
     this.activeModel = opts.models[0]!;
+    this.keySource = opts.keySource;
   }
   get model(): string {
     return this.activeModel;

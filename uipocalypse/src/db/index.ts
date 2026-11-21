@@ -145,16 +145,20 @@ export function finishRun(
     coverage: number;
     disabledClasses?: string[];
     skippedActions?: Array<{ label: string; reason: string }>;
+    /** the swarm's true agent count — the run row is created in the scout phase with agents=1 */
+    agents?: number;
   },
 ): void {
   db.prepare(
-    'UPDATE runs SET duration_ms = ?, llm_calls = ?, coverage = ?, disabled_classes = ?, skipped_actions = ? WHERE id = ?',
+    `UPDATE runs SET duration_ms = ?, llm_calls = ?, coverage = ?, disabled_classes = ?, skipped_actions = ?,
+     agents = COALESCE(?, agents) WHERE id = ?`,
   ).run(
     input.durationMs,
     input.llmCalls,
     input.coverage,
     input.disabledClasses?.join(',') ?? null,
     input.skippedActions?.length ? JSON.stringify(input.skippedActions) : null,
+    input.agents ?? null,
     input.id,
   );
 }
