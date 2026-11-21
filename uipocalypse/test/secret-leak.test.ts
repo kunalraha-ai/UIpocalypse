@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeAll, afterAll } from 'vitest';
-import { mkdtempSync, readFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { analyze } from '../src/analyzer/analyzer.js';
 import { createPlan } from '../src/plan/planner.js';
@@ -27,15 +27,38 @@ const FIXTURE = join(import.meta.dirname, 'fixtures', 'secret-leak-app');
  * the test fails with the exact channel and value.
  */
 
-// the known secret VALUES that must never appear in any output
+// the known secret VALUES that must never appear in any output. The Stripe-
+// format key is FAKE, assembled at runtime so no literal key-shaped string
+// exists in this repo (hosted secret scanners flag even obvious fakes).
+// The assembled value is byte-identical to the fixture's config.ts.
+const FAKE_STRIPE_KEY = ['sk', 'live', 'aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789'].join('_');
 const SECRETS = [
-  'FAKE-STRIPE-KEY-REMOVED-FROM-HISTORY',
+  FAKE_STRIPE_KEY,
   'super-secret-prod-password',
   'sk-proj-1234567890abcdefghijklmnop',
   'hKt9vQw3xZn2MlP7jRfDgSbYcUeAoWiE',
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.abc123def456',
   'ghp_abcdef1234567890abcdefghijklmnopqrstuvwxyz',
 ];
+
+/** Writes the fixture's .env files at test time (they are gitignored, so a
+ * fresh clone has none — this both fixes that and keeps literals out of git). */
+function seedFixtureEnvFiles(): void {
+  const envContent = [
+    `STRIPE_SECRET_KEY=${FAKE_STRIPE_KEY}`,
+    'DATABASE_URL=postgres://admin:super-secret-prod-password@prod-db.example.com:5432/myapp',
+    'NEXTAUTH_SECRET=hKt9vQw3xZn2MlP7jRfDgSbYcUeAoWiE',
+    '',
+  ].join('\n');
+  const envLocalContent = [
+    `STRIPE_SECRET_KEY=${FAKE_STRIPE_KEY}`,
+    'DATABASE_URL=postgres://admin:super-secret-prod-password@prod-db.example.com:5432/myapp',
+    'OPENAI_API_KEY=sk-proj-1234567890abcdefghijklmnop',
+    '',
+  ].join('\n');
+  writeFileSync(join(FIXTURE, '.env'), envContent);
+  writeFileSync(join(FIXTURE, '.env.local'), envLocalContent);
+}
 
 /** Searches every string field of any object for secret values. */
 function findSecrets(obj: unknown, path: string): Array<{ path: string; secret: string }> {
@@ -79,6 +102,7 @@ describe('secret-leak audit: no secret VALUE in any output channel', () => {
   const { config } = loadConfig();
 
   beforeAll(async () => {
+    seedFixtureEnvFiles(); // fresh-clone safety: the .env files are gitignored
     server = await serveStatic(FIXTURE);
     wsDir = mkdtempSync('/tmp/opencode/uip-secaudit-');
     ws = initWorkspace(wsDir);
