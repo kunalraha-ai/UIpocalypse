@@ -63,9 +63,9 @@ the denominator, llmCalls 0, Reviewed by: mechanical.** The tarball flow
 itself worked first try.
 
 **The mode line caught a live incident mid-test:** the agent saw
-`LLM mode: on — provider api.cloudflare.com, key source: /home/eclipse/.uipocalypse/config`
-while the volunteer prompt said no key was set — a developer config file
-created minutes earlier. Per its instructions it flagged the mismatch, made
+`LLM mode: on — provider api.cloudflare.com, key source: ~/.uipocalypse/config`
+(the developer's own config file, created minutes earlier) while the volunteer
+prompt said no key was set. Per its instructions it flagged the mismatch, made
 the run fully local, and restored the file exactly. That is precisely the
 failure mode the mode line exists for; the previous prompt test's 16 silent
 LLM calls would now be impossible to miss.

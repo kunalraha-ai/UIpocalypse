@@ -1,6 +1,6 @@
 {
   "name": "uipocalypse",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "50 chaotic users try to break your app in a couple of minutes — local MCP server + CLI for vibecoded-app QA",
   "type": "module",
   "private": true,
@@ -16,6 +16,7 @@
   ],
   "scripts": {
     "build": "node build.mjs",
+    "release": "bash scripts/release.sh",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src test build.mjs vitest.config.ts"

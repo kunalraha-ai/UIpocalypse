@@ -122,6 +122,12 @@ export async function explore(opts: ExploreOptions): Promise<ExploreResult> {
   const llmCallsAtStart = opts.llm.calls;
 
   const browser = await chromium.launch();
+  // The scout cap bounds the SCOUT phase — browser launch must not eat it.
+  // Launch time is machine-dependent (cold start, CPU contention); counting it
+  // made the cap trip before a single scout step on loaded machines (the
+  // flaky scout-budget test under parallel execution). The overall phase
+  // budget below still runs from entry, so total wall stays bounded.
+  const scoutMonoStart = performance.now();
   // TRD §11 global watchdog: a wedged operation must never stall the phase
   // past budget + bounded overshoot — force-close the browser, let pending
   // ops reject, and still emit the partial report.
@@ -347,12 +353,13 @@ export async function explore(opts: ExploreOptions): Promise<ExploreResult> {
     // never exceeds the overall phase budget.
     const seedUrls = [...new Set([opts.url, ...opts.plan.seedRoutes.map((r) => new URL(r, opts.url).href)])];
     const scoutBudget = opts.scoutBudgetSeconds ?? Math.min(opts.config.scoutBudgetSeconds, budgetMs / 1000);
-    const scoutDeadline = scoutBudget * 1000; // monotonic ms from monoStart
+    const scoutElapsed = () => performance.now() - scoutMonoStart;
+    const scoutDeadline = scoutBudget * 1000; // monotonic ms from scoutMonoStart (post-launch)
     const scoutBudgetSteps = opts.scoutSteps ?? 24;
     let scoutOutcome = 'skipped';
     let scoutCalls = 0;
     for (const seed of seedUrls.slice(0, 4)) {
-      if (elapsedMono() >= scoutDeadline) {
+      if (scoutElapsed() >= scoutDeadline) {
         scoutOutcome = 'budget';
         break;
       }
@@ -367,7 +374,7 @@ export async function explore(opts: ExploreOptions): Promise<ExploreResult> {
           plan: opts.plan,
           seedUrl: seed,
           maxSteps: Math.min(scoutBudgetSteps, 12),
-          deadlineMs: scoutDeadline - elapsedMono(), // remaining budget, monotonic
+          deadlineMs: scoutDeadline - scoutElapsed(), // remaining budget, monotonic
           getActions,
           perform: async (id, input) => stepAndRecord(id, input),
           currentState,
@@ -386,8 +393,8 @@ export async function explore(opts: ExploreOptions): Promise<ExploreResult> {
         continue;
       }
     }
-    if (elapsedMono() >= scoutDeadline && scoutOutcome !== 'error') scoutOutcome = 'budget';
-    log.info('scout phase done', { outcome: scoutOutcome, llmCalls: scoutCalls, wallMs: elapsedMono(), capMs: scoutBudget * 1000 });
+    if (scoutElapsed() >= scoutDeadline && scoutOutcome !== 'error') scoutOutcome = 'budget';
+    log.info('scout phase done', { outcome: scoutOutcome, llmCalls: scoutCalls, wallMs: scoutElapsed(), capMs: scoutBudget * 1000 });
 
     // ---------------------------------------------------------- wanderer (code policy, no LLM)
     const maxWandererSteps = opts.wandererSteps ?? 40;

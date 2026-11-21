@@ -21,3 +21,4 @@ next-env.d.ts
 GrowthSent/
 # supabase CLI internal state
 sample-app/supabase/.temp/
+releases/

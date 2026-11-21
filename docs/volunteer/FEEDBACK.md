@@ -2,16 +2,17 @@
 
 Your answers decide what happens next. Honest negatives are more useful than polite silence. Fill in what you can, skip what you can't — a partial reply helps.
 
-**About your app** (2 lines is plenty): framework / stack, rough size, is it live in production?
+**About your machine and app:** operating system + version (e.g. Ubuntu 24.04, macOS 15): ______ · Node version (`node --version`): ______ · app stack (framework, DB, size): ______ · is the app live in production? ______
 
 ---
 
 ## Setup
 
-1. Did the install work following QUICKSTART.md? ▢ Yes ▢ No — what broke:
-2. Time from clean start to first report: ______ minutes
-3. Which step was the most confusing?
-4. Did you make a safe test copy first (SAFE_TEST_COPY.md)? ▢ Yes, my agent did it ▢ Yes, manually ▢ No — why not:
+1. Did the install work following QUICKSTART.md (tarball → `npm install --omit=dev` → `npx playwright install chromium`)? ▢ Yes ▢ No — what broke:
+2. Minutes from receiving the tarball to your first report: ______
+3. Did you make a safe test copy first (SAFE_TEST_COPY.md)? ▢ Yes, my coding agent did it ▢ Yes, manually ▢ No — why not:
+4. Did the tool's first output line say `LLM mode: off` or `on`? Did that match what you expected? ▢ Yes ▢ No:
+5. Which step was the most confusing?
 
 ## Findings
 
