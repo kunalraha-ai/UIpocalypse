@@ -217,8 +217,20 @@ export async function healthCheck(llm: LLM, envVar: string): Promise<string> {
     });
     return llm.model;
   } catch (e) {
+    // the advice must match the failure class — "set a current model" is
+    // wrong, unhelpful advice when the key is bad or the provider is down
+    const msg = String(e);
+    const status = /LLM HTTP (\d+)/.exec(msg)?.[1];
+    const advice =
+      status === '401' || status === '403'
+        ? 'Auth rejected — check LLM_API_KEY, and that LLM_BASE_URL points at the right provider/account.'
+        : status === '404' || status === '410'
+          ? `Set ${envVar} in .env to a current catalog model — deprecations happen (both phase-5 models returned HTTP 410 on 2026-11-20).`
+          : status && Number(status) >= 500
+            ? 'The provider returned a server error — check LLM_BASE_URL, or retry later.'
+            : 'Check LLM_API_KEY, LLM_BASE_URL, and the model names in .env.';
     throw new Error(
-      `LLM health check failed (model chain starting "${llm.model}"): ${String(e).slice(0, 200)}. Set ${envVar} in .env to a current catalog model — deprecations happen (both phase-5 models returned HTTP 410 on 2026-11-20).`,
+      `LLM health check failed (model chain starting "${llm.model}"): ${msg.slice(0, 200)}. ${advice}`,
       { cause: e },
     );
   }

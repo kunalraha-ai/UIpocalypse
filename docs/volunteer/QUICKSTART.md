@@ -21,7 +21,7 @@ npx playwright install chromium
 
 That's the whole install. Nothing is published to npm — you run it from this checkout.
 
-**Optional — LLM key.** Everything works without one: the swarm, all bug detectors, and a mechanical report with fix prompts. To add the LLM-written review, create a `.env` file in `uipocalypse/` (or the directory you run your MCP client from):
+**Optional — LLM key.** Everything works without one: the swarm, all bug detectors, and a mechanical report with template fix prompts. To add the LLM-written review, create a `.env` file in `uipocalypse/` (or the directory you run your MCP client from):
 
 ```
 LLM_API_KEY=your-key
@@ -30,7 +30,16 @@ LLM_MODEL=gpt-4o-mini
 LLM_SCOUT_MODEL=gpt-4o-mini
 ```
 
-Any OpenAI-compatible API works (OpenAI, Cloudflare Workers AI, local Ollama, Groq).
+**Supported providers:** anything with an OpenAI-compatible `/chat/completions` endpoint — OpenAI (`https://api.openai.com/v1`), Cloudflare Workers AI, Groq, Together, OpenRouter, or a local Ollama (`http://localhost:11434/v1`, no key needed — set `LLM_API_KEY=ollama`). The four env vars: `LLM_API_KEY` (the key), `LLM_BASE_URL` (defaults to OpenAI), `LLM_MODEL` (planner/reviewer — a comma-separated fallback chain is allowed, e.g. `model-a,model-b`), `LLM_SCOUT_MODEL` (a fast, cheap model; defaults to `LLM_MODEL`).
+
+**Never share the project owner's key.** The repository owner's key must not be given to volunteers or pasted anywhere — each tester uses their own key, or none. Keys stay in `.env` on your machine; nothing is uploaded anywhere by this tool.
+
+**No key = a real, documented fallback, not a stub.** Without a key the run is fully local: the swarm and every detector still run, and the report still ranks findings with evidence, screenshots, and template root causes + fix prompts per bug type. What you lose: LLM-tailored root-cause prose and fix prompts, an app-aware plan (you get default personas and seed routes from the code scan instead), and LLM-guided scout exploration (scouts stop early; the swarm's wanderers still cover the app). The report records `planner=none;scout=none` so a degraded run is never mistaken for a reviewed one.
+
+Verified failure messages (all three say what to do, and fail in under a second at startup — never mid-run):
+- **No key:** no error — you're in the local mode described above.
+- **Bad key (HTTP 401):** `Auth rejected — check LLM_API_KEY, and that LLM_BASE_URL points at the right provider/account.`
+- **Deprecated model (HTTP 410):** `Set LLM_MODEL in .env to a current catalog model — deprecations happen (both phase-5 models returned HTTP 410 on 2026-11-20).`
 
 ## Step 2: Add to Claude Code
 

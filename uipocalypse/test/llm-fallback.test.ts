@@ -72,6 +72,24 @@ describe('LLM model fallback chains + health check (2026-11-20 deprecations)', (
     await expect(healthCheck(deadLlm, 'LLM_MODEL')).rejects.toThrow(/gone.*Set LLM_MODEL/s);
   });
 
+  it('healthCheck advice matches the failure class: auth (401/403) says check the KEY, not the model', async () => {
+    // bad key / wrong account — the old message wrongly said "set a current
+    // model"; the advice must point at LLM_API_KEY / LLM_BASE_URL
+    await stubServer((_m, res) => dead(res, 401));
+    const badKey = createLlm({ LLM_API_KEY: 'wrong', LLM_BASE_URL: url, LLM_MODEL: 'fine-model' });
+    await expect(healthCheck(badKey, 'LLM_MODEL')).rejects.toThrow(/LLM_API_KEY/);
+    await expect(healthCheck(badKey, 'LLM_MODEL')).rejects.not.toThrow(/current catalog model/);
+
+    await stubServer((_m, res) => dead(res, 403));
+    const forbidden = createLlm({ LLM_API_KEY: 'wrong', LLM_BASE_URL: url, LLM_MODEL: 'fine-model' });
+    await expect(healthCheck(forbidden, 'LLM_MODEL')).rejects.toThrow(/LLM_API_KEY/);
+
+    // provider down — advice points at the URL, not the key or the model
+    await stubServer((_m, res) => dead(res, 503));
+    const down = createLlm({ LLM_API_KEY: 'k', LLM_BASE_URL: url, LLM_MODEL: 'fine-model' });
+    await expect(healthCheck(down, 'LLM_MODEL')).rejects.toThrow(/LLM_BASE_URL/);
+  });
+
   it('createLlmSet: planner and scout chains are independent; model ids are visible', async () => {
     await stubServer((model, res) => (model.startsWith('scout') ? ok(res) : dead(res)));
     const set = createLlmSet({
