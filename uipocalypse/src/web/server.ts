@@ -1,5 +1,7 @@
 import { createServer, type Server } from 'node:http';
-import { existsSync, readFileSync } from 'node:fs';
+import { execFile } from 'node:child_process';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { dirname, extname, join, normalize } from 'node:path';
 import { createLlmSet, llmModeLine } from '../llm/index.js';
 import { loadConfig } from '../config.js';
@@ -8,6 +10,8 @@ import { openDb, listRuns, getRun, type Db } from '../db/index.js';
 import { createLogger, type Logger } from '../logger.js';
 import { scanCodebase } from '../tools/scan-codebase.js';
 import { createPlan } from '../plan/planner.js';
+import { PlanSchema, DEFAULT_NASTY_INPUTS, FULL_PERSONA_ROSTER, type Plan } from '../plan/schema.js';
+import type { AppMap } from '../analyzer/types.js';
 import { explore } from '../browser/runner.js';
 import { swarm } from '../browser/orchestrator.js';
 import { mergeDraftedInvariants } from '../browser/race.js';
@@ -23,6 +27,53 @@ import { generateReport, diffRuns, loadReport } from '../report/reviewer.js';
  * One run job at a time — a local machine drives one browser swarm; a second
  * concurrent request gets 409.
  */
+
+const EMPTY_APP_MAP: AppMap = {
+  framework: 'unknown',
+  stack: [],
+  files: [],
+  routes: [],
+  elements: [],
+  apiCalls: [],
+  envVars: [],
+  imports: {},
+  clientEntryFiles: [],
+  supabase: { tables: [], clientFiles: [], migrations: [] },
+  fileCount: 0,
+  extractedAt: '',
+};
+
+const URL_RE = /^(https|file):\/\/\S+$/;
+
+/** True for git URLs the tool will clone (https for github & co, file:// for
+ *  local remotes and tests). Anything else must be a plain filesystem path. */
+function isGitUrl(value: string): boolean {
+  return URL_RE.test(value);
+}
+
+/**
+ * Resolve a scan source: plain paths pass through; git URLs (https://github.com/…,
+ * file://…) are shallow-cloned into a per-URL cache under the workspace and the
+ * clone dir is returned. Cache is reused across runs — delete the dir to re-clone.
+ */
+function resolveSource(input: string, workspace: Workspace): Promise<string> {
+  if (!isGitUrl(input)) return Promise.resolve(input);
+  if (/^http:\/\//.test(input)) {
+    return Promise.reject(new Error('insecure http:// git URL refused — use https://'));
+  }
+  const dir = join(workspace.root, 'repos', createHash('sha1').update(input).digest('hex').slice(0, 16));
+  if (existsSync(join(dir, '.git'))) return Promise.resolve(dir);
+  mkdirSync(dirname(dir), { recursive: true });
+  return new Promise((resolve, reject) => {
+    execFile('git', ['clone', '--depth', '1', '--', input, dir], { timeout: 120_000 }, (err, _so, se) => {
+      if (err) {
+        reject(new Error(`git clone failed: ${String(se || err.message).slice(0, 300)}`));
+        return;
+      }
+      resolve(dir);
+    });
+  });
+}
 
 export type WebJobEvent = { at: number; type: string; [key: string]: unknown };
 type Job = {
@@ -92,7 +143,7 @@ export async function startWebServer(opts: {
     for (const w of [...job.waiters]) w(ev);
   }
 
-  async function startRun(input: { path: string; url: string; agents?: number; budgetSeconds?: number; optIn?: { destructive?: boolean; externalSideEffects?: boolean } }): Promise<number> {
+  async function startRun(input: { path?: string; url: string; agents?: number; budgetSeconds?: number; optIn?: { destructive?: boolean; externalSideEffects?: boolean } }): Promise<number> {
     const jobId = nextJobId++;
     const job: Job = { id: jobId, status: 'running', events: [], startedAt: Date.now(), waiters: [] };
     jobs.set(jobId, job);
@@ -104,14 +155,38 @@ export async function startWebServer(opts: {
 
     void (async () => {
       try {
-        const path = input.path;
+        const path = input.path?.trim() || '';
         const url = input.url;
         emit(job, 'phase', { phase: 'scan' });
-        const { appMap, issues } = await scanCodebase({ path }, { logger });
-        emit(job, 'scan', { staticIssues: issues.length });
+        let appMap: AppMap = EMPTY_APP_MAP;
+        if (!path) {
+          // URL-only run: no source to scan — say so honestly and use an empty
+          // app map (plan defaults to the full persona roster + the target seed)
+          emit(job, 'scan', { skipped: true, staticIssues: 0 });
+        } else {
+          const resolved = await resolveSource(path, workspace);
+          const scanned = await scanCodebase({ path: resolved }, { logger });
+          appMap = scanned.appMap;
+          emit(job, 'scan', { staticIssues: scanned.issues.length, clonedFrom: resolved === path ? undefined : path });
+        }
 
         emit(job, 'phase', { phase: 'plan' });
-        const planning = await createPlan({ appMap, targetUrl: url, llm: llms.planner, workspacePlansDir: workspace.plans });
+        let planning: { plan: Plan; cached: boolean; appMapRoutes: string[] };
+        if (!path) {
+          planning = {
+            plan: PlanSchema.parse({
+              summary: 'URL-only run (no source scan)',
+              personas: [...FULL_PERSONA_ROSTER],
+              goals: [],
+              seedRoutes: [url],
+              nastyInputs: DEFAULT_NASTY_INPUTS,
+            }),
+            cached: false,
+            appMapRoutes: [],
+          };
+        } else {
+          planning = await createPlan({ appMap, targetUrl: url, llm: llms.planner, workspacePlansDir: workspace.plans });
+        }
         const inv = await mergeDraftedInvariants(config, planning.plan, createGuard(config), logger);
         emit(job, 'plan', { cached: planning.cached, seeds: planning.plan.seedRoutes.length });
 
@@ -229,11 +304,18 @@ export async function startWebServer(opts: {
           if (req.method === 'POST' && url.pathname === '/api/runs') {
             if (hasRunningJob()) return send(409, { error: 'a run is already in progress — one at a time on a local machine' });
             const body = (await readBody()) as { path?: string; url?: string; agents?: number; budgetSeconds?: number; optIn?: { destructive?: boolean; externalSideEffects?: boolean } };
-            if (typeof body.path !== 'string' || typeof body.url !== 'string') {
-              return send(400, { error: 'both "path" (repo root to scan) and "url" (target app) are required' });
+            if (typeof body.url !== 'string' || !body.url.trim()) {
+              return send(400, { error: '"url" (the target app) is required' });
+            }
+            const path = typeof body.path === 'string' ? body.path.trim() : '';
+            if (path && /^([a-z]+):\/\//i.test(path) && !isGitUrl(path)) {
+              return send(400, { error: `unsupported URL scheme in "path" — only https:// and file:// git URLs are cloned; everything else must be a local folder` });
+            }
+            if (path && /^http:\/\//.test(path)) {
+              return send(400, { error: 'insecure http:// git URL refused — use https://' });
             }
             const jobId = await startRun({
-              path: body.path,
+              path: path || undefined,
               url: body.url,
               agents: typeof body.agents === 'number' ? body.agents : undefined,
               budgetSeconds: typeof body.budgetSeconds === 'number' ? body.budgetSeconds : undefined,
@@ -306,9 +388,14 @@ export async function startWebServer(opts: {
 
           if (req.method === 'POST' && url.pathname === '/api/scan') {
             const body = (await readBody()) as { path?: string };
-            if (typeof body.path !== 'string') return send(400, { error: '"path" is required' });
-            const { appMap, issues } = await scanCodebase({ path: body.path }, { logger });
-            return send(200, { issues, summary: { routes: appMap.routes.length, elements: appMap.elements.length, envVars: appMap.envVars.length } });
+            if (typeof body.path !== 'string' || !body.path.trim()) return send(400, { error: '"path" is required (a local folder or a git URL)' });
+            try {
+              const resolved = await resolveSource(body.path.trim(), workspace);
+              const { appMap, issues } = await scanCodebase({ path: resolved }, { logger });
+              return send(200, { issues, clonedFrom: resolved === body.path!.trim() ? undefined : body.path!.trim(), summary: { routes: appMap.routes.length, elements: appMap.elements.length, envVars: appMap.envVars.length } });
+            } catch (e) {
+              return send(400, { error: String(e instanceof Error ? e.message : e) });
+            }
           }
 
           return send(404, { error: `no such API route: ${req.method} ${url.pathname}` });

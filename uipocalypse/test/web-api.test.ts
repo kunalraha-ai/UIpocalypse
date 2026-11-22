@@ -1,5 +1,6 @@
 import { describe, expect, it, beforeAll, afterAll } from 'vitest';
 import { mkdtempSync, writeFileSync } from 'node:fs';
+import { execSync } from 'node:child_process';
 import { join } from 'node:path';
 import { initWorkspace } from '../src/workspace.js';
 import { startWebServer } from '../src/web/server.js';
@@ -57,6 +58,109 @@ describe('web API (frontend backend)', () => {
 
   it('binds localhost only', () => {
     expect(web.address).toMatch(/^127\.0\.0\.1/);
+  });
+
+  it('POST /api/runs WITHOUT a path — URL-only run: scan skipped, findings still real', async () => {
+    const start = await fetch(`http://127.0.0.1:${web.port}/api/runs`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ url: app.url, agents: 4, budgetSeconds: 20 }),
+    });
+    expect(start.status).toBe(202);
+    const { jobId } = await json<{ jobId: number }>(start);
+    const events: Array<{ type: string; [k: string]: unknown }> = [];
+    await new Promise<void>((resolve) => {
+      void fetch(`http://127.0.0.1:${web.port}/api/jobs/${jobId}/events`).then((res) => {
+        const reader = res.body!.getReader();
+        const dec = new TextDecoder();
+        let buf = '';
+        const pump = (): Promise<void> =>
+          reader.read().then(({ done, value }) => {
+            if (done) return resolve();
+            buf += dec.decode(value, { stream: true });
+            let idx;
+            while ((idx = buf.indexOf('\n\n')) >= 0) {
+              const line = buf.slice(0, idx).split('\n').find((l) => l.startsWith('data: '));
+              if (line) events.push(JSON.parse(line.slice(6)));
+              buf = buf.slice(idx + 2);
+            }
+            return pump();
+          });
+        return pump();
+      });
+    }).catch(() => undefined);
+
+    const scanEv = events.find((e) => e.type === 'scan') as { skipped?: boolean } | undefined;
+    expect(scanEv?.skipped).toBe(true);
+    const done = events.find((e) => e.type === 'done') as { runId: number } | undefined;
+    expect(done).toBeDefined();
+    const report = await json<{ report: { issues: unknown[]; coverage: { discoveredActions: number } } }>(
+      await fetch(`http://127.0.0.1:${web.port}/api/runs/${done!.runId}/report`),
+    );
+    expect(report.report.issues.length).toBeGreaterThan(0);
+    expect(report.report.coverage.discoveredActions).toBeGreaterThan(0);
+  }, 120_000);
+
+  it('POST /api/runs with a GIT URL as the path — clones, scans, runs', async () => {
+    const repo = mkdtempSync('/tmp/opencode/uip-web-gitrepo-');
+    writeFileSync(join(repo, 'page.tsx'), 'export default function P() { return <button onClick={() => {}}>x</button>; }');
+    execSync('git init -q && git add -A && git -c user.email=t@t -c user.name=t commit -qm x', { cwd: repo });
+    const start = await fetch(`http://127.0.0.1:${web.port}/api/runs`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ path: `file://${repo}`, url: app.url, agents: 4, budgetSeconds: 20 }),
+    });
+    expect(start.status).toBe(202);
+    const { jobId } = await json<{ jobId: number }>(start);
+    const events: Array<{ type: string; [k: string]: unknown }> = [];
+    await new Promise<void>((resolve) => {
+      void fetch(`http://127.0.0.1:${web.port}/api/jobs/${jobId}/events`).then((res) => {
+        const reader = res.body!.getReader();
+        const dec = new TextDecoder();
+        let buf = '';
+        const pump = (): Promise<void> =>
+          reader.read().then(({ done, value }) => {
+            if (done) return resolve();
+            buf += dec.decode(value, { stream: true });
+            let idx;
+            while ((idx = buf.indexOf('\n\n')) >= 0) {
+              const line = buf.slice(0, idx).split('\n').find((l) => l.startsWith('data: '));
+              if (line) events.push(JSON.parse(line.slice(6)));
+              buf = buf.slice(idx + 2);
+            }
+            return pump();
+          });
+        return pump();
+      });
+    }).catch(() => undefined);
+
+    const scanEv = events.find((e) => e.type === 'scan') as { staticIssues?: number; clonedFrom?: string } | undefined;
+    expect(scanEv).toBeDefined();
+    expect(scanEv!.staticIssues).toBeGreaterThan(0);
+    expect(String(scanEv!.clonedFrom)).toMatch(/^file:\/\//);
+    expect(events.find((e) => e.type === 'done')).toBeDefined();
+  }, 180_000);
+
+  it('POST /api/scan accepts a GIT URL too (clones and scans)', async () => {
+    const repo = mkdtempSync('/tmp/opencode/uip-web-gitrepo2-');
+    writeFileSync(join(repo, 'page.tsx'), 'export default function P() { return <button onClick={() => {}}>x</button>; }');
+    execSync('git init -q && git add -A && git -c user.email=t@t -c user.name=t commit -qm x', { cwd: repo });
+    const res = await fetch(`http://127.0.0.1:${web.port}/api/scan`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ path: `file://${repo}` }),
+    });
+    const scan = await json<{ issues: Array<{ file: string }> }>(res);
+    expect(scan.issues.some((i) => i.file.includes('page.tsx'))).toBe(true);
+  });
+
+  it('POST /api/runs refuses non-http(s)/file URL schemes', async () => {
+    const res = await fetch(`http://127.0.0.1:${web.port}/api/runs`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ path: 'ssh://evil@host/repo', url: app.url, agents: 2, budgetSeconds: 10 }),
+    });
+    expect(res.status).toBe(400);
   });
 
   it('POST /api/runs runs the real pipeline and the events stream carries every phase', async () => {

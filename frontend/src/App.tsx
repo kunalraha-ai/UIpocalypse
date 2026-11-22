@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { api, loadProject, saveProject, routeParts, type Report, type RunRow, type Status, type StaticIssue, type Graph, type Diff, type JobEvent } from './api'
 
 type IconName =
@@ -119,26 +119,146 @@ function SectionTitle({ eyebrow, title, copy, center = false }: { eyebrow?: stri
   </div>
 }
 
-function BotVisual() {
-  return <div className="hero-visual" aria-label="Illustration of bot agents testing an application">
-    <div className="scan-line"/>
-    <div className="visual-top"><span><i/> localhost:3000 / checkout</span><Badge tone="good">TEST COPY</Badge></div>
-    <div className="mock-app">
-      <div className="mock-sidebar"><b/><i/><i/><i/><i/></div>
-      <div className="mock-content">
-        <div className="mock-heading"/><div className="mock-copy"/>
-        <div className="mock-cards"><span/><span/><span/></div>
-        <div className="mock-form"><i/><i/><b/></div>
-      </div>
-      {[
-        ['bot-a','W','Clicking everything'], ['bot-b','D','Double submit'], ['bot-c','R','Racing request']
-      ].map(([c,l,t]) => <div className={`bot-chip ${c}`} key={c}><span>{l}</span>{t}</div>)}
-      <div className="cursor cursor-a">↖</div><div className="cursor cursor-b">↖</div><div className="cursor cursor-c">↖</div>
+/** Sample findings cycled in the hero feed — clearly illustrative. */
+const SWARM_SAMPLES = [
+  { title: 'Double submit on POST /api/credits/buy', where: 'checkout · 2 requests 84ms apart', conf: 'high conf' },
+  { title: 'Dead control: “Export data”', where: '/settings · 91 clicks, zero effect', conf: 'high conf' },
+  { title: 'Garbage paste crashes the notes form', where: '/notes · 10k-char payload', conf: 'medium conf' },
+  { title: 'Single-use coupon redeemed twice', where: 'POST /api/coupons/redeem · race', conf: 'high conf' },
+  { title: 'Infinite spinner on slow networks', where: '/orders · request never settles', conf: 'medium conf' },
+]
+
+/**
+ * The landing-page swarm visual: a live-feeling canvas of wandering agents
+ * (persona-colored dots that click — ripples — and stay loosely connected),
+ * a ticking stats bar, and a rotating sample-finding feed. Static under
+ * prefers-reduced-motion. All sample data is labeled.
+ */
+function SwarmVisual() {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const reduced = useMemo(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches, [])
+  const [steps, setSteps] = useState(reduced ? 847 : 0)
+  const [feed, setFeed] = useState(() =>
+    reduced ? [{ ...SWARM_SAMPLES[0]! }, { ...SWARM_SAMPLES[1]! }, { ...SWARM_SAMPLES[2]! }] : [] as typeof SWARM_SAMPLES,
+  )
+
+  // canvas: agents wander, click (ripples), connect when close
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    const cssVar = (name: string) => getComputedStyle(canvas).getPropertyValue(name).trim() || '#888'
+    let colors = { purple: cssVar('--swarm-purple'), lime: cssVar('--swarm-lime'), alert: cssVar('--swarm-alert') }
+    const colorTimer = setInterval(() => { colors = { purple: cssVar('--swarm-purple'), lime: cssVar('--swarm-lime'), alert: cssVar('--swarm-alert') } }, 2000)
+    const dpr = Math.min(window.devicePixelRatio || 1, 2)
+    let W = 0, H = 0
+    const fit = () => {
+      W = canvas.clientWidth; H = canvas.clientHeight
+      canvas.width = Math.max(1, W * dpr); canvas.height = Math.max(1, H * dpr)
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    }
+    fit()
+    const ro = new ResizeObserver(fit)
+    ro.observe(canvas)
+    type Agent = { x: number; y: number; vx: number; vy: number; c: string; nextClick: number }
+    const palette = () => [colors.purple, colors.lime, colors.alert]
+    const agents: Agent[] = Array.from({ length: 14 }, (_, i) => ({
+      x: 0.08 + Math.random() * 0.84,
+      y: 0.08 + Math.random() * 0.84,
+      vx: (Math.random() - 0.5) * 0.004,
+      vy: (Math.random() - 0.5) * 0.004,
+      c: palette()[i % 3]!,
+      nextClick: 60 + Math.random() * 200,
+    }))
+    const ripples: Array<{ x: number; y: number; r: number; c: string }> = []
+    let raf = 0
+    const draw = () => {
+      ctx.clearRect(0, 0, W, H)
+      for (let i = 0; i < agents.length; i++) {
+        for (let j = i + 1; j < agents.length; j++) {
+          const a = agents[i]!, b = agents[j]!
+          const dx = (a.x - b.x) * W, dy = (a.y - b.y) * H
+          const d = Math.hypot(dx, dy)
+          if (d < 70) {
+            ctx.strokeStyle = a.c
+            ctx.globalAlpha = 0.14 * (1 - d / 70)
+            ctx.beginPath(); ctx.moveTo(a.x * W, a.y * H); ctx.lineTo(b.x * W, b.y * H); ctx.stroke()
+          }
+        }
+      }
+      ctx.globalAlpha = 1
+      for (const a of agents) {
+        if (!reduced) {
+          a.vx += (Math.random() - 0.5) * 0.0006
+          a.vy += (Math.random() - 0.5) * 0.0006
+          a.vx = Math.max(-0.006, Math.min(0.006, a.vx)); a.vy = Math.max(-0.006, Math.min(0.006, a.vy))
+          a.x += a.vx; a.y += a.vy
+          if (a.x < 0.03 || a.x > 0.97) { a.vx *= -1; a.x = Math.max(0.03, Math.min(0.97, a.x)) }
+          if (a.y < 0.03 || a.y > 0.97) { a.vy *= -1; a.y = Math.max(0.03, Math.min(0.97, a.y)) }
+          if (--a.nextClick <= 0) { a.nextClick = 80 + Math.random() * 240; ripples.push({ x: a.x, y: a.y, r: 0, c: a.c }) }
+        }
+        ctx.fillStyle = a.c
+        ctx.beginPath(); ctx.arc(a.x * W, a.y * H, 3, 0, Math.PI * 2); ctx.fill()
+      }
+      for (let i = ripples.length - 1; i >= 0; i--) {
+        const r = ripples[i]!
+        r.r += 1.1
+        ctx.strokeStyle = r.c
+        ctx.globalAlpha = Math.max(0, 1 - r.r / 24)
+        ctx.beginPath(); ctx.arc(r.x * W, r.y * H, r.r, 0, Math.PI * 2); ctx.stroke()
+        if (r.r > 24) ripples.splice(i, 1)
+      }
+      ctx.globalAlpha = 1
+      if (!reduced) raf = requestAnimationFrame(draw)
+    }
+    raf = requestAnimationFrame(draw)
+    return () => { cancelAnimationFrame(raf); ro.disconnect(); clearInterval(colorTimer) }
+  }, [reduced])
+
+  // stats tick + finding feed rotation
+  useEffect(() => {
+    if (reduced) return
+    let n = 0
+    const tick = setInterval(() => {
+      setSteps((s) => s + 37 + Math.floor(Math.random() * 40))
+      if (++n % 2 === 0) {
+        setFeed((f) => {
+          const next = SWARM_SAMPLES[(Math.floor(n / 2)) % SWARM_SAMPLES.length]!
+          return [next, ...f].slice(0, 3)
+        })
+      }
+    }, 1300)
+    return () => clearInterval(tick)
+  }, [reduced])
+
+  const current = feed[0]
+  const prev = feed.slice(1)
+
+  return <div className="swarm-card" aria-label="Illustration of bot agents testing an application">
+    <div className="swarm-bar">
+      <span className="swarm-dot" />
+      <span>uipocalypse · localhost:3000</span>
+      <span className="swarm-chip">TEST COPY</span>
     </div>
-    <div className="visual-report">
-      <div><span className="status-dot"/><strong>Finding clustered</strong><small>High confidence</small></div>
-      <p>Double-submit on <code>POST /api/credits/buy</code> creates duplicate rows</p>
-      <span className="sample-label">SAMPLE DATA</span>
+    <div className="swarm-stage"><canvas ref={canvasRef} /></div>
+    <div className="swarm-stats">
+      <span>AGENTS <b>14</b></span>
+      <span>STEPS <b>{steps}</b></span>
+      <span>FINDINGS <b>{feed.length}</b></span>
+      <span className="swarm-tag">SAMPLE DATA</span>
+    </div>
+    <div className="swarm-feed">
+      {current && (
+        <div className="swarm-finding" key={current.title + feed.length}>
+          <span className="swarm-finding__dot" />
+          <span className="swarm-finding__title">{current.title}</span>
+          <span className="swarm-finding__conf">{current.conf}</span>
+          <span className="swarm-finding__where">{current.where}</span>
+        </div>
+      )}
+      {!current && <div className="swarm-prev">agents are clicking everything…</div>}
+      {prev.map((p, i) => <div className="swarm-prev" key={p.title + i}>{p.title}</div>)}
     </div>
   </div>
 }
@@ -162,7 +282,7 @@ function Landing() {
         <div className="button-row"><Button to="/early-access" icon="arrow">Get early access</Button><Button to="/how-it-works" variant="secondary" icon="play">See how it works</Button></div>
         <div className="trust-row"><span><Icon name="lock"/> Runs locally</span><span><Icon name="shield"/> Test copies only</span><span><Icon name="code"/> Code stays yours</span></div>
       </div>
-      <BotVisual/>
+      <SwarmVisual/>
     </section>
 
     <section className="signal-strip">
@@ -512,7 +632,7 @@ function NewRun() {
   const launch=async()=>{ 
     setLaunching(true); setError('')
     try{
-      const {jobId}=await api.startRun({path:url&&path?path:'',url,agents,budgetSeconds:budget,optIn:{destructive:risky,externalSideEffects:external}})
+      const {jobId}=await api.startRun({path: path||undefined,url,agents,budgetSeconds:budget,optIn:{destructive:risky,externalSideEffects:external}})
       navigate(`/app/live-run?job=${jobId}`)
     }catch(e){ setError(String(e instanceof Error?e.message:e)); setLaunching(false) }
   }
@@ -520,7 +640,7 @@ function NewRun() {
   return <div className="app-page narrow-app"><AppPageHead title="Configure new run" copy={project?`${project.path} → ${project.url}`:'Set the repo path and the local target URL.'}/>
     <div className="config-layout"><div className="config-main">
       <Card><h2>Target</h2>
-        <label className="field"><span>Repo path (for the static scan)</span><input value={path} onChange={e=>setPath(e.target.value)} placeholder="/home/you/code/my-app"/></label>
+        <label className="field"><span>Repo path or GitHub URL <small style={{opacity:.55}}>(optional — leave empty to test the URL only)</small></span><input value={path} onChange={e=>setPath(e.target.value)} placeholder="/home/you/code/my-app  ·  https://github.com/user/repo"/></label>
         <label className="field"><span>Test target URL</span><input value={url} onChange={e=>setUrl(e.target.value)} placeholder="http://localhost:3000"/></label>
         {status&&<Callout tone="safe" title={status.llmMode}>{status.llmModeOn?'Redacted summaries go to your configured provider; code and secrets stay local.':'Fully local — mechanical report, zero LLM calls.'}</Callout>}
       </Card>
@@ -530,7 +650,7 @@ function NewRun() {
         <Toggle label="Allow destructive actions" warning="May delete or permanently change test data." value={risky} setValue={(v)=>v?setModal(true):setRisky(false)}/>
         <Toggle label="Allow external actions" warning="May trigger webhooks, email, or third-party services." value={external} setValue={setExternal}/>
       </Card>
-    </div><aside className="run-estimate"><Card><h3>Run estimate</h3><div><span>Agents</span><b>{agents}</b></div><div><span>Max duration</span><b>{budget>=60?`${budget/60} min`:`${budget}s`}</b></div><div><span>LLM mode</span><b>{status?(status.llmModeOn?'on':'off'):'…'}</b></div><div><span>Risk level</span><Badge tone={risky||external?'critical':'good'}>{risky||external?'ELEVATED':'GUARDED'}</Badge></div><Button onClick={launch} icon="play" disabled={launching||!path||!url}>{launching?'Launching…':'Review & launch'}</Button><small>Nothing runs until you launch. The Safety Guard checks the target first.</small>
+    </div><aside className="run-estimate"><Card><h3>Run estimate</h3><div><span>Agents</span><b>{agents}</b></div><div><span>Max duration</span><b>{budget>=60?`${budget/60} min`:`${budget}s`}</b></div><div><span>LLM mode</span><b>{status?(status.llmModeOn?'on':'off'):'…'}</b></div><div><span>Risk level</span><Badge tone={risky||external?'critical':'good'}>{risky||external?'ELEVATED':'GUARDED'}</Badge></div><Button onClick={launch} icon="play" disabled={launching||!url}>{launching?'Launching…':path?'Review & launch':'Launch — URL only'}</Button><small>Nothing runs until you launch. The Safety Guard checks the target first.</small>
     {error&&<Callout tone="warn" title="Launch failed">{error}</Callout>}
     </Card></aside></div>
     {modal&&<Modal title="Enable destructive actions?" onClose={()=>setModal(false)}><Callout tone="warn" title="This can permanently change test data">Only continue if this is a disposable test copy and you can restore its database.</Callout><label className="checkbox"><input type="checkbox"/><span>I understand this can delete test data.</span></label><div className="button-row"><Button variant="secondary" onClick={()=>setModal(false)}>Cancel</Button><Button variant="danger" onClick={()=>{setRisky(true);setModal(false)}}>Enable destructive actions</Button></div></Modal>}
@@ -781,17 +901,20 @@ function Onboarding() {
   }
 
   const connect = () => {
-    if (!path.trim() || !url.trim()) return
-    saveProject({ path: path.trim(), url: url.trim() })
+    if (!url.trim()) return
+    saveProject({ path: path.trim(), url: url.trim() }) // path may be '' → URL-only testing
     navigate('/app/projects')
   }
 
   return <div className="onboarding"><Logo/><div className="onboard-progress">{[1,2,3].map(x=><span className={x<=step?'active':''} key={x}>{x}</span>)}</div><Card className="onboard-card">
     <Eyebrow>STEP {step} OF 3</Eyebrow>
-    {step===1&&<><h1>Connect a project</h1><p>The absolute path to your app’s repo on this machine. Source files never leave it.</p>
-      <label className="field"><span>Project folder (absolute path)</span><input value={path} onChange={e=>setPath(e.target.value)} placeholder="/home/you/code/my-app"/></label>
-      <Button onClick={verify} disabled={checking}>{checking?'Scanning…':'Verify path'}</Button>
-      {check&&<Callout tone={check.ok?'safe':'warn'} title={check.ok?'Path verified':'Could not scan that path'}>{check.detail}</Callout>}</>}
+    {step===1&&<><h1>Connect a project</h1><p>Your app’s repo — an absolute folder path on this machine, or a GitHub URL (shallow-cloned locally, never pushed anywhere). Or skip this step entirely.</p>
+      <label className="field"><span>Project folder or GitHub URL</span><input value={path} onChange={e=>setPath(e.target.value)} placeholder="/home/you/code/my-app  ·  https://github.com/user/repo"/></label>
+      <div className="button-row">
+        <Button onClick={verify} disabled={checking}>{checking?'Scanning…':'Verify path'}</Button>
+        <Button variant="ghost" onClick={()=>{setPath('');setCheck(null);setStep(2)}}>Skip — test the URL only</Button>
+      </div>
+      {check&&<Callout tone={check.ok?'safe':'warn'} title={check.ok?'Source verified':'Could not scan that source'}>{check.detail}</Callout>}</>}
     {step===2&&<><h1>Set a test target</h1><p>This must be a disposable, non-production copy running locally.</p>
       <label className="field"><span>Target URL</span><input value={url} onChange={e=>setUrl(e.target.value)} placeholder="http://localhost:3000"/></label>
       <Callout tone="safe" title="Local targets only">The Safety Guard refuses anything that is not localhost (or explicitly allow-listed).</Callout></>}
@@ -802,7 +925,7 @@ function Onboarding() {
       {step>1&&<Button variant="secondary" onClick={()=>setStep(step-1)}>Back</Button>}
       {step<3
         ? <Button onClick={()=>setStep(step+1)} icon="arrow" disabled={step===1&&!path.trim()}>Continue</Button>
-        : <Button onClick={connect} icon="arrow" disabled={!disposable||!guarded||!path.trim()||!url.trim()}>Connect project</Button>}
+        : <Button onClick={connect} icon="arrow" disabled={!disposable||!guarded||!url.trim()}>{path.trim()?'Connect project':'Connect — URL only'}</Button>}
     </div>
   </Card></div>
 }

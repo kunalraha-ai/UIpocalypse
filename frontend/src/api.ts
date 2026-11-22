@@ -123,7 +123,7 @@ export const api = {
   graph: (runId: number) => get<Graph>(`/api/runs/${runId}/graph`),
   scan: (path: string) => post<{ issues: StaticIssue[]; summary: { routes: number; elements: number; envVars: number } }>('/api/scan', { path }),
   diff: (runs: number[], path: string) => get<Diff>(`/api/diff?runs=${runs.join(',')}&path=${encodeURIComponent(path)}`),
-  startRun: (input: { path: string; url: string; agents?: number; budgetSeconds?: number; optIn?: { destructive?: boolean; externalSideEffects?: boolean } }) =>
+  startRun: (input: { path?: string; url: string; agents?: number; budgetSeconds?: number; optIn?: { destructive?: boolean; externalSideEffects?: boolean } }) =>
     post<{ jobId: number }>('/api/runs', input),
   job: (jobId: number) => get<{ jobId: number; status: 'running' | 'done' | 'error'; runId?: number; error?: string }>(`/api/jobs/${jobId}`),
 
@@ -160,7 +160,7 @@ export const api = {
 
 // ---- the "connected project" (path + url), persisted locally
 
-export type Project = { path: string; url: string }
+export type Project = { path: string; url: string } // path may be '' for URL-only testing
 
 export function loadProject(): Project | null {
   try {

@@ -120,3 +120,32 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
   .app-shell.side-open .app-side nav a,.app-shell.side-open .app-side-bottom>a{width:42px;height:42px;margin:0;padding:0;display:grid;place-items:center}
   .app-shell.side-open .app-side nav a span,.app-shell.side-open .app-side-bottom>a span{display:none!important}
 }
+
+/* ── Swarm hero card (landing page) ─────────────────────────────────────────
+   Design system provided verbatim (tokens + dark mode + reduced-motion);
+   only the mono stack is swapped for the site's self-hosted JetBrains Mono. */
+.swarm-card{--swarm-ink:#1b1b1f;--swarm-purple:#7c5cff;--swarm-lime:#c6f03a;--swarm-alert:#ff6a3d;--swarm-surface:#ffffff;--swarm-on-lime:#14141a;--swarm-bg:#fbfaf6;--swarm-border:rgba(27,27,31,.1);--swarm-ok:#13805a;position:relative;overflow:hidden;border-radius:20px;border:1px solid var(--swarm-border);background:var(--swarm-bg);color:var(--swarm-ink);box-shadow:0 30px 60px -30px rgba(27,27,31,.35),0 2px 0 rgba(27,27,31,.04);transform:rotate(1deg);transition:transform .4s ease}
+.swarm-card:hover{transform:rotate(0deg)}
+.dark .swarm-card,[data-theme='dark'] .swarm-card{--swarm-ink:#ececf1;--swarm-purple:#9b83ff;--swarm-surface:#1c1c24;--swarm-bg:#14141a;--swarm-border:rgba(236,236,241,.12);--swarm-ok:#3ccf9a;box-shadow:0 30px 60px -30px rgba(0,0,0,.7)}
+.swarm-mono{font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.swarm-bar{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--swarm-border);font:500 12px/1 'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.swarm-dot{width:8px;height:8px;border-radius:50%;background:#18a572;animation:swarm-ping 1.8s infinite}
+.swarm-chip{margin-left:auto;padding:4px 8px;border-radius:999px;background:rgba(24,165,114,.14);color:var(--swarm-ok);font-size:10px;letter-spacing:.08em}
+.swarm-stage{position:relative;height:340px;background-image:radial-gradient(var(--swarm-border) 1px,transparent 1px);background-size:18px 18px}
+.swarm-stage canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.swarm-stats{display:flex;align-items:center;gap:18px;padding:10px 16px;border-top:1px solid var(--swarm-border);font:500 11px/1 'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.04em}
+.swarm-stats b{font-weight:700}
+.swarm-tag{margin-left:auto;padding:3px 7px;border-radius:4px;background:var(--swarm-alert);color:#fff;font-size:9px;letter-spacing:.1em}
+.swarm-feed{padding:12px 16px 16px;border-top:1px solid var(--swarm-border);min-height:98px}
+.swarm-finding{display:grid;grid-template-columns:auto 1fr auto;align-items:start;gap:4px 10px;padding:12px 14px;border:1px solid var(--swarm-alert);border-radius:12px;background:var(--swarm-surface);animation:swarm-pop .45s ease}
+.swarm-finding__dot{width:8px;height:8px;margin-top:5px;border-radius:50%;background:var(--swarm-alert)}
+.swarm-finding__title{font-weight:600;font-size:14px;line-height:1.35}
+.swarm-finding__where{grid-column:2;font:500 11px/1.3 'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--swarm-alert)}
+.swarm-finding__conf{grid-row:1;grid-column:3;font:500 10px/1.6 'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--swarm-ok);white-space:nowrap}
+.swarm-prev{margin:8px 2px 0;font:500 11px/1.4 'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;opacity:.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.swarm-prev+.swarm-prev{opacity:.3;margin-top:2px}
+@keyframes swarm-ping{0%{box-shadow:0 0 0 0 rgba(24,165,114,.5)}70%{box-shadow:0 0 0 8px rgba(24,165,114,0)}100%{box-shadow:0 0 0 0 rgba(24,165,114,0)}}
+@keyframes swarm-pop{from{opacity:0;transform:translateY(8px) scale(.98)}to{opacity:1;transform:none}}
+@media(max-width:520px){.swarm-stage{height:280px}.swarm-card{transform:none}}
+@media(prefers-reduced-motion:reduce){.swarm-dot,.swarm-finding{animation:none}.swarm-card,.swarm-card:hover{transform:none;transition:none}}
+.hero .swarm-card{width:100%}

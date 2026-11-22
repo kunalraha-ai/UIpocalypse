@@ -1,3 +1,4 @@
+opencode
 # Messy Mart — hash-validation + detector-tuning fixture
 
 **Historical note (Phase 4):** this app served as the *held-out* validation for
