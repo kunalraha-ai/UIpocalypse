@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { api, loadProject, saveProject, routeParts, type Report, type RunRow, type Status, type StaticIssue, type Graph, type Diff, type JobEvent } from './api'
+import { api, loadProject, saveProject, routeParts, isLocalTarget, targetHost, looksLikeProdTarget, type Report, type RunRow, type Status, type StaticIssue, type Graph, type Diff, type JobEvent } from './api'
 
 type IconName =
   | 'arrow' | 'bolt' | 'bot' | 'check' | 'code' | 'copy' | 'eye' | 'file'
@@ -627,22 +627,37 @@ function NewRun() {
   const [error,setError]=useState('')
   const [launching,setLaunching]=useState(false)
   const [status,setStatus]=useState<Status|null>(null)
+  const [token,setToken]=useState(()=>crypto.randomUUID())
+  const [tokenPlaced,setTokenPlaced]=useState(false)
+  const [prodAgree,setProdAgree]=useState(false)
   useEffect(()=>{ api.status().then(setStatus).catch(()=>{}) },[])
+
+  const live=!isLocalTarget(url)&&targetHost(url)!==''
+  const prod=live&&looksLikeProdTarget(url)
+  const tokenUrl=`https://${targetHost(url)}/.well-known/uipocalypse.txt`
 
   const launch=async()=>{ 
     setLaunching(true); setError('')
     try{
-      const {jobId}=await api.startRun({path: path||undefined,url,agents,budgetSeconds:budget,optIn:{destructive:risky,externalSideEffects:external}})
+      const {jobId}=await api.startRun({path: path||undefined,url,agents,budgetSeconds:budget,optIn:{destructive:risky,externalSideEffects:external},liveTarget: live?{ownershipToken:token,prodOverride:prod?prodAgree||true:undefined}:undefined})
       navigate(`/app/live-run?job=${jobId}`)
     }catch(e){ setError(String(e instanceof Error?e.message:e)); setLaunching(false) }
   }
 
-  return <div className="app-page narrow-app"><AppPageHead title="Configure new run" copy={project?`${project.path} → ${project.url}`:'Set the repo path and the local target URL.'}/>
+  return <div className="app-page narrow-app"><AppPageHead title="Configure new run" copy={project?`${project.path||'(no source — URL only)'} → ${project.url}`:'Set the repo path (or GitHub URL) and the target.'}/>
     <div className="config-layout"><div className="config-main">
       <Card><h2>Target</h2>
         <label className="field"><span>Repo path or GitHub URL <small style={{opacity:.55}}>(optional — leave empty to test the URL only)</small></span><input value={path} onChange={e=>setPath(e.target.value)} placeholder="/home/you/code/my-app  ·  https://github.com/user/repo"/></label>
-        <label className="field"><span>Test target URL</span><input value={url} onChange={e=>setUrl(e.target.value)} placeholder="http://localhost:3000"/></label>
-        {status&&<Callout tone="safe" title={status.llmMode}>{status.llmModeOn?'Redacted summaries go to your configured provider; code and secrets stay local.':'Fully local — mechanical report, zero LLM calls.'}</Callout>}
+        <label className="field"><span>Test target URL</span><input value={url} onChange={e=>setUrl(e.target.value)} placeholder="http://localhost:3000  ·  https://staging.mysite.com"/></label>
+        {status&&!live&&<Callout tone="safe" title={status.llmMode}>{status.llmModeOn?'Redacted summaries go to your configured provider; code and secrets stay local.':'Fully local — mechanical report, zero LLM calls.'}</Callout>}
+        {live&&<Callout tone="warn" title={`Live target — ${targetHost(url)} is not localhost`}>
+          The swarm will hit a real website. To prove you own it, place this token at <code>{tokenUrl}</code> and tick below. Live runs are read-only unless a safe DB is configured.
+          <div className="field" style={{marginTop:12}}><span>Ownership token (generated — copy it to the file above)</span>
+            <div style={{display:'flex',gap:8}}><input readOnly value={token} style={{fontFamily:'JetBrains Mono,monospace',fontSize:11}}/><Button variant="secondary" icon="copy" onClick={()=>navigator.clipboard?.writeText(token)}>Copy</Button></div>
+          </div>
+          <label className="checkbox"><input type="checkbox" checked={tokenPlaced} onChange={e=>setTokenPlaced(e.target.checked)}/><span>The token file is live at <code>/.well-known/uipocalypse.txt</code> on this host, and I own this target (or have permission to test it).</span></label>
+          {prod&&<label className="checkbox" style={{marginTop:8}}><input type="checkbox" checked={prodAgree} onChange={e=>setProdAgree(e.target.checked)}/><span><b>This host looks like production</b> (no staging-like subdomain). I understand the swarm will click through a production site — read-only by default.</span></label>}
+        </Callout>}
       </Card>
       <Card><h2>Run shape</h2><label className="range-label"><span>Browser agents <b>{agents}</b></span><input type="range" min="1" max="100" value={agents} onChange={e=>setAgents(+e.target.value)}/></label><label className="field"><span>Time budget</span><select value={budget} onChange={e=>setBudget(+e.target.value)}><option value={30}>30 seconds</option><option value={60}>1 minute</option><option value={120}>2 minutes</option><option value={300}>5 minutes</option></select></label></Card>
       <Card><h2>Personas</h2><div className="toggle-grid">{personas.map(([l,n],i)=><label className="toggle-row" key={n}><span className="mini-avatar">{l}</span><b>{n}</b><input type="checkbox" checked disabled title="The full roster runs by default"/><i/></label>)}</div><small style={{opacity:.6}}>The full roster runs by default — narrowing it blinded duplicate detection once (phase-5 lesson).</small></Card>
@@ -650,7 +665,7 @@ function NewRun() {
         <Toggle label="Allow destructive actions" warning="May delete or permanently change test data." value={risky} setValue={(v)=>v?setModal(true):setRisky(false)}/>
         <Toggle label="Allow external actions" warning="May trigger webhooks, email, or third-party services." value={external} setValue={setExternal}/>
       </Card>
-    </div><aside className="run-estimate"><Card><h3>Run estimate</h3><div><span>Agents</span><b>{agents}</b></div><div><span>Max duration</span><b>{budget>=60?`${budget/60} min`:`${budget}s`}</b></div><div><span>LLM mode</span><b>{status?(status.llmModeOn?'on':'off'):'…'}</b></div><div><span>Risk level</span><Badge tone={risky||external?'critical':'good'}>{risky||external?'ELEVATED':'GUARDED'}</Badge></div><Button onClick={launch} icon="play" disabled={launching||!url}>{launching?'Launching…':path?'Review & launch':'Launch — URL only'}</Button><small>Nothing runs until you launch. The Safety Guard checks the target first.</small>
+    </div><aside className="run-estimate"><Card><h3>Run estimate</h3><div><span>Agents</span><b>{agents}</b></div><div><span>Max duration</span><b>{budget>=60?`${budget/60} min`:`${budget}s`}</b></div><div><span>LLM mode</span><b>{status?(status.llmModeOn?'on':'off'):'…'}</b></div><div><span>Risk level</span><Badge tone={risky||external?'critical':'good'}>{risky||external?'ELEVATED':'GUARDED'}</Badge></div><Button onClick={launch} icon="play" disabled={launching||!url||(live&&(!tokenPlaced||(prod&&!prodAgree)))}>{launching?'Launching…':path?'Review & launch':'Launch — URL only'}</Button><small>Nothing runs until you launch. The Safety Guard checks the target first.</small>
     {error&&<Callout tone="warn" title="Launch failed">{error}</Callout>}
     </Card></aside></div>
     {modal&&<Modal title="Enable destructive actions?" onClose={()=>setModal(false)}><Callout tone="warn" title="This can permanently change test data">Only continue if this is a disposable test copy and you can restore its database.</Callout><label className="checkbox"><input type="checkbox"/><span>I understand this can delete test data.</span></label><div className="button-row"><Button variant="secondary" onClick={()=>setModal(false)}>Cancel</Button><Button variant="danger" onClick={()=>{setRisky(true);setModal(false)}}>Enable destructive actions</Button></div></Modal>}
@@ -915,9 +930,9 @@ function Onboarding() {
         <Button variant="ghost" onClick={()=>{setPath('');setCheck(null);setStep(2)}}>Skip — test the URL only</Button>
       </div>
       {check&&<Callout tone={check.ok?'safe':'warn'} title={check.ok?'Source verified':'Could not scan that source'}>{check.detail}</Callout>}</>}
-    {step===2&&<><h1>Set a test target</h1><p>This must be a disposable, non-production copy running locally.</p>
-      <label className="field"><span>Target URL</span><input value={url} onChange={e=>setUrl(e.target.value)} placeholder="http://localhost:3000"/></label>
-      <Callout tone="safe" title="Local targets only">The Safety Guard refuses anything that is not localhost (or explicitly allow-listed).</Callout></>}
+    {step===2&&<><h1>Set a test target</h1><p>localhost runs instantly. A live website (staging, your deployed app) needs a one-time ownership check when you launch: you place a token file on the target to prove it is yours.</p>
+      <label className="field"><span>Target URL</span><input value={url} onChange={e=>setUrl(e.target.value)} placeholder="http://localhost:3000  ·  https://staging.mysite.com"/></label>
+      <Callout tone="safe" title="Nothing runs without you">The Safety Guard checks every target before the swarm moves; destructive actions and writes stay off unless you opt in.</Callout></>}
     {step===3&&<><h1>Safety checklist</h1><p>Confirm both items before connecting this project.</p>
       <label className="check-card"><input type="checkbox" checked={disposable} onChange={e=>setDisposable(e.target.checked)}/><span><b>This is a disposable test copy</b><small>I can restore its data if the test changes it.</small></span></label>
       <label className="check-card"><input type="checkbox" checked={guarded} onChange={e=>setGuarded(e.target.checked)}/><span><b>Keep guarded actions skipped</b><small>Deletes, payments, and external effects remain off unless I opt in per run.</small></span></label></>}

@@ -15,7 +15,7 @@ import type { AppMap } from '../analyzer/types.js';
 import { explore } from '../browser/runner.js';
 import { swarm } from '../browser/orchestrator.js';
 import { mergeDraftedInvariants } from '../browser/race.js';
-import { createGuard } from '../guard/index.js';
+import { createGuard, isLocalHost, hostMatches, looksLikeProduction } from '../guard/index.js';
 import { generateReport, diffRuns, loadReport } from '../report/reviewer.js';
 
 /**
@@ -73,6 +73,17 @@ function resolveSource(input: string, workspace: Workspace): Promise<string> {
       resolve(dir);
     });
   });
+}
+
+/** thrown for request-level refusals (bad input, guard refusals) — mapped to
+ *  its HTTP status by the request handler instead of a job error */
+class HttpError extends Error {
+  constructor(
+    public readonly status: number,
+    message: string,
+  ) {
+    super(message);
+  }
 }
 
 export type WebJobEvent = { at: number; type: string; [key: string]: unknown };
@@ -143,13 +154,42 @@ export async function startWebServer(opts: {
     for (const w of [...job.waiters]) w(ev);
   }
 
-  async function startRun(input: { path?: string; url: string; agents?: number; budgetSeconds?: number; optIn?: { destructive?: boolean; externalSideEffects?: boolean } }): Promise<number> {
+  async function startRun(input: { path?: string; url: string; agents?: number; budgetSeconds?: number; optIn?: { destructive?: boolean; externalSideEffects?: boolean }; liveTarget?: { ownershipToken: string; prodOverride?: boolean } }): Promise<number> {
+    // live-target handling FIRST — before the job is registered, so a refusal
+    // can never leave a zombie "running" job blocking the queue. Non-local
+    // targets follow SAFETY.md G1-G3: allow-list the host for THIS run, require
+    // an ownership token the TARGET must serve at /.well-known/uipocalypse.txt,
+    // and require prodOverride for production-looking hosts.
+    let runConfig = config;
+    const host = (() => {
+      try {
+        return new URL(input.url).hostname;
+      } catch {
+        return '';
+      }
+    })();
+    const isLiveTarget = host !== '' && !isLocalHost(host) && !hostMatches(host, config.allowHosts);
+    if (isLiveTarget) {
+      const token = input.liveTarget?.ownershipToken?.trim();
+      if (!token) {
+        throw new HttpError(
+          403,
+          `the target ${host} is not localhost — a live website. To test it you must prove ownership: (1) place a random token at https://${host}/.well-known/uipocalypse.txt, (2) retry with liveTarget: { "ownershipToken": "<that token>" }${looksLikeProduction(host) ? ', "prodOverride": true (the host does not look staging-like)' : ''}. Live runs are read-only unless a safe DB is configured.`,
+        );
+      }
+      runConfig = {
+        ...config,
+        allowHosts: [...config.allowHosts, host],
+        ownershipToken: token,
+        prodOverride: input.liveTarget?.prodOverride === true || config.prodOverride,
+      };
+    }
+
     const jobId = nextJobId++;
     const job: Job = { id: jobId, status: 'running', events: [], startedAt: Date.now(), waiters: [] };
     jobs.set(jobId, job);
 
-    const llms = createLlmSet(opts.llmEnv);
-    llms.planner.maxCalls = config.llm.maxCallsPerRun;
+    const llms = createLlmSet(opts.llmEnv);    llms.planner.maxCalls = config.llm.maxCallsPerRun;
     llms.scout.maxCalls = config.llm.maxCallsPerRun;
     const t0 = Date.now();
 
@@ -157,6 +197,7 @@ export async function startWebServer(opts: {
       try {
         const path = input.path?.trim() || '';
         const url = input.url;
+        if (isLiveTarget) emit(job, 'liveTarget', { host, note: 'live target — read-only unless a safe DB is configured' });
         emit(job, 'phase', { phase: 'scan' });
         let appMap: AppMap = EMPTY_APP_MAP;
         if (!path) {
@@ -187,13 +228,13 @@ export async function startWebServer(opts: {
         } else {
           planning = await createPlan({ appMap, targetUrl: url, llm: llms.planner, workspacePlansDir: workspace.plans });
         }
-        const inv = await mergeDraftedInvariants(config, planning.plan, createGuard(config), logger);
+        const inv = await mergeDraftedInvariants(runConfig, planning.plan, createGuard(runConfig), logger);
         emit(job, 'plan', { cached: planning.cached, seeds: planning.plan.seedRoutes.length });
 
         emit(job, 'phase', { phase: 'scout' });
         const exploreResult = await explore({
           url,
-          config,
+          config: runConfig,
           plan: planning.plan,
           db,
           routes: planning.appMapRoutes,
@@ -303,7 +344,7 @@ export async function startWebServer(opts: {
 
           if (req.method === 'POST' && url.pathname === '/api/runs') {
             if (hasRunningJob()) return send(409, { error: 'a run is already in progress — one at a time on a local machine' });
-            const body = (await readBody()) as { path?: string; url?: string; agents?: number; budgetSeconds?: number; optIn?: { destructive?: boolean; externalSideEffects?: boolean } };
+            const body = (await readBody()) as { path?: string; url?: string; agents?: number; budgetSeconds?: number; optIn?: { destructive?: boolean; externalSideEffects?: boolean }; liveTarget?: { ownershipToken: string; prodOverride?: boolean } };
             if (typeof body.url !== 'string' || !body.url.trim()) {
               return send(400, { error: '"url" (the target app) is required' });
             }
@@ -320,6 +361,7 @@ export async function startWebServer(opts: {
               agents: typeof body.agents === 'number' ? body.agents : undefined,
               budgetSeconds: typeof body.budgetSeconds === 'number' ? body.budgetSeconds : undefined,
               optIn: body.optIn,
+              liveTarget: body.liveTarget,
             });
             return send(202, { jobId });
           }
@@ -400,6 +442,7 @@ export async function startWebServer(opts: {
 
           return send(404, { error: `no such API route: ${req.method} ${url.pathname}` });
         } catch (e) {
+          if (e instanceof HttpError) return send(e.status, { error: e.message });
           return send(500, { error: String(e) });
         }
       })();

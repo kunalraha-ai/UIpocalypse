@@ -1,4 +1,4 @@
-export { createGuard, hostMatches, isLocalHost } from './target.js';
+export { createGuard, hostMatches, isLocalHost, looksLikeProduction } from './target.js';
 export type { TargetDecision, ModeDecision, SwarmMode, Guard, GuardOptions } from './target.js';
 export {
   classifyAction,

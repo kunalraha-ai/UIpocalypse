@@ -163,6 +163,40 @@ describe('web API (frontend backend)', () => {
     expect(res.status).toBe(400);
   });
 
+  it('a LIVE (non-local) target requires the ownership-token flow (403 without, guard reaches the token check with)', async () => {
+    const live = 'http://192.0.2.1:54321/'; // TEST-NET-1: non-local by definition, never routed
+    const refused = await fetch(`http://127.0.0.1:${web.port}/api/runs`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ url: live, agents: 2, budgetSeconds: 10 }),
+    });
+    expect(refused.status).toBe(403);
+    const refusal = await json<{ error: string }>(refused);
+    expect(refusal.error).toMatch(/ownership|token|well-known/i);
+
+    // with the token the allow-list + prod override are accepted, and the guard
+    // goes on to VERIFY the token against the target live (fetch fails here —
+    // TEST-NET is unroutable — proving the earlier gates were passed)
+    const start = await fetch(`http://127.0.0.1:${web.port}/api/runs`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ url: live, agents: 2, budgetSeconds: 10, liveTarget: { ownershipToken: 'test-token', prodOverride: true } }),
+    });
+    expect(start.status).toBe(202);
+    const { jobId } = await json<{ jobId: number }>(start);
+    const job = await new Promise<{ status: string; error?: string }>((resolve) => {
+      const poll = setInterval(async () => {
+        const j = await json<{ status: string; error?: string }>(await fetch(`http://127.0.0.1:${web.port}/api/jobs/${jobId}`));
+        if (j.status === 'done' || j.status === 'error') {
+          clearInterval(poll);
+          resolve(j);
+        }
+      }, 1000);
+    });
+    expect(job.error).toMatch(/token/i); // the guard reached the token verification
+    expect(job.error).not.toMatch(/allow-list/i); // the live-target opt-in was accepted
+  }, 180_000);
+
   it('POST /api/runs runs the real pipeline and the events stream carries every phase', async () => {
     const start = await fetch(`http://127.0.0.1:${web.port}/api/runs`, {
       method: 'POST',

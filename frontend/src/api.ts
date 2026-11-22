@@ -123,7 +123,7 @@ export const api = {
   graph: (runId: number) => get<Graph>(`/api/runs/${runId}/graph`),
   scan: (path: string) => post<{ issues: StaticIssue[]; summary: { routes: number; elements: number; envVars: number } }>('/api/scan', { path }),
   diff: (runs: number[], path: string) => get<Diff>(`/api/diff?runs=${runs.join(',')}&path=${encodeURIComponent(path)}`),
-  startRun: (input: { path?: string; url: string; agents?: number; budgetSeconds?: number; optIn?: { destructive?: boolean; externalSideEffects?: boolean } }) =>
+  startRun: (input: { path?: string; url: string; agents?: number; budgetSeconds?: number; optIn?: { destructive?: boolean; externalSideEffects?: boolean }; liveTarget?: { ownershipToken: string; prodOverride?: boolean } }) =>
     post<{ jobId: number }>('/api/runs', input),
   job: (jobId: number) => get<{ jobId: number; status: 'running' | 'done' | 'error'; runId?: number; error?: string }>(`/api/jobs/${jobId}`),
 
@@ -156,6 +156,40 @@ export const api = {
       .catch(() => onEnd?.())
     return () => controller.abort()
   },
+}
+
+// ---- target classification (mirrors the backend Guard: local hosts and
+// private ranges are "local"; anything else is a live target needing the
+// ownership-token flow)
+
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]', '0.0.0.0'])
+const STAGING_LIKE = /^(staging|stage|stg|dev|test|qa|demo|preview|beta|uat|preprod)([.-]|$)/
+
+export function targetHost(url: string): string {
+  try {
+    return new URL(url).hostname
+  } catch {
+    return ''
+  }
+}
+
+export function isLocalTarget(url: string): boolean {
+  const h = targetHost(url).toLowerCase()
+  if (!h) return false
+  if (LOCAL_HOSTS.has(h) || h.endsWith('.localhost') || h.endsWith('.local')) return true
+  const parts = h.split('.')
+  if (parts.length !== 4) return false
+  const octets = parts.map((p) => Number(p))
+  if (octets.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) return false
+  const [a, b] = octets as [number, number, number, number]
+  return a === 127 || a === 10 || (a === 192 && b === 168) || (a === 172 && b >= 16 && b <= 31)
+}
+
+export function looksLikeProdTarget(url: string): boolean {
+  const h = targetHost(url).toLowerCase()
+  if (!h || isLocalTarget(url)) return false
+  if (/\.vercel\.app$/.test(h) || /\.netlify\.app$/.test(h)) return false
+  return !STAGING_LIKE.test(h.split('.')[0]!)
 }
 
 // ---- the "connected project" (path + url), persisted locally

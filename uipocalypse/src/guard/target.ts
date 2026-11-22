@@ -65,7 +65,7 @@ export function hostMatches(host: string, patterns: string[]): boolean {
 const PREVIEW_PATTERNS = ['*.vercel.app', '*.netlify.app'];
 const STAGING_LIKE = /^(staging|stage|stg|dev|test|qa|demo|preview|beta|uat|preprod)([.-]|$)/;
 
-function looksLikeProduction(host: string): boolean {
+export function looksLikeProduction(host: string): boolean {
   const h = host.toLowerCase();
   if (isLocalHost(h)) return false;
   if (hostMatches(h, PREVIEW_PATTERNS)) return false;
