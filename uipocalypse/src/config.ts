@@ -36,6 +36,14 @@ export const ConfigSchema = z.object({
   prodOverride: z.boolean().default(false),
   /** Expected value of /.well-known/uipocalypse.txt on non-local targets (SAFETY.md G2). */
   ownershipToken: z.string().optional(),
+  /**
+   * Operator attests ownership at run time (the web UI's one-click "I own this
+   * target" confirmation). Skips the G2 token fetch and satisfies the G3
+   * prod-look gate for that run. The strict token path (ownershipToken +
+   * /.well-known/uipocalypse.txt) remains for those who want proof, and is
+   * what the MCP/config path still uses by default.
+   */
+  ownershipAttested: z.boolean().default(false),
   db: z
     .object({ allowedHosts: z.array(z.string()).default(DEFAULT_DB_HOSTS) })
     .default({ allowedHosts: DEFAULT_DB_HOSTS }),

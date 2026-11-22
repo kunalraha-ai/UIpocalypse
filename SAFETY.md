@@ -27,7 +27,7 @@ A swarm that clicks everything and hits endpoints concurrently is, by design, a 
 
 **G1. Host allow-list.** Targets must match `allowHosts` in config. Default: `localhost`, `127.0.0.1`, `*.local`, and common preview hosts (`*.vercel.app`, `*.netlify.app`) only after the ownership check (G2).
 
-**G2. Ownership verification** for any non-local host: user must place a token (`/.well-known/uipocalypse.txt` or a meta tag) that the tool checks before the swarm starts. No token, no run. This blocks T4.
+**G2. Ownership verification** for any non-local host: user must place a token (`/.well-known/uipocalypse.txt` or a meta tag) that the tool checks before the swarm starts. No token, no run. This blocks T4. *Web-UI exception (owner decision, 2026-11-22):* the local web UI may run a one-click **ownership attestation** instead ("I own this target or have permission to test it") — no token fetch, recorded as a warning on the run. The strict token path remains the default for MCP/config users and anyone who wants proof.
 
 **G3. Prod-look refusal.** Refuse (overridable only with an explicit, loudly-worded flag plus the G2 token) when the target looks like production: custom apex domain without a staging-like subdomain, `NODE_ENV=production` detected, DB host not in `db.allowedHosts`, Stripe live keys (`sk_live_`, `pk_live_`) detected in config or app env.
 

@@ -131,28 +131,38 @@ export function createGuard(config: UiConfig, opts: GuardOptions = {}) {
         prodSignals.push('NODE_ENV=production is set for the target');
       }
 
-      // G2 — ownership token for every non-local target
+      // G2 — ownership proof for every non-local target. Two paths:
+      //   strict: ownershipToken in config must match /.well-known/uipocalypse.txt
+      //           on the target (default; what config/MCP users get)
+      //   attested: the operator confirmed ownership at run time (the web UI's
+      //           one-click checkbox) — no token fetch, recorded as a warning
       let tokenOk = true;
       if (!isLocal) {
-        const expected = config.ownershipToken;
-        if (!expected) {
-          reasons.push(
-            'Non-local targets require an ownership token: set `ownershipToken` in uipocalypse.config.yaml and place the same value at /.well-known/uipocalypse.txt on the target (SAFETY.md G2).',
+        if (config.ownershipAttested) {
+          warnings.push(
+            'ownership ATTESTED by the operator at run time (no token check performed) — the operator confirmed they own this target or have permission to test it.',
           );
-          tokenOk = false;
         } else {
-          const actual = await fetchToken(u.origin);
-          if (!actual || actual !== expected.trim()) {
+          const expected = config.ownershipToken;
+          if (!expected) {
             reasons.push(
-              `Ownership token check failed: expected \`ownershipToken\` at ${u.origin}/.well-known/uipocalypse.txt (SAFETY.md G2).`,
+              'Non-local targets require an ownership token: set `ownershipToken` in uipocalypse.config.yaml and place the same value at /.well-known/uipocalypse.txt on the target (SAFETY.md G2).',
             );
             tokenOk = false;
+          } else {
+            const actual = await fetchToken(u.origin);
+            if (!actual || actual !== expected.trim()) {
+              reasons.push(
+                `Ownership token check failed: expected \`ownershipToken\` at ${u.origin}/.well-known/uipocalypse.txt (SAFETY.md G2).`,
+              );
+              tokenOk = false;
+            }
           }
         }
       }
 
       if (prodSignals.length) {
-        if (!config.prodOverride) {
+        if (!config.prodOverride && !config.ownershipAttested) {
           reasons.push(...prodSignals);
           reasons.push(
             'This looks like production. If (and only if) you are sure, set `prodOverride: true` and provide the ownership token (SAFETY.md G3).',
@@ -163,7 +173,9 @@ export function createGuard(config: UiConfig, opts: GuardOptions = {}) {
           return { allowed: false, reasons, warnings, host, isLocal };
         }
         warnings.push(
-          'OVERRIDE: prod-like target accepted because prodOverride is set. Destructive actions still require separate opt-in; watch the run.',
+          config.ownershipAttested
+            ? 'OVERRIDE: prod-like target accepted on the operator\'s ownership attestation. Destructive actions still require separate opt-in; watch the run.'
+            : 'OVERRIDE: prod-like target accepted because prodOverride is set. Destructive actions still require separate opt-in; watch the run.',
         );
       }
 

@@ -15,7 +15,7 @@ import type { AppMap } from '../analyzer/types.js';
 import { explore } from '../browser/runner.js';
 import { swarm } from '../browser/orchestrator.js';
 import { mergeDraftedInvariants } from '../browser/race.js';
-import { createGuard, isLocalHost, hostMatches, looksLikeProduction } from '../guard/index.js';
+import { createGuard, isLocalHost, hostMatches } from '../guard/index.js';
 import { generateReport, diffRuns, loadReport } from '../report/reviewer.js';
 
 /**
@@ -154,12 +154,12 @@ export async function startWebServer(opts: {
     for (const w of [...job.waiters]) w(ev);
   }
 
-  async function startRun(input: { path?: string; url: string; agents?: number; budgetSeconds?: number; optIn?: { destructive?: boolean; externalSideEffects?: boolean }; liveTarget?: { ownershipToken: string; prodOverride?: boolean } }): Promise<number> {
+  async function startRun(input: { path?: string; url: string; agents?: number; budgetSeconds?: number; optIn?: { destructive?: boolean; externalSideEffects?: boolean }; liveTarget?: { attested?: boolean; ownershipToken?: string; prodOverride?: boolean } }): Promise<number> {
     // live-target handling FIRST — before the job is registered, so a refusal
     // can never leave a zombie "running" job blocking the queue. Non-local
-    // targets follow SAFETY.md G1-G3: allow-list the host for THIS run, require
-    // an ownership token the TARGET must serve at /.well-known/uipocalypse.txt,
-    // and require prodOverride for production-looking hosts.
+    // targets need an ownership claim: either the operator's one-click
+    // attestation (the web UI checkbox — no token file) or the strict token
+    // flow (ownershipToken served at /.well-known/uipocalypse.txt, SAFETY.md G2).
     let runConfig = config;
     const host = (() => {
       try {
@@ -170,17 +170,19 @@ export async function startWebServer(opts: {
     })();
     const isLiveTarget = host !== '' && !isLocalHost(host) && !hostMatches(host, config.allowHosts);
     if (isLiveTarget) {
+      const attested = input.liveTarget?.attested === true;
       const token = input.liveTarget?.ownershipToken?.trim();
-      if (!token) {
+      if (!attested && !token) {
         throw new HttpError(
           403,
-          `the target ${host} is not localhost — a live website. To test it you must prove ownership: (1) place a random token at https://${host}/.well-known/uipocalypse.txt, (2) retry with liveTarget: { "ownershipToken": "<that token>" }${looksLikeProduction(host) ? ', "prodOverride": true (the host does not look staging-like)' : ''}. Live runs are read-only unless a safe DB is configured.`,
+          `the target ${host} is not localhost — a live website. Confirm you own it (or have permission to test it) in the New Run panel, or pass liveTarget: { "attested": true }. Live runs are read-only unless a safe DB is configured.`,
         );
       }
       runConfig = {
         ...config,
         allowHosts: [...config.allowHosts, host],
-        ownershipToken: token,
+        ownershipAttested: attested,
+        ownershipToken: token || config.ownershipToken,
         prodOverride: input.liveTarget?.prodOverride === true || config.prodOverride,
       };
     }
@@ -344,7 +346,7 @@ export async function startWebServer(opts: {
 
           if (req.method === 'POST' && url.pathname === '/api/runs') {
             if (hasRunningJob()) return send(409, { error: 'a run is already in progress — one at a time on a local machine' });
-            const body = (await readBody()) as { path?: string; url?: string; agents?: number; budgetSeconds?: number; optIn?: { destructive?: boolean; externalSideEffects?: boolean }; liveTarget?: { ownershipToken: string; prodOverride?: boolean } };
+            const body = (await readBody()) as { path?: string; url?: string; agents?: number; budgetSeconds?: number; optIn?: { destructive?: boolean; externalSideEffects?: boolean }; liveTarget?: { attested?: boolean; ownershipToken?: string; prodOverride?: boolean } };
             if (typeof body.url !== 'string' || !body.url.trim()) {
               return send(400, { error: '"url" (the target app) is required' });
             }

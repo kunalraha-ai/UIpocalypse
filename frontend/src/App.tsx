@@ -627,19 +627,16 @@ function NewRun() {
   const [error,setError]=useState('')
   const [launching,setLaunching]=useState(false)
   const [status,setStatus]=useState<Status|null>(null)
-  const [token,setToken]=useState(()=>crypto.randomUUID())
-  const [tokenPlaced,setTokenPlaced]=useState(false)
-  const [prodAgree,setProdAgree]=useState(false)
+  const [owned,setOwned]=useState(false)
   useEffect(()=>{ api.status().then(setStatus).catch(()=>{}) },[])
 
   const live=!isLocalTarget(url)&&targetHost(url)!==''
   const prod=live&&looksLikeProdTarget(url)
-  const tokenUrl=`https://${targetHost(url)}/.well-known/uipocalypse.txt`
 
   const launch=async()=>{ 
     setLaunching(true); setError('')
     try{
-      const {jobId}=await api.startRun({path: path||undefined,url,agents,budgetSeconds:budget,optIn:{destructive:risky,externalSideEffects:external},liveTarget: live?{ownershipToken:token,prodOverride:prod?prodAgree||true:undefined}:undefined})
+      const {jobId}=await api.startRun({path: path||undefined,url,agents,budgetSeconds:budget,optIn:{destructive:risky,externalSideEffects:external},liveTarget: live?{attested:true}:undefined})
       navigate(`/app/live-run?job=${jobId}`)
     }catch(e){ setError(String(e instanceof Error?e.message:e)); setLaunching(false) }
   }
@@ -651,12 +648,8 @@ function NewRun() {
         <label className="field"><span>Test target URL</span><input value={url} onChange={e=>setUrl(e.target.value)} placeholder="http://localhost:3000  ·  https://staging.mysite.com"/></label>
         {status&&!live&&<Callout tone="safe" title={status.llmMode}>{status.llmModeOn?'Redacted summaries go to your configured provider; code and secrets stay local.':'Fully local — mechanical report, zero LLM calls.'}</Callout>}
         {live&&<Callout tone="warn" title={`Live target — ${targetHost(url)} is not localhost`}>
-          The swarm will hit a real website. To prove you own it, place this token at <code>{tokenUrl}</code> and tick below. Live runs are read-only unless a safe DB is configured.
-          <div className="field" style={{marginTop:12}}><span>Ownership token (generated — copy it to the file above)</span>
-            <div style={{display:'flex',gap:8}}><input readOnly value={token} style={{fontFamily:'JetBrains Mono,monospace',fontSize:11}}/><Button variant="secondary" icon="copy" onClick={()=>navigator.clipboard?.writeText(token)}>Copy</Button></div>
-          </div>
-          <label className="checkbox"><input type="checkbox" checked={tokenPlaced} onChange={e=>setTokenPlaced(e.target.checked)}/><span>The token file is live at <code>/.well-known/uipocalypse.txt</code> on this host, and I own this target (or have permission to test it).</span></label>
-          {prod&&<label className="checkbox" style={{marginTop:8}}><input type="checkbox" checked={prodAgree} onChange={e=>setProdAgree(e.target.checked)}/><span><b>This host looks like production</b> (no staging-like subdomain). I understand the swarm will click through a production site — read-only by default.</span></label>}
+          The swarm will click through a real website. {prod&&<><b>This host looks like production</b> (no staging-like subdomain). </>}Live runs are read-only unless a safe DB is configured.
+          <label className="checkbox" style={{marginTop:12}}><input type="checkbox" checked={owned} onChange={e=>setOwned(e.target.checked)}/><span>I own this target (or have permission to test it), and I understand the swarm will click through it{prod?' — including this production site':''}.</span></label>
         </Callout>}
       </Card>
       <Card><h2>Run shape</h2><label className="range-label"><span>Browser agents <b>{agents}</b></span><input type="range" min="1" max="100" value={agents} onChange={e=>setAgents(+e.target.value)}/></label><label className="field"><span>Time budget</span><select value={budget} onChange={e=>setBudget(+e.target.value)}><option value={30}>30 seconds</option><option value={60}>1 minute</option><option value={120}>2 minutes</option><option value={300}>5 minutes</option></select></label></Card>
@@ -665,7 +658,7 @@ function NewRun() {
         <Toggle label="Allow destructive actions" warning="May delete or permanently change test data." value={risky} setValue={(v)=>v?setModal(true):setRisky(false)}/>
         <Toggle label="Allow external actions" warning="May trigger webhooks, email, or third-party services." value={external} setValue={setExternal}/>
       </Card>
-    </div><aside className="run-estimate"><Card><h3>Run estimate</h3><div><span>Agents</span><b>{agents}</b></div><div><span>Max duration</span><b>{budget>=60?`${budget/60} min`:`${budget}s`}</b></div><div><span>LLM mode</span><b>{status?(status.llmModeOn?'on':'off'):'…'}</b></div><div><span>Risk level</span><Badge tone={risky||external?'critical':'good'}>{risky||external?'ELEVATED':'GUARDED'}</Badge></div><Button onClick={launch} icon="play" disabled={launching||!url||(live&&(!tokenPlaced||(prod&&!prodAgree)))}>{launching?'Launching…':path?'Review & launch':'Launch — URL only'}</Button><small>Nothing runs until you launch. The Safety Guard checks the target first.</small>
+    </div><aside className="run-estimate"><Card><h3>Run estimate</h3><div><span>Agents</span><b>{agents}</b></div><div><span>Max duration</span><b>{budget>=60?`${budget/60} min`:`${budget}s`}</b></div><div><span>LLM mode</span><b>{status?(status.llmModeOn?'on':'off'):'…'}</b></div><div><span>Risk level</span><Badge tone={risky||external?'critical':'good'}>{risky||external?'ELEVATED':'GUARDED'}</Badge></div><Button onClick={launch} icon="play" disabled={launching||!url||(live&&!owned)}>{launching?'Launching…':path?'Review & launch':'Launch — URL only'}</Button><small>Nothing runs until you launch. The Safety Guard checks the target first.</small>
     {error&&<Callout tone="warn" title="Launch failed">{error}</Callout>}
     </Card></aside></div>
     {modal&&<Modal title="Enable destructive actions?" onClose={()=>setModal(false)}><Callout tone="warn" title="This can permanently change test data">Only continue if this is a disposable test copy and you can restore its database.</Callout><label className="checkbox"><input type="checkbox"/><span>I understand this can delete test data.</span></label><div className="button-row"><Button variant="secondary" onClick={()=>setModal(false)}>Cancel</Button><Button variant="danger" onClick={()=>{setRisky(true);setModal(false)}}>Enable destructive actions</Button></div></Modal>}
