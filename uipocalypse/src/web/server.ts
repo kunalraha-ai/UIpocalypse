@@ -1,6 +1,6 @@
 import { createServer, type Server } from 'node:http';
 import { existsSync, readFileSync } from 'node:fs';
-import { extname, join, normalize } from 'node:path';
+import { dirname, extname, join, normalize } from 'node:path';
 import { createLlmSet, llmModeLine } from '../llm/index.js';
 import { loadConfig } from '../config.js';
 import { initWorkspace, type Workspace } from '../workspace.js';
@@ -68,7 +68,19 @@ export async function startWebServer(opts: {
   const logger = opts.logger ?? createLogger({ filePath: join(workspace.logs, 'web.jsonl') });
   const db = openDb(workspace.db);
   const { config } = loadConfig();
-  const version = JSON.parse(readFileSync(join(import.meta.dirname, '..', '..', 'package.json'), 'utf8')).version as string;
+  // works both as ESM source (import.meta.dirname) and in the CJS bundle
+  // (import.meta.dirname is undefined there — fall back to the executable path)
+  const version = (() => {
+    const here = import.meta.dirname ?? dirname(process.argv[1] ?? '');
+    for (const p of [join(here, '..', '..', 'package.json'), join(here, '..', 'package.json'), join(here, 'package.json')]) {
+      try {
+        return JSON.parse(readFileSync(p, 'utf8')).version as string;
+      } catch {
+        /* keep looking */
+      }
+    }
+    return 'unknown';
+  })();
 
   // ---------------------------------------------------------------- jobs
   let nextJobId = 1;
