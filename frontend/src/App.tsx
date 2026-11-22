@@ -411,7 +411,14 @@ const appNav = [
 ] as const
 
 function AppShell({children, theme, setTheme}:{children:ReactNode;theme:string;setTheme:(x:string)=>void}) {
-  return <div className="app-shell"><aside className="app-side"><Logo compact/><nav>{appNav.map(([i,l,to])=><a href={`#${to}`} className={route()===to?'active':''} key={to}><Icon name={i}/><span>{l}</span></a>)}</nav><div className="app-side-bottom"><a href="#/docs"><Icon name="file"/><span>Docs</span></a><ThemeToggle theme={theme} setTheme={setTheme}/><div className="avatar">AL</div></div></aside><div className="app-main"><header className="app-top"><div><Badge tone="blue">HOSTED PREVIEW</Badge><span>Dashboard concept · local beta is available now</span></div><Button to="/early-access" variant="secondary">Join beta</Button></header>{children}</div></div>
+  const [sideOpen,setSideOpen]=useState(()=>localStorage.getItem('ui-side')==='open')
+  const toggleSide=()=>{ setSideOpen(v=>{ localStorage.setItem('ui-side',v?'closed':'open'); return !v }) }
+  return <div className={`app-shell ${sideOpen?'side-open':''}`}><aside className="app-side">
+    <Logo compact={!sideOpen}/>
+    <button className="side-toggle" onClick={toggleSide} aria-label={sideOpen?'Collapse sidebar':'Expand sidebar'} title={sideOpen?'Collapse sidebar':'Expand sidebar'}><Icon name="arrow"/></button>
+    <nav>{appNav.map(([i,l,to])=><a href={`#${to}`} className={routeParts().path===to?'active':''} key={to}><Icon name={i}/><span>{l}</span></a>)}</nav>
+    <div className="app-side-bottom"><a href="#/docs"><Icon name="file"/><span>Docs</span></a><ThemeToggle theme={theme} setTheme={setTheme}/><div className="avatar">AL</div></div>
+  </aside><div className="app-main"><header className="app-top"><div><Badge tone="blue">LOCAL BETA</Badge><span>Dashboard · everything runs on this machine</span></div><Button to="/early-access" variant="secondary">Join beta</Button></header>{children}</div></div>
 }
 
 function AppPageHead({title,copy,actions}:{title:string;copy?:string;actions?:ReactNode}) {
