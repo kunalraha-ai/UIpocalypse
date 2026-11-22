@@ -1,7 +1,6 @@
 # UIpocalypse — Terms of Use
 
-Plain language. The full license is in `LICENSE` (currently a placeholder,
-pending the project owner's confirmation).
+Plain language. The full license (MIT) is in `LICENSE`.
 
 **This is experimental software.** It is pre-1.0, built and tested on one
 Linux machine by a small project. Expect rough edges, missed bugs, and false

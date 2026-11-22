@@ -10,11 +10,36 @@ Chaotic-user QA for vibecoded apps: a static code scan plus a browser swarm of a
 
 `UIpocalypse | break it here, not in production`
 
-[Features](#features) · [How to use](#how-to-use) · [Architecture](#architecture) · [Tech stack](#tech-stack) · [Safety](#safety) · [Repo layout](#repository-layout)
+[Features](#features) · [How to use](#how-to-use) · [Architecture](#architecture) · [Safety](#safety) · [Repo layout](#repository-layout)
 
 </div>
 
 ---
+
+## Tech stack
+
+<div align="center">
+
+<img src="assets/icons/typescript.svg" width="42" alt="TypeScript" title="TypeScript" />
+<img src="assets/icons/nodedotjs.svg" width="42" alt="Node.js" title="Node.js" />
+<img src="assets/icons/playwright.svg" width="42" alt="Playwright" title="Playwright" />
+<img src="assets/icons/react.svg" width="42" alt="React" title="React" />
+<img src="assets/icons/vite.svg" width="42" alt="Vite" title="Vite" />
+<img src="assets/icons/tailwindcss.svg" width="42" alt="Tailwind CSS" title="Tailwind CSS" />
+<img src="assets/icons/sqlite.svg" width="42" alt="SQLite" title="SQLite" />
+<img src="assets/icons/modelcontextprotocol.svg" width="42" alt="MCP" title="Model Context Protocol" />
+
+</div>
+
+| | Layer | Choices |
+|---|---|---|
+| <img src="assets/icons/typescript.svg" width="16" align="top"> | **Engine** | TypeScript (strict), Node.js 22, esbuild bundle |
+| <img src="assets/icons/playwright.svg" width="16" align="top"> | **Browser automation** | Playwright (Chromium), in-page runtime injected per page |
+| <img src="assets/icons/sqlite.svg" width="16" align="top"> | **State model** | SQLite via better-sqlite3 — states / actions / transitions graph, findings, runs (with machine stamps) |
+| | **LLM layer** | Any OpenAI-compatible provider; fallback chains; fail-fast health checks; mode line on every run |
+| <img src="assets/icons/modelcontextprotocol.svg" width="16" align="top"> | **MCP** | @modelcontextprotocol/sdk (stdio) |
+| <img src="assets/icons/react.svg" width="16" align="top"> <img src="assets/icons/vite.svg" width="16" align="top"> <img src="assets/icons/tailwindcss.svg" width="16" align="top"> | **Web UI** | React 19, Vite 8, Tailwind CSS v4, self-hosted Inter + JetBrains Mono (zero external requests) |
+| | **Safety** | Guard layer: localhost-only targets, destructive-label regex, DB allow-list, secret redaction on every LLM payload |
 
 ## Features
 
@@ -93,18 +118,6 @@ flowchart LR
 
 Everything runs on your machine. The only outbound traffic, ever, is optional redacted summaries to the LLM provider you configure.
 
-## Tech stack
-
-| Layer | Choices |
-|---|---|
-| **Engine** | TypeScript (strict), Node.js 22, esbuild bundle |
-| **Browser automation** | Playwright (Chromium), in-page runtime injected per page |
-| **State model** | SQLite via better-sqlite3 — states / actions / transitions graph, findings, runs (with machine stamps) |
-| **LLM layer** | Any OpenAI-compatible provider; fallback chains; fail-fast health checks; mode line on every run |
-| **MCP** | @modelcontextprotocol/sdk (stdio) |
-| **Web UI** | React 19, Vite 8, Tailwind CSS v4, self-hosted Inter + JetBrains Mono (zero external requests) |
-| **Safety** | Guard layer: localhost-only targets, destructive-label regex, DB allow-list, secret redaction on every LLM payload |
-
 ## Safety
 
 - Targets are **localhost only** unless you explicitly allow-list a host.
@@ -127,11 +140,12 @@ benchmarks/         raw benchmark data and gate logs
 docs/volunteer/     the volunteer kit: quickstart, safe-test-copy guide,
                     what-we-see privacy doc, feedback + log templates
 releases/           volunteer handoff tarballs (gitignored) + sha256
+assets/icons/       brand icons for this README (simple-icons CC0, devicon MIT)
 ```
 
 ## License
 
-Placeholder (MIT text) pending the owner's confirmation — see [`uipocalypse/LICENSE`](uipocalypse/LICENSE). Terms of use: [`uipocalypse/TERMS.md`](uipocalypse/TERMS.md).
+[MIT](uipocalypse/LICENSE) · Terms of use: [`uipocalypse/TERMS.md`](uipocalypse/TERMS.md)
 
 ---
 

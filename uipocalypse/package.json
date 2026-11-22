@@ -1,7 +1,7 @@
 {
   "name": "uipocalypse",
   "version": "0.0.5",
-  "description": "50 chaotic users try to break your app in a couple of minutes — local MCP server + CLI for vibecoded-app QA",
+  "description": "50 chaotic users try to break your app in a couple of minutes \u2014 local MCP server + CLI for vibecoded-app QA",
   "type": "module",
   "private": true,
   "engines": {
@@ -40,5 +40,6 @@
     "typescript": "^5.6.0",
     "typescript-eslint": "^8.72.2",
     "vitest": "^5.1.0"
-  }
+  },
+  "license": "MIT"
 }
