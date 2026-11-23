@@ -285,6 +285,28 @@ function Landing() {
       <SwarmVisual/>
     </section>
 
+    <section className="section page-width">
+      <div className="two-col-content">
+        <div>
+          <SectionTitle eyebrow="Two modes, one product" title="Test locally. Monitor in the cloud." copy="UIpocalypse comes in two modes that share the same engine, the same design, and the same honesty." />
+          <div className="mode-grid">
+            <Card>
+              <div className="card-head"><Icon name="terminal"/><b>Local Tool</b><Badge tone="good">THIS APP</Badge></div>
+              <p className="small">Chaos-test a <strong>disposable copy</strong> of your app on your machine. The swarm clicks, races, and breaks things so you can fix them before deploying.</p>
+              <p className="small muted">Best for: vibecoded apps, pre-deploy checks, CI pipelines</p>
+              <Button to="/app/projects" variant="secondary">Open dashboard</Button>
+            </Card>
+            <Card>
+              <div className="card-head"><Icon name="bot"/><b>Cloud Monitoring</b><Badge tone="blue">SIBLING</Badge></div>
+              <p className="small">Monitor your <strong>live website</strong> for broken links, JS errors, failed requests, slow pages, and SSL problems — with history diff and notifications.</p>
+              <p className="small muted">Best for: production sites, staging, ongoing monitoring</p>
+              <a className="btn btn-primary" href="http://localhost:4311" target="_blank" rel="noopener noreferrer">Open Cloud →</a>
+            </Card>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <section className="signal-strip">
       <div className="page-width"><span>BUILT FOR</span><b>Lovable</b><i>×</i><b>Bolt</b><i>×</i><b>Cursor</b><i>×</i><b>Claude Code</b><i>×</i><b>and your terminal</b></div>
     </section>
@@ -530,6 +552,9 @@ const appNav = [
   ['graph','State graph','/app/graph'],['code','Static scan','/app/static-scan'],['settings','Settings','/app/settings'],
 ] as const
 
+/** the sibling product — UIpocalypse Cloud (hosted monitoring) */
+const CLOUD_URL = 'http://localhost:4311'
+
 function AppShell({children, theme, setTheme}:{children:ReactNode;theme:string;setTheme:(x:string)=>void}) {
   const [sideOpen,setSideOpen]=useState(()=>localStorage.getItem('ui-side')==='open')
   const toggleSide=()=>{ setSideOpen(v=>{ localStorage.setItem('ui-side',v?'closed':'open'); return !v }) }
@@ -537,8 +562,9 @@ function AppShell({children, theme, setTheme}:{children:ReactNode;theme:string;s
     <Logo compact={!sideOpen}/>
     <button className="side-toggle" onClick={toggleSide} aria-label={sideOpen?'Collapse sidebar':'Expand sidebar'} title={sideOpen?'Collapse sidebar':'Expand sidebar'}><Icon name="arrow"/></button>
     <nav>{appNav.map(([i,l,to])=><a href={`#${to}`} className={routeParts().path===to?'active':''} key={to}><Icon name={i}/><span>{l}</span></a>)}</nav>
+    <div className="cloud-link"><a href={CLOUD_URL} target="_blank" rel="noopener noreferrer" title="UIpocalypse Cloud — hosted monitoring for live websites"><Icon name="bot"/><span>Cloud Monitoring</span></a></div>
     <div className="app-side-bottom"><a href="#/docs"><Icon name="file"/><span>Docs</span></a><ThemeToggle theme={theme} setTheme={setTheme}/><div className="avatar">AL</div></div>
-  </aside><div className="app-main"><header className="app-top"><div><Badge tone="blue">LOCAL BETA</Badge><span>Dashboard · everything runs on this machine</span></div><Button to="/early-access" variant="secondary">Join beta</Button></header>{children}</div></div>
+  </aside><div className="app-main"><header className="app-top"><div><Badge tone="blue">LOCAL TOOL</Badge><span>Test copies · everything runs on this machine · <a href={CLOUD_URL} target="_blank" rel="noopener noreferrer" style={{color:'var(--violet)'}}>Cloud Monitoring for live sites →</a></span></div><Button to="/early-access" variant="secondary">Join beta</Button></header>{children}</div></div>
 }
 
 function AppPageHead({title,copy,actions}:{title:string;copy?:string;actions?:ReactNode}) {

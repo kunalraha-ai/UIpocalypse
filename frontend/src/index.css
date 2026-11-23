@@ -149,3 +149,17 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
 @media(max-width:520px){.swarm-stage{height:280px}.swarm-card{transform:none}}
 @media(prefers-reduced-motion:reduce){.swarm-dot,.swarm-finding{animation:none}.swarm-card,.swarm-card:hover{transform:none;transition:none}}
 .hero .swarm-card{width:100%}
+
+/* cloud-monitoring link in the sidebar (between nav and bottom) */
+.cloud-link{width:100%;padding:6px 13px;margin-top:14px;border-top:1px solid var(--line)}
+.cloud-link a{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:8px;color:var(--violet);font-size:11px;font-weight:500;text-decoration:none;transition:.15s}
+.cloud-link a:hover{background:var(--surface-2)}
+.cloud-link a svg{opacity:.8}
+.app-shell.side-open .cloud-link a{padding:7px 12px}
+
+/* two-mode section on the landing page */
+.mode-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:24px}
+.mode-grid .card{display:flex;flex-direction:column;gap:12px}
+.mode-grid .card-head{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:700}
+.mode-grid .card-head .badge{margin-left:auto}
+@media(max-width:720px){.mode-grid{grid-template-columns:1fr}}
