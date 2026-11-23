@@ -4,15 +4,27 @@
 
 # UIpocalypse
 
-**50 chaotic test users try to break your app in a couple of minutes — locally.**
+**Chaos-test locally. Monitor in the cloud. One product, two modes.**
 
-Chaotic-user QA for vibecoded apps: a static code scan plus a browser swarm of adversarial personas (double-clickers, garbage-pasters, race-runners) finds dead buttons, double-submits, races, crashes, and launch-safety holes in a test copy of your app — then writes the report with paste-ready fix prompts.
+**Local Tool** — launch an army of chaotic bot users into a real browser, catch what actually breaks in a test copy of your app, and take fix-ready evidence back to your coding agent.
 
-`UIpocalypse | break it here, not in production`
+**Cloud Monitoring** — watch your live website for broken links, JavaScript errors, failed requests, slow pages, and SSL problems — with history diff and notifications.
 
-[Features](#features) · [How to use](#how-to-use) · [Architecture](#architecture) · [Safety](#safety) · [Repo layout](#repository-layout)
+[Features](#features) · [Run it](#how-to-use) · [Architecture](#architecture) · [Safety](#safety) · [Repo layout](#repository-layout)
 
 </div>
+
+---
+
+## Two modes, one product
+
+| | Local Tool (this repo) | Cloud Monitoring ([UIpocalypse-Cloud](https://github.com/kunalraha-ai/UIpocalypse-cloud)) |
+|---|---|---|
+| **What it does** | Chaos-tests a **disposable copy** of your app on your machine: 30–100 bot users click everything, race each other, paste garbage, and abandon flows | Monitors your **live website** for broken links, JS errors, failed requests, missing images, slow pages, SSL and redirect problems |
+| **Target** | localhost / test copies | Your live site (ownership-verified) |
+| **Output** | Findings with fix prompts, state graph, run diff | Findings with fix hints, history diff, notifications |
+| **Best for** | Vibecoded apps, pre-deploy checks, CI | Production sites, staging, ongoing monitoring |
+| **Port** | `:4310` | `:4311` |
 
 ---
 
@@ -131,9 +143,11 @@ Everything runs on your machine. The only outbound traffic, ever, is optional re
 
 ```
 uipocalypse/        the engine: analyzer, browser runtime, swarm, collector,
-                    reviewer, MCP server, web backend, CLI, tests (141)
+                    reviewer, MCP server, web backend, CLI, tests (146)
 frontend/           the web UI (React + Vite + Tailwind), talks to the
-                    localhost web API
+                    localhost web API on :4310
+UIpocalypse-Cloud/  → https://github.com/kunalraha-ai/UIpocalypse-cloud
+                    (sibling repo — hosted monitoring on :4311)
 sample-app/         a demo Next.js + Supabase app with planted bugs
 held-out-app-2/     Plain Pages — the held-out detector check fixture
 benchmarks/         raw benchmark data and gate logs
