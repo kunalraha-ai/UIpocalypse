@@ -129,7 +129,7 @@ export async function startWebServer(opts: {
   const workspace = initWorkspace(opts.workspaceRoot);
   const logger = opts.logger ?? createLogger({ filePath: join(workspace.logs, 'web.jsonl') });
   const db = openDb(workspace.db);
-  const { config } = loadConfig();
+  let { config } = loadConfig();
   // works both as ESM source (import.meta.dirname) and in the CJS bundle
   // (import.meta.dirname is undefined there — fall back to the executable path)
   const version = (() => {
@@ -430,6 +430,100 @@ export async function startWebServer(opts: {
             return send(200, diff);
           }
 
+          // ---- monitors (scheduled recurring runs against live sites)
+          if (url.pathname === '/api/monitors' && req.method === 'GET') {
+            const rows = db
+              .prepare('SELECT * FROM monitors ORDER BY id DESC')
+              .all() as Array<Record<string, unknown>>;
+            const monitors = rows.map((r) => {
+              const lastRunId = r.last_run_id as number | null;
+              const lastRun = lastRunId ? getRun(db, lastRunId) : null;
+              const findings = lastRunId
+                ? (db.prepare('SELECT COUNT(DISTINCT cluster_id)::int AS n FROM findings WHERE run_id = ?').get(lastRunId) as { n: number }).n
+                : 0;
+              return {
+                id: r.id,
+                name: r.name,
+                url: r.url,
+                frequency: r.frequency,
+                enabled: Boolean(r.enabled),
+                last_run_at: r.last_run_at,
+                last_run_id: lastRunId,
+                last_run_status: lastRun?.disabled_classes ? 'read-only' : 'completed',
+                open_findings: findings,
+                created_at: r.created_at,
+              };
+            });
+            return send(200, { monitors });
+          }
+
+          if (url.pathname === '/api/monitors' && req.method === 'POST') {
+            const body = (await readBody()) as { url?: string; name?: string; frequency?: string };
+            if (typeof body.url !== 'string' || !body.url.trim()) return send(400, { error: '"url" is required' });
+            const freq = ['hourly', 'daily', 'weekly', 'manual'].includes(body.frequency ?? '') ? body.frequency! : 'daily';
+            const name = body.name?.trim() || new URL(body.url).hostname;
+            const info = db
+              .prepare('INSERT INTO monitors (name, url, frequency) VALUES (?, ?, ?)')
+              .run(name, body.url.trim(), freq);
+            const row = db.prepare('SELECT * FROM monitors WHERE id = ?').get(Number(info.lastInsertRowid));
+            return send(201, { monitor: row });
+          }
+
+          const monitorMatch = /^\/api\/monitors\/(\d+)$/.exec(url.pathname);
+          if (monitorMatch) {
+            const id = Number(monitorMatch[1]);
+            const existing = db.prepare('SELECT id FROM monitors WHERE id = ?').get(id);
+            if (!existing) return send(404, { error: 'no such monitor' });
+
+            if (req.method === 'DELETE') {
+              db.prepare('DELETE FROM monitors WHERE id = ?').run(id);
+              return send(200, { deleted: true });
+            }
+            if (req.method === 'PATCH') {
+              const body = (await readBody()) as { enabled?: boolean; frequency?: string };
+              if (typeof body.enabled === 'boolean') db.prepare('UPDATE monitors SET enabled = ? WHERE id = ?').run(body.enabled ? 1 : 0, id);
+              if (body.frequency && ['hourly', 'daily', 'weekly', 'manual'].includes(body.frequency)) db.prepare('UPDATE monitors SET frequency = ? WHERE id = ?').run(body.frequency, id);
+              const row = db.prepare('SELECT * FROM monitors WHERE id = ?').get(id);
+              return send(200, { monitor: row });
+            }
+            return send(405, { error: 'method not allowed' });
+          }
+
+          // trigger a manual run for a monitor
+          const monitorRunMatch = /^\/api\/monitors\/(\d+)\/run$/.exec(url.pathname);
+          if (monitorRunMatch && req.method === 'POST') {
+            const id = Number(monitorRunMatch[1]);
+            const monitor = db.prepare('SELECT * FROM monitors WHERE id = ?').get(id) as Record<string, unknown> | undefined;
+            if (!monitor) return send(404, { error: 'no such monitor' });
+            if (hasRunningJob()) return send(409, { error: 'a run is already in progress' });
+            const monitorUrl = monitor.url as string;
+            const host = (() => { try { return new URL(monitorUrl).hostname; } catch { return ''; } })();
+            const isLive = host !== '' && !isLocalHost(host) && !hostMatches(host, config.allowHosts);
+            if (isLive) {
+              // monitors imply ownership: the user added the URL deliberately
+              config = { ...config, allowHosts: [...config.allowHosts, host] };
+            }
+            const jobId = await startRun({
+              url: monitorUrl,
+              agents: 5,
+              budgetSeconds: 60,
+              liveTarget: isLive ? { attested: true } : undefined,
+            });
+            db.prepare('UPDATE monitors SET last_run_at = datetime("now"), last_run_id = NULL WHERE id = ?').run(id);
+            // update last_run_id once the job completes
+            void (async () => {
+              for (let i = 0; i < 120; i++) {
+                await new Promise((r) => setTimeout(r, 5000));
+                const job = jobs.get(jobId);
+                if (job && job.status !== 'running' && job.runId) {
+                  db.prepare('UPDATE monitors SET last_run_id = ? WHERE id = ?').run(job.runId, id);
+                  break;
+                }
+              }
+            })();
+            return send(202, { jobId });
+          }
+
           if (req.method === 'POST' && url.pathname === '/api/scan') {
             const body = (await readBody()) as { path?: string };
             if (typeof body.path !== 'string' || !body.path.trim()) return send(400, { error: '"path" is required (a local folder or a git URL)' });
@@ -482,6 +576,40 @@ export async function startWebServer(opts: {
 
   logger.info('uipocalypse web UI listening', { address: addr.address, port: addr.port });
 
+  // ---- monitor scheduler: checks every 60s if any monitor is due
+  const schedulerTimer = setInterval(async () => {
+    try {
+      const due = db
+        .prepare(
+          `SELECT * FROM monitors WHERE enabled = 1 AND frequency != 'manual' AND
+           (last_run_at IS NULL OR last_run_at <= datetime('now', '-' ||
+             CASE frequency WHEN 'hourly' THEN '1 hours'
+                             WHEN 'daily'  THEN '1 days'
+                             WHEN 'weekly' THEN '7 days' END))`,
+        )
+        .all() as Array<Record<string, unknown>>;
+      for (const monitor of due) {
+        if (hasRunningJob()) break; // one at a time
+        const monitorUrl = monitor.url as string;
+        const host = (() => { try { return new URL(monitorUrl).hostname; } catch { return ''; } })();
+        const isLive = host !== '' && !isLocalHost(host) && !hostMatches(host, config.allowHosts);
+        if (isLive) {
+          config = { ...config, allowHosts: [...config.allowHosts, host] };
+        }
+        const jobId = await startRun({
+          url: monitorUrl,
+          agents: 3,
+          budgetSeconds: 45,
+          liveTarget: isLive ? { attested: true } : undefined,
+        });
+        db.prepare('UPDATE monitors SET last_run_at = datetime("now") WHERE id = ?').run(monitor.id);
+        logger.info('monitor scheduled run started', { monitorId: monitor.id, url: monitorUrl, jobId });
+      }
+    } catch (e) {
+      logger.warn('monitor scheduler error', { error: String(e).slice(0, 200) });
+    }
+  }, 60_000);
+
   return {
     httpServer,
     port: addr.port,
@@ -489,6 +617,7 @@ export async function startWebServer(opts: {
     workspace,
     close: () =>
       new Promise<void>((resolve) => {
+        clearInterval(schedulerTimer);
         db.close();
         httpServer.close(() => resolve());
       }),

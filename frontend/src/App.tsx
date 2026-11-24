@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { api, loadProject, saveProject, routeParts, isLocalTarget, targetHost, looksLikeProdTarget, type Report, type RunRow, type Status, type StaticIssue, type Graph, type Diff, type JobEvent } from './api'
+import { api, loadProject, saveProject, routeParts, isLocalTarget, targetHost, looksLikeProdTarget, type Report, type RunRow, type Status, type StaticIssue, type Graph, type Diff, type JobEvent, type Monitor } from './api'
 
 type IconName =
   | 'arrow' | 'bolt' | 'bot' | 'check' | 'code' | 'copy' | 'eye' | 'file'
@@ -297,10 +297,10 @@ function Landing() {
               <Button to="/app/projects" variant="secondary">Open dashboard</Button>
             </Card>
             <Card>
-              <div className="card-head"><Icon name="bot"/><b>Cloud Monitoring</b><Badge tone="blue">SIBLING</Badge></div>
-              <p className="small">Monitor your <strong>live website</strong> for broken links, JS errors, failed requests, slow pages, and SSL problems — with history diff and notifications.</p>
+              <div className="card-head"><Icon name="bot"/><b>Site Monitoring</b><Badge tone="blue">BUILT IN</Badge></div>
+              <p className="small">Monitor your <strong>live website</strong> for broken links, JS errors, failed requests, slow pages, and SSL problems — with scheduled runs, history diff, and notifications.</p>
               <p className="small muted">Best for: production sites, staging, ongoing monitoring</p>
-              <a className="btn btn-primary" href="http://localhost:4311" target="_blank" rel="noopener noreferrer">Open Cloud →</a>
+              <a className="btn btn-primary" href="#/app/monitor">Open Monitors →</a>
             </Card>
           </div>
         </div>
@@ -552,8 +552,10 @@ const appNav = [
   ['graph','State graph','/app/graph'],['code','Static scan','/app/static-scan'],['settings','Settings','/app/settings'],
 ] as const
 
-/** the sibling product — UIpocalypse Cloud (hosted monitoring) */
-const CLOUD_URL = 'http://localhost:4311'
+/** monitoring nav (second group in the sidebar) */
+const monitorNav = [
+  ['eye','Monitors','/app/monitor'],['plus','Add monitor','/app/monitor/new'],
+] as const
 
 function AppShell({children, theme, setTheme}:{children:ReactNode;theme:string;setTheme:(x:string)=>void}) {
   const [sideOpen,setSideOpen]=useState(()=>localStorage.getItem('ui-side')==='open')
@@ -562,9 +564,10 @@ function AppShell({children, theme, setTheme}:{children:ReactNode;theme:string;s
     <Logo compact={!sideOpen}/>
     <button className="side-toggle" onClick={toggleSide} aria-label={sideOpen?'Collapse sidebar':'Expand sidebar'} title={sideOpen?'Collapse sidebar':'Expand sidebar'}><Icon name="arrow"/></button>
     <nav>{appNav.map(([i,l,to])=><a href={`#${to}`} className={routeParts().path===to?'active':''} key={to}><Icon name={i}/><span>{l}</span></a>)}</nav>
-    <div className="cloud-link"><a href={CLOUD_URL} target="_blank" rel="noopener noreferrer" title="UIpocalypse Cloud — hosted monitoring for live websites"><Icon name="bot"/><span>Cloud Monitoring</span></a></div>
+    <div className="side-group-label">MONITORING</div>
+    <nav>{monitorNav.map(([i,l,to])=><a href={`#${to}`} className={routeParts().path===to?'active':''} key={to}><Icon name={i}/><span>{l}</span></a>)}</nav>
     <div className="app-side-bottom"><a href="#/docs"><Icon name="file"/><span>Docs</span></a><ThemeToggle theme={theme} setTheme={setTheme}/><div className="avatar">AL</div></div>
-  </aside><div className="app-main"><header className="app-top"><div><Badge tone="blue">LOCAL TOOL</Badge><span>Test copies · everything runs on this machine · <a href={CLOUD_URL} target="_blank" rel="noopener noreferrer" style={{color:'var(--violet)'}}>Cloud Monitoring for live sites →</a></span></div><Button to="/early-access" variant="secondary">Join beta</Button></header>{children}</div></div>
+  </aside><div className="app-main"><header className="app-top"><div><Badge tone="blue">LOCAL TOOL</Badge><span>Test copies & live monitoring · everything runs on this machine</span></div><Button to="/early-access" variant="secondary">Join beta</Button></header>{children}</div></div>
 }
 
 function AppPageHead({title,copy,actions}:{title:string;copy?:string;actions?:ReactNode}) {
@@ -978,6 +981,102 @@ function Sitemap() {
   return <><PageHero eyebrow="Navigation map" title="Everything has a place." copy="A reference for the marketing, learning, and future product surfaces in this prototype."/><section className="section page-width sitemap-grid">{groups.map(([g,items])=><Card key={g as string}><h2>{g}</h2>{(items as string[]).map(x=><span key={x}><Icon name="arrow"/>{x}</span>)}</Card>)}</section></>
 }
 
+// ---- MONITORING PAGES (native, replacing the separate Cloud frontend)
+
+function MonitorList() {
+  const [monitors,setMonitors]=useState<Monitor[]|null>(null)
+  const [error,setError]=useState('')
+  const [busy,setBusy]=useState(false)
+  const refresh=()=>{ api.monitors().then(r=>setMonitors(r.monitors)).catch(e=>setError(String(e.message??e))) }
+  useEffect(()=>{ refresh() },[])
+
+  const runNow=async(id:number)=>{
+    setBusy(true); setError('')
+    try{ const {jobId}=await api.runMonitor(id); navigate(`/app/live-run?job=${jobId}`) }
+    catch(e){ setError(String(e instanceof Error?e.message:e)) } finally{ setBusy(false) }
+  }
+
+  return <div className="app-page">
+    <AppPageHead title="Monitors" copy="Websites on a recurring check schedule. Each run uses the full swarm against your live site."
+      actions={<Button to="/app/monitor/new" icon="plus">Add monitor</Button>}/>
+    {error&&<Callout tone="warn" title="Error">{error}</Callout>}
+    {monitors===null&&<Card><p style={{padding:'.5rem',opacity:.6}}>Loading…</p></Card>}
+    {monitors&&monitors.length===0&&<Card><p style={{padding:'1rem'}}>No monitors yet. <a href="#/app/monitor/new">Add your first monitor</a> to start checking a live site on a schedule.</p></Card>}
+    <div className="monitor-grid">
+      {monitors?.map(m=><Card key={m.id} className="monitor-card">
+        <div className="monitor-head">
+          <div>
+            <h3 style={{margin:0,fontSize:15}}>{m.name}</h3>
+            <a href={m.url} target="_blank" rel="noopener noreferrer" style={{fontSize:12,color:'var(--violet)'}}>{m.url.replace(/^https?:\/\//,'')}</a>
+          </div>
+          <Badge tone={m.enabled?'good':'neutral'}>{m.enabled?m.frequency.toUpperCase():'PAUSED'}</Badge>
+        </div>
+        <div className="monitor-meta">
+          <span>Findings: <b>{m.open_findings}</b></span>
+          <span>Last run: {m.last_run_at?new Date(m.last_run_at+'Z').toLocaleString():'never'}</span>
+          {m.last_run_id&&<a href={`#/app/report?run=${m.last_run_id}`}>View report →</a>}
+        </div>
+        <div className="monitor-actions">
+          <Button variant="secondary" onClick={()=>runNow(m.id)} disabled={busy}>Run now</Button>
+          <Button variant="ghost" onClick={()=>{api.updateMonitor(m.id,{enabled:!m.enabled}).then(refresh)}}>{m.enabled?'Pause':'Resume'}</Button>
+          <Button variant="danger" onClick={()=>{api.deleteMonitor(m.id).then(refresh)}}>Delete</Button>
+        </div>
+      </Card>)}
+    </div>
+  </div>
+}
+
+function MonitorNew() {
+  const [url,setUrl]=useState('')
+  const [name,setName]=useState('')
+  const [freq,setFreq]=useState('daily')
+  const [error,setError]=useState('')
+  const [creating,setCreating]=useState(false)
+
+  const create=async()=>{
+    setCreating(true); setError('')
+    try{
+      const {monitor}=await api.createMonitor({url:url.trim(),name:name.trim()||undefined,frequency:freq})
+      // run it immediately so the user sees results
+      const {jobId}=await api.runMonitor(monitor.id)
+      navigate(`/app/live-run?job=${jobId}`)
+    }catch(e){ setError(String(e instanceof Error?e.message:e)); setCreating(false) }
+  }
+
+  return <div className="app-page narrow-app">
+    <AppPageHead title="Add a monitor" copy="Set a live website on a recurring check schedule."/>
+    <Card>
+      <h2>Site</h2>
+      <label className="field"><span>Website URL</span>
+        <input value={url} onChange={e=>setUrl(e.target.value)} placeholder="https://mysite.com"/>
+      </label>
+      <label className="field"><span>Name <small style={{opacity:.55}}>(optional)</small></span>
+        <input value={name} onChange={e=>setName(e.target.value)} placeholder="My production site"/>
+      </label>
+      {url&&!isLocalTarget(url)&&<Callout tone="warn" title="Live target">
+        This is a live website. The swarm will click through it — read-only (no form submits or destructive actions).
+        By adding this monitor you confirm you own the site or have permission to test it.
+      </Callout>}
+      <h2 style={{marginTop:20}}>Schedule</h2>
+      <label className="field"><span>Check frequency</span>
+        <select value={freq} onChange={e=>setFreq(e.target.value)}>
+          <option value="hourly">Hourly</option>
+          <option value="daily">Daily</option>
+          <option value="weekly">Weekly</option>
+          <option value="manual">Manual only</option>
+        </select>
+      </label>
+      <p className="muted small" style={{fontSize:11}}>
+        Scheduled runs use 3 agents for 45 seconds — enough to catch broken pages, JS errors, and failed requests without hammering your site.
+      </p>
+      {error&&<Callout tone="warn" title="Error">{error}</Callout>}
+      <Button onClick={create} disabled={creating||!url.trim()} icon="play">
+        {creating?'Creating…':'Create & run now'}
+      </Button>
+    </Card>
+  </div>
+}
+
 function App() {
   const {path:rawPath}=routeParts()
   const [path,setPath]=useState(rawPath)
@@ -1010,7 +1109,7 @@ function App() {
   if(path==='/signin'||path==='/signup'||path==='/forgot') return <Auth mode={path.slice(1) as 'signin'|'signup'|'forgot'}/>
   if(path==='/app/onboarding') return <Onboarding/>
   if(path.startsWith('/app')||path==='/share/report') {
-    const page=path==='/app/projects'?<Projects/>:path==='/app/project'?<ProjectOverview/>:path==='/app/new-run'?<NewRun/>:path==='/app/live-run'?<LiveRun/>:path==='/app/report'?<RunReport/>:path==='/app/finding'?<FindingDetail/>:path==='/app/graph'?<StateGraph/>:path==='/app/compare'?<CompareRuns/>:path==='/app/static-scan'?<StaticScan/>:path==='/app/settings'?<Settings/>:<Projects/>
+    const page=path==='/app/projects'?<Projects/>:path==='/app/project'?<ProjectOverview/>:path==='/app/new-run'?<NewRun/>:path==='/app/live-run'?<LiveRun/>:path==='/app/report'?<RunReport/>:path==='/app/finding'?<FindingDetail/>:path==='/app/graph'?<StateGraph/>:path==='/app/compare'?<CompareRuns/>:path==='/app/static-scan'?<StaticScan/>:path==='/app/settings'?<Settings/>:path==='/app/monitor'?<MonitorList/>:path==='/app/monitor/new'?<MonitorNew/>:<Projects/>
     return path==='/share/report'?<RunReport shared/>:<AppShell theme={theme} setTheme={setTheme}>{page}</AppShell>
   }
   return <MarketingShell theme={theme} setTheme={setTheme}>{content||<NotFound/>}</MarketingShell>

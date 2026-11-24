@@ -163,3 +163,14 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
 .mode-grid .card-head{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:700}
 .mode-grid .card-head .badge{margin-left:auto}
 @media(max-width:720px){.mode-grid{grid-template-columns:1fr}}
+
+/* ---- monitoring pages (native, replacing the separate Cloud frontend) ---- */
+.side-group-label{width:100%;padding:8px 13px 4px;font:500 8px 'JetBrains Mono';letter-spacing:.15em;color:var(--muted);opacity:.6;text-transform:uppercase}
+.monitor-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px;margin-top:16px}
+.monitor-card{display:flex;flex-direction:column;gap:12px}
+.monitor-head{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+.monitor-meta{display:flex;flex-wrap:wrap;gap:10px;font-size:12px;color:var(--muted)}
+.monitor-meta b{color:var(--ink)}
+.monitor-meta a{color:var(--violet)}
+.monitor-actions{display:flex;gap:8px;margin-top:auto;padding-top:8px;border-top:1px solid var(--line)}
+.monitor-actions .btn{padding:6px 12px;font-size:11px}

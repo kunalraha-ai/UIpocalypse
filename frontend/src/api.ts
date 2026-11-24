@@ -116,6 +116,19 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   return json
 }
 
+export type Monitor = {
+  id: number
+  name: string
+  url: string
+  frequency: 'hourly' | 'daily' | 'weekly' | 'manual'
+  enabled: boolean
+  last_run_at: string | null
+  last_run_id: number | null
+  last_run_status: string
+  open_findings: number
+  created_at: string
+}
+
 export const api = {
   status: () => get<Status>('/api/status'),
   runs: () => get<{ runs: RunRow[] }>('/api/runs'),
@@ -126,6 +139,15 @@ export const api = {
   startRun: (input: { path?: string; url: string; agents?: number; budgetSeconds?: number; optIn?: { destructive?: boolean; externalSideEffects?: boolean }; liveTarget?: { attested?: boolean; ownershipToken?: string; prodOverride?: boolean } }) =>
     post<{ jobId: number }>('/api/runs', input),
   job: (jobId: number) => get<{ jobId: number; status: 'running' | 'done' | 'error'; runId?: number; error?: string }>(`/api/jobs/${jobId}`),
+
+  // ---- monitors
+  monitors: () => get<{ monitors: Monitor[] }>('/api/monitors'),
+  createMonitor: (input: { url: string; name?: string; frequency?: string }) =>
+    post<{ monitor: Monitor }>('/api/monitors', input),
+  deleteMonitor: (id: number) => fetch(`/api/monitors/${id}`, { method: 'DELETE' }).then((r) => r.json()),
+  updateMonitor: (id: number, input: { enabled?: boolean; frequency?: string }) =>
+    fetch(`/api/monitors/${id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(input) }).then((r) => r.json()),
+  runMonitor: (id: number) => post<{ jobId: number }>(`/api/monitors/${id}/run`, {}),
 
   /** Subscribe to a job's event stream (SSE). Returns an unsubscribe fn. */
   events(jobId: number, onEvent: (ev: JobEvent) => void, onEnd?: () => void): () => void {
