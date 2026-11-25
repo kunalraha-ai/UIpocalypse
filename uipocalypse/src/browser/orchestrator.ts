@@ -14,6 +14,7 @@ import { StateGraph } from '../graph/graph.js';
 import { hashAriaSnapshot, normalizeRoute } from '../graph/hash.js';
 import { DetectorHub, type FindingCandidate, ALIVE_REASONS } from './detectors.js';
 import { checkIdempotency } from './detectors-filters.js';
+import { verifyFindings, type VerificationStats } from './verify.js';
 import { ALL_PERSONAS, createPersona, type PersonaDecision } from '../agent/personas.js';
 import { runRace, pgInvariantRunner, dbUrlFromEnv, dbHostFromUrl, attributeDuplicateEffects, type InvariantResult } from './race.js';
 import { withTimeout, OP_TIMEOUT_MS, armWatchdog } from './timeout.js';
@@ -77,6 +78,8 @@ export type SwarmResult = {
   racePreExisting: string[];
   /** dead-click verdicts suppressed because the control has produced feedback before (repeat-activation) */
   suppressedDeadVerdicts: number;
+  /** post-swarm verification sweep tally (reproducibility filter) */
+  verification: VerificationStats;
   /** controls that worked on some interactions this run but not others (inconsistent_feedback findings) */
   inconsistentFeedbackActions: string[];
   /** LLM calls made by stalled agents (should be ~0 after the phase-6 fix) */
@@ -584,6 +587,31 @@ export async function swarm(opts: SwarmOptions): Promise<SwarmResult> {
   }
   const agentWallMs = Date.now() - agentPhaseStart;
 
+  // ---------------------------------- verification sweep (reproducibility filter)
+  // A dead-click verdict is single-shot during the swarm: one click, no
+  // observable effect, flagged. This re-performs each dead_click /
+  // inconsistent_feedback finding once on a FRESH page: still dead →
+  // reproduced (high confidence); works now → flaky (downgraded); control
+  // gone → unverifiable (verdict untouched, stated). Config: verifyFindings.
+  // Only re-clicks what the swarm already clicked — no new risk class.
+  const verification: VerificationStats = { attempted: 0, reproduced: 0, flaky: 0, unverifiable: 0 };
+  if (effectiveConfig.verifyFindings && !opts.abort?.aborted && findings.length > 0) {
+    try {
+      Object.assign(
+        verification,
+        await verifyFindings({
+          browser,
+          findings,
+          logger: log,
+        }),
+      );
+    } catch (e) {
+      log.warn('verification sweep failed (findings keep their original verdicts)', {
+        error: String(e).slice(0, 200),
+      });
+    }
+  }
+
   // -------------------------------------------- duplicate_effect sweep (TRD §3.6)
   // Runs BEFORE race mode: duplicate_request proves the app has no submit
   // guard; a failing invariant at this point (agents done, race not yet fired)
@@ -778,6 +806,7 @@ export async function swarm(opts: SwarmOptions): Promise<SwarmResult> {
     duplicateEffects,
     racePreExisting,
     suppressedDeadVerdicts: suppressedDeadVerdicts.n,
+    verification,
     inconsistentFeedbackActions,
     escalationCalls: escalationCallCounter.n,
     disabledClasses,

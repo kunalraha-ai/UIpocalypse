@@ -36,7 +36,7 @@ export type FindingCandidate = {
 const BENIGN = /(favicon|\.map$|sentry|analytics|hotjar|googletagmanager)/i;
 
 /** perform() reasons that count as REAL app feedback (repeat-activation suppression). */
-export const ALIVE_REASONS = ['mutation', 'request', 'nav', 'aria', 'dialog', 'dialog-feedback'];
+export const ALIVE_REASONS = ['mutation', 'request', 'nav', 'aria', 'dialog', 'dialog-feedback', 'storage', 'console'];
 
 export class DetectorHub {
   private candidates: FindingCandidate[] = [];
@@ -166,7 +166,7 @@ export class DetectorHub {
       confidence: 'high',
       evidence: {
         action: evidence.actionLabel,
-        why: 'no DOM mutation, network request, URL change, focus or ARIA state change within 500 ms',
+        why: 'no DOM mutation, network request, URL change, storage/console signal, focus or ARIA state change within the settle window (~1.5 s, activity-bounded)',
       },
       steps: evidence.steps,
       url: evidence.url,

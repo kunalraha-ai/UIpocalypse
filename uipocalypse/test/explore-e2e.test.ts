@@ -84,7 +84,9 @@ describe('explore(): scout + wanderer end-to-end on the static fixture', () => {
     const evidence = JSON.parse(firstDead.evidence_json!) as { action: string; steps: string[] };
     expect(evidence.action).toBe('Dead button');
     expect(Array.isArray(evidence.steps)).toBe(true);
-  });
+    // NOTE: the settle window (activity-bounded, up to ~1.5 s on quiet pages)
+    // makes no-signal steps slower on purpose — precision over step count.
+  }, 90_000);
 
   it('run 2 (cached graph): ≥ 50% fewer LLM calls — the Phase 3 gate mechanism', async () => {
     const llm2 = new FakeLlm();

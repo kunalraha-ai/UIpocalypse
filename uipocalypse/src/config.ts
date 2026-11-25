@@ -41,6 +41,14 @@ export const ConfigSchema = z.object({
    * (web UI / API / MCP), which takes precedence over this flag.
    */
   idempotencyOptIn: z.boolean().default(false),
+  /**
+   * Post-swarm verification sweep (default ON): re-perform every dead_click
+   * and inconsistent_feedback finding once on a fresh page. Still dead →
+   * reproduced (confidence up). Works on retry → flaky (downgraded).
+   * This re-clicks controls the swarm already clicked — no new risk class,
+   * bounded to 10 findings / 60 s.
+   */
+  verifyFindings: z.boolean().default(true),
   /** Loud, explicit override for prod-like targets. Still requires the ownership token. */
   prodOverride: z.boolean().default(false),
   /** Expected value of /.well-known/uipocalypse.txt on non-local targets (SAFETY.md G2). */

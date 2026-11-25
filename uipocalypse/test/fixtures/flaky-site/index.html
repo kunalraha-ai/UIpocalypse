@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Flaky Fixture</title>
+  </head>
+  <body>
+    <h1>Flaky Fixture</h1>
+    <!-- never works: dead on every click, on every fresh page — the sweep must REPRODUCE this -->
+    <button id="dead">Truly dead</button>
+    <!-- works, but the effect lands at ~900 ms — inside the settle window, far outside the old fixed 500 ms -->
+    <button id="slow">Slow handler</button>
+    <!-- no DOM change at all: the ONLY effect is a localStorage write — alive via the storage signal -->
+    <button id="store" onclick="localStorage.setItem('uip-toggled', String(Date.now()))">Store only</button>
+    <!-- no DOM change at all: the ONLY effect is a console.error — alive via the console signal -->
+    <button id="err" onclick="console.error('wired: error-only control fired')">Error only</button>
+    <!-- works exactly ONCE per page load: alive on the first click, dead after.
+         During the swarm this reads as inconsistent_feedback; on the sweep's
+         FRESH page the first click works again — the flaky downgrade path. -->
+    <button id="wearsout">Wears out</button>
+    <script>
+      document.getElementById('slow').onclick = function () {
+        setTimeout(function () { document.title = 'slow-fired ' + Date.now(); }, 900);
+      };
+      var wearsClicks = 0;
+      document.getElementById('wearsout').onclick = function () {
+        wearsClicks++;
+        if (wearsClicks === 1) document.title = 'wore once';
+      };
+    </script>
+  </body>
+</html>

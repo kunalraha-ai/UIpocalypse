@@ -70,6 +70,29 @@ export const RUNTIME_SOURCE = String.raw`
     origError.apply(console, arguments);
   };
 
+  // ---- storage fingerprint: a control whose only effect is a localStorage /
+  // sessionStorage write is wired, not dead (theme toggles, dismissed banners,
+  // media preferences). Values are sampled + hashed, never sent in full.
+  function storageFingerprint() {
+    var parts = [];
+    try {
+      for (var i = 0; i < localStorage.length; i++) {
+        var k = localStorage.key(i);
+        parts.push(k + '=' + String(localStorage.getItem(k)).slice(0, 40));
+      }
+    } catch (e) { /* storage can throw (sandboxed iframes) — count as absent */ }
+    try {
+      for (var j = 0; j < sessionStorage.length; j++) {
+        var sk = sessionStorage.key(j);
+        parts.push('s:' + sk + '=' + String(sessionStorage.getItem(sk)).slice(0, 40));
+      }
+    } catch (e) { /* same */ }
+    var joined = parts.join('|');
+    var h = 0;
+    for (var c = 0; c < joined.length; c++) h = (h * 31 + joined.charCodeAt(c)) | 0;
+    return parts.length + ':' + h;
+  }
+
   // ---- native dialog feedback: alert/confirm/prompt are app feedback too —
   // a dead-click verdict must not miss them (found on the held-out app: a
   // button whose only effect is alert() read as dead)
@@ -243,6 +266,8 @@ export const RUNTIME_SOURCE = String.raw`
         aria: ariaState(el),
         dialog: !!document.querySelector('dialog[open]'),
         nativeDialogs: DLG.count,
+        storage: storageFingerprint(),
+        console: E.consoleErrors.length,
       };
 
       if (textLike && typeof opts.input === 'string') {
@@ -263,8 +288,33 @@ export const RUNTIME_SOURCE = String.raw`
       if (el.closest && el.closest('audio, video, [class*="player"], [class*="audio"]')) {
         waitTime = Math.max(waitTime, 2000); // media loading takes longer in headless
       }
+      await delay(waitTime);
 
       await delay(waitTime);
+
+      // settle + bounded extension: if the click has produced NO signal yet,
+      // keep the verdict window open up to 1 s longer (total ~1.5 s) — the
+      // "agent clicked too early / UI hadn't loaded" false-positive class.
+      // Once a signal lands, wait only until DOM/network go quiet (two
+      // consecutive quiet polls) so chained handlers can finish. Bounded both ways.
+      var extra = 0;
+      var quiet = 0;
+      var lastM = M.count;
+      var lastN = N.count;
+      var hadSignal =
+        M.count > before.mutations || N.count > before.requests ||
+        location.href !== before.url || DLG.count > before.nativeDialogs;
+      while (extra < 1000) {
+        await delay(150);
+        extra += 150;
+        if (M.count > before.mutations || N.count > before.requests ||
+            location.href !== before.url || DLG.count > before.nativeDialogs) hadSignal = true;
+        if (M.count === lastM && N.count === lastN) quiet++;
+        else quiet = 0;
+        lastM = M.count;
+        lastN = N.count;
+        if (hadSignal && quiet >= 2) break;
+      }
 
       const after = {
         mutations: M.count,
@@ -274,6 +324,8 @@ export const RUNTIME_SOURCE = String.raw`
         aria: ariaState(el),
         dialog: !!document.querySelector('dialog[open]'),
         nativeDialogs: DLG.count,
+        storage: storageFingerprint(),
+        console: E.consoleErrors.length,
       };
       const reasons = [];
       if (after.mutations > before.mutations) reasons.push('mutation');
@@ -283,6 +335,8 @@ export const RUNTIME_SOURCE = String.raw`
       if (after.aria !== before.aria) reasons.push('aria');
       if (after.dialog && !before.dialog) reasons.push('dialog');
       if (after.nativeDialogs > before.nativeDialogs) reasons.push('dialog-feedback');
+      if (after.storage !== before.storage) reasons.push('storage');
+      if (after.console > before.console) reasons.push('console');
       if (blocked && reasons.length === 0) reasons.push('validation-blocked');
       if (textLike && reasons.length === 0) {
         if (typeof opts.input === 'string') {
