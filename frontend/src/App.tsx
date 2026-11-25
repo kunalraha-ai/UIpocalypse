@@ -757,8 +757,14 @@ function RunReport({shared=false}:{shared?:boolean}) {
   const runRow=runs?.find(r=>r.id===runId)??null
   useEffect(()=>{ if(runId) api.report(runId).then(r=>setReport(r.report)).catch(e=>setError(String(e.message??e))) },[runId])
   const issues=report?.issues??[]
+  const known=report?.knownIssues??[]
   const cov=report?.coverage
   const tone=(s:string)=>s==='high'?'high':s==='critical'?'critical':s==='medium'?'medium':'neutral'
+  const [ackKey,setAckKey]=useState<string|null>(null)
+  const [ackReason,setAckReason]=useState('')
+  const refresh=()=>{ if(runId) api.report(runId).then(r=>setReport(r.report)).catch(()=>{}) }
+  const acknowledge=async()=>{ if(!ackKey||!runId) return; await api.ignoreIssue(runId,ackKey,ackReason.trim()||undefined).catch(()=>{}); setAckKey(null); setAckReason(''); refresh() }
+  const unacknowledge=async(id:number)=>{ await api.unignore(id).catch(()=>{}); refresh() }
 
   return <div className={shared?'shared-report page-width':'app-page'}>{shared&&<div className="shared-head"><Logo/><Badge tone="blue">SHARED REPORT</Badge></div>}<AppPageHead title={report?`Run report #${report.runId}`:'Run report'} copy={report?`${report.run.targetUrl} · ${report.run.agents} agents · ${new Date(report.run.startedAt??Date.now()).toLocaleString()}`:'loading…'} actions={!shared&&runId?<><Button to={`/app/graph?run=${runId}`} variant="secondary">State graph</Button><Button to={`/app/compare?run=${runId}`} variant="secondary">Compare run</Button></>:undefined}/>
     {error&&<Callout tone="warn" title="Report unavailable">{error}</Callout>}
@@ -773,9 +779,21 @@ function RunReport({shared=false}:{shared?:boolean}) {
     {cov&&<div className="funnel"><div style={{width:'100%'}}>{cov.discoveredActions} discovered actions</div><div style={{width:`${cov.discoveredActions?Math.max(8,(cov.reachedActions+(report?.skippedActions?.length??0))/cov.discoveredActions*100):100}%`}}>{cov.reachedActions+(report?.skippedActions?.length??0)} safe to attempt</div><div style={{width:`${cov.discoveredActions?Math.max(4,cov.reachedActions/cov.discoveredActions*100):50}%`}}>{cov.reachedActions} exercised</div><div style={{width:`${cov.discoveredActions?Math.max(3,issues.length/cov.discoveredActions*100):10}%`}}>{issues.length} findings</div></div>}
     {report?.skippedActions&&report.skippedActions.length>0&&<Card><div className="card-head"><h2>Skipped by safety policy ({report.skippedActions.length}) — NOT TESTED</h2></div>{report.skippedActions.map(s=><div className="finding-preview" key={s.label}><Badge tone="neutral">SKIPPED</Badge><div><b>{s.label}</b><small>{s.reason}</small></div></div>)}</Card>}
     <div className="report-list"><div className="card-head"><h2>Findings by cluster</h2><div><Badge tone="neutral">Severity ↓</Badge><Badge tone="good">real data</Badge></div></div>
-      {issues.map(i=><a href={`#/app/finding?run=${runId}&key=${encodeURIComponent(i.key)}`} className="finding-row" key={i.key}><Badge tone={tone(i.severity) as 'critical'|'high'|'medium'|'neutral'}>{i.severity.toUpperCase()}</Badge><div><b>{i.title}</b><small>{i.file?`${i.file}${i.line?':'+i.line:''}`:`${i.observations} observations`}</small></div><div className="confidence"><span>CONFIDENCE</span><b>{i.confidence}</b></div><div className="repro"><span>OBSERVATIONS</span><b>{i.observations}</b></div><Icon name="arrow"/></a>)}
+      {issues.map(i=><div key={i.key} style={{position:'relative'}}>
+        <a href={`#/app/finding?run=${runId}&key=${encodeURIComponent(i.key)}`} className="finding-row"><Badge tone={tone(i.severity) as 'critical'|'high'|'medium'|'neutral'}>{i.severity.toUpperCase()}</Badge><div><b>{i.title}</b><small>{i.file?`${i.file}${i.line?':'+i.line:''}`:`${i.observations} observations`}</small></div><div className="confidence"><span>CONFIDENCE</span><b>{i.confidence}</b></div><div className="repro"><span>OBSERVATIONS</span><b>{i.observations}</b></div><Icon name="arrow"/></a>
+        {!shared&&<button className="icon-btn" title="Acknowledge as known issue — suppresses this cluster in future reports" style={{position:'absolute',right:34,top:'50%',transform:'translateY(-50%)'}} onClick={()=>setAckKey(i.key)}><Icon name="eye"/></button>}
+      </div>)}
       {report&&issues.length===0&&<p style={{padding:'1rem',opacity:.7}}>{report.summary}</p>}
     </div>
+    {known.length>0&&<Card><div className="card-head"><h2>Known issues — suppressed ({known.length})</h2><Badge tone="neutral">acknowledged</Badge></div>
+      {known.map(k=><div className="finding-preview" key={k.key}><Badge tone="neutral">KNOWN</Badge><div><b>{k.title}</b><small>{k.reason?`"${k.reason}" · `:''}acknowledged {new Date(k.ignoredAt).toLocaleString()} · hidden from findings, not from history</small></div>{!shared&&<button className="icon-btn" title="Un-acknowledge — the issue returns to findings immediately" onClick={()=>unacknowledge(k.id)}><Icon name="eye"/></button>}</div>)}
+      <p style={{opacity:.55,fontSize:10}}>Acknowledged clusters are suppressed from every report read — the stored reports are never rewritten, and un-acknowledging restores the issue instantly.</p>
+    </Card>}
+    {ackKey&&<Modal title="Acknowledge as known issue?" onClose={()=>setAckKey(null)}>
+      <Callout tone="warn" title="This suppresses the cluster from future reports">The finding stays in the run history and can be restored at any time.</Callout>
+      <label className="field"><span>Why is this a known issue? <small style={{opacity:.55}}>(optional — shown next to the suppressed entry)</small></span><input value={ackReason} onChange={e=>setAckReason(e.target.value)} placeholder="intentional placeholder · third-party widget · fixed on main…"/></label>
+      <div className="button-row"><Button variant="secondary" onClick={()=>setAckKey(null)}>Cancel</Button><Button onClick={acknowledge}>Acknowledge</Button></div>
+    </Modal>}
   </div>
 }
 

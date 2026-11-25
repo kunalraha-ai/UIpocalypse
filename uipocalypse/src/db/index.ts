@@ -278,3 +278,38 @@ export type FindingRow = {
 export function listFindings(db: Db, runId: number): FindingRow[] {
   return db.prepare('SELECT * FROM findings WHERE run_id = ? ORDER BY id').all(runId) as FindingRow[];
 }
+
+// ---------------------------------------------------------------- acknowledged findings
+
+export type IgnoredFindingRow = {
+  id: number;
+  cluster_key: string;
+  title: string | null;
+  reason: string | null;
+  created_at: string;
+};
+
+/** Acknowledge a cluster fingerprint as known/false. Upserts: re-acknowledging
+ *  the same key updates the reason (no duplicate rows). */
+export function addIgnoredFinding(
+  db: Db,
+  input: { key: string; title?: string | null; reason?: string | null },
+): IgnoredFindingRow {
+  db.prepare(
+    `INSERT INTO ignored_findings (cluster_key, title, reason) VALUES (?, ?, ?)
+     ON CONFLICT(cluster_key) DO UPDATE SET title = excluded.title, reason = excluded.reason`,
+  ).run(input.key, input.title ?? null, input.reason ?? null);
+  return db.prepare('SELECT * FROM ignored_findings WHERE cluster_key = ?').get(input.key) as IgnoredFindingRow;
+}
+
+export function listIgnoredFindings(db: Db): IgnoredFindingRow[] {
+  return db.prepare('SELECT * FROM ignored_findings ORDER BY id DESC').all() as IgnoredFindingRow[];
+}
+
+export function ignoredClusterKeys(db: Db): Set<string> {
+  return new Set(listIgnoredFindings(db).map((r) => r.cluster_key));
+}
+
+export function removeIgnoredFinding(db: Db, id: number): boolean {
+  return db.prepare('DELETE FROM ignored_findings WHERE id = ?').run(id).changes > 0;
+}

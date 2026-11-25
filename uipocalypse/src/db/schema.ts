@@ -88,4 +88,16 @@ CREATE TABLE IF NOT EXISTS findings (
 CREATE INDEX IF NOT EXISTS idx_actions_state ON actions(state_id);
 CREATE INDEX IF NOT EXISTS idx_findings_run ON findings(run_id);
 CREATE INDEX IF NOT EXISTS idx_transitions_from ON transitions(from_state);
+
+-- acknowledged findings (the triage loop): issues the operator marked as
+-- known/false, keyed by the cluster fingerprint so future runs of the same
+-- site stay silenced. Filtered at report READ time — stored reports are never
+-- rewritten, and un-ignore restores the issue instantly.
+CREATE TABLE IF NOT EXISTS ignored_findings (
+  id INTEGER PRIMARY KEY,
+  cluster_key TEXT UNIQUE NOT NULL,
+  title TEXT,
+  reason TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 `;

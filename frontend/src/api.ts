@@ -53,6 +53,8 @@ export type Report = {
   reviewReason?: string
   targetUnreachable?: { refused: number; totalObservations: number; mode: 'never' | 'collapse'; agentsAtCollapse?: number }
   issues: ReportIssue[]
+  /** acknowledged as known/false — suppressed from `issues`, shown with the reason */
+  knownIssues?: Array<{ id: number; key: string; title: string; observations: number; reason: string | null; ignoredAt: string }>
   inconsistentFeedback: Array<{ key: string; title: string; observations: number; note: string }>
   correctRejections: Array<{ key: string; title: string; observations: number }>
   artifacts: Array<{ key: string; title: string; observations: number }>
@@ -139,6 +141,12 @@ export const api = {
   startRun: (input: { path?: string; url: string; agents?: number; budgetSeconds?: number; optIn?: { destructive?: boolean; externalSideEffects?: boolean; idempotencyReplay?: boolean }; liveTarget?: { attested?: boolean; ownershipToken?: string; prodOverride?: boolean } }) =>
     post<{ jobId: number }>('/api/runs', input),
   job: (jobId: number) => get<{ jobId: number; status: 'running' | 'done' | 'error'; runId?: number; error?: string }>(`/api/jobs/${jobId}`),
+
+  // ---- acknowledged findings (the triage loop)
+  ignoreIssue: (runId: number, key: string, reason?: string) =>
+    post<{ ignored: { id: number; cluster_key: string } }>(`/api/runs/${runId}/ignore`, { key, reason }),
+  ignored: () => get<{ ignored: Array<{ id: number; cluster_key: string; title: string | null; reason: string | null; created_at: string }> }>('/api/ignored'),
+  unignore: (id: number) => fetch(`/api/ignored/${id}`, { method: 'DELETE' }).then((r) => r.json()),
 
   // ---- monitors
   monitors: () => get<{ monitors: Monitor[] }>('/api/monitors'),

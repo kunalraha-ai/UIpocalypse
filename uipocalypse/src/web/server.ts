@@ -7,7 +7,7 @@ import { createLlmSet, llmModeLine } from '../llm/index.js';
 import { loadConfig } from '../config.js';
 import { initWorkspace, type Workspace } from '../workspace.js';
 import { findDueMonitors, stampMonitorLaunched, stampMonitorRunId } from './monitors.js';
-import { openDb, listRuns, getRun, type Db } from '../db/index.js';
+import { openDb, listRuns, getRun, addIgnoredFinding, listIgnoredFindings, removeIgnoredFinding, type Db } from '../db/index.js';
 import { createLogger, type Logger } from '../logger.js';
 import { scanCodebase } from '../tools/scan-codebase.js';
 import { createPlan } from '../plan/planner.js';
@@ -410,7 +410,49 @@ export async function startWebServer(opts: {
             if (!getRun(db, runId)) return send(404, { error: 'no such run' });
             const report = loadReport(workspace.runs, runId);
             if (!report) return send(404, { error: 'report not generated yet' });
-            return send(200, { report });
+            // acknowledged findings are filtered at READ time: cached reports
+            // are never rewritten, so an ignore applies to every stored
+            // report immediately and un-ignore restores the issue instantly
+            const ignored = new Map(listIgnoredFindings(db).map((i) => [i.cluster_key, i] as const));
+            const issues = report.issues.filter((i) => !ignored.has(i.key));
+            const knownIssues = report.issues
+              .filter((i) => ignored.has(i.key))
+              .map((i) => ({
+                id: ignored.get(i.key)!.id,
+                key: i.key,
+                title: i.title,
+                observations: i.observations,
+                reason: ignored.get(i.key)!.reason,
+                ignoredAt: ignored.get(i.key)!.created_at,
+              }));
+            return send(200, { report: { ...report, issues, knownIssues } });
+          }
+
+          // ---- acknowledged findings (the triage loop)
+          const ignoreMatch = /^\/api\/runs\/(\d+)\/ignore$/.exec(url.pathname);
+          if (ignoreMatch && req.method === 'POST') {
+            const runId = Number(ignoreMatch[1]);
+            if (!getRun(db, runId)) return send(404, { error: 'no such run' });
+            const body = (await readBody()) as { key?: string; reason?: string };
+            if (typeof body.key !== 'string' || !body.key.trim()) return send(400, { error: '"key" (the cluster fingerprint) is required' });
+            // resolve the issue title from the cached report when possible —
+            // the ignore list must stay readable on its own
+            let title: string | null = null;
+            const cached = loadReport(workspace.runs, runId);
+            title = cached?.issues.find((i) => i.key === body.key)?.title ?? null;
+            const row = addIgnoredFinding(db, { key: body.key, title, reason: body.reason ?? null });
+            return send(201, { ignored: row });
+          }
+
+          if (url.pathname === '/api/ignored' && req.method === 'GET') {
+            return send(200, { ignored: listIgnoredFindings(db) });
+          }
+
+          const unignoreMatch = /^\/api\/ignored\/(\d+)$/.exec(url.pathname);
+          if (unignoreMatch && req.method === 'DELETE') {
+            const removed = removeIgnoredFinding(db, Number(unignoreMatch[1]));
+            if (!removed) return send(404, { error: 'no such acknowledged finding' });
+            return send(200, { removed: true });
           }
 
           const graphMatch = /^\/api\/runs\/(\d+)\/graph$/.exec(url.pathname);

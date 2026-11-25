@@ -78,6 +78,9 @@ export type Report = {
     steps: string[];
   }>;
   inconsistentFeedback: Array<{ key: string; title: string; observations: number; note: string }>;
+  /** issues the operator acknowledged as known/false — suppressed from
+   *  `issues` at read time by the web API, listed here with the reason */
+  knownIssues?: Array<{ id: number; key: string; title: string; observations: number; reason: string | null; ignoredAt: string }>;
   correctRejections: Array<{ key: string; title: string; observations: number }>;
   artifacts: Array<{ key: string; title: string; observations: number }>;
   coverage: CollectedRun['coverage'];
