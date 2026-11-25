@@ -244,7 +244,9 @@ export function clusterFindings(findings: FindingRow[], appMap: AppMap): Cluster
     if (steps.length && draft.steps.length === 0) draft.steps = steps.slice(-8);
   }
 
-  return [...byKey.values()]
+  // FP fix 2: group bot-protection 403/429 clusters into a single infrastructure
+  // finding instead of dozens of individual "request 403" findings.
+  const clusters: Cluster[] = [...byKey.values()]
     .map<Cluster>((d) => ({
       key: d.key,
       family: d.family,
@@ -258,13 +260,55 @@ export function clusterFindings(findings: FindingRow[], appMap: AppMap): Cluster
       samples: d.samples,
       steps: d.steps,
       codeRefs: codeRefsFor(d, appMap),
-    }))
-    .sort(
-      (a, b) =>
-        SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity] ||
-        b.observations - a.observations ||
-        a.key.localeCompare(b.key),
-    );
+    }));
+
+  return mergeBotProtectionClusters(clusters);
+}
+
+/** FP fix 2: when >=3 failed_request clusters share the same origin and
+ *  status 403/429, merge them into a single infrastructure finding. */
+function mergeBotProtectionClusters(clusters: Cluster[]): Cluster[] {
+  const botBlocked = clusters.filter(
+    (c) => c.family === 'endpoint' && c.types.includes('failed_request') && /request (403|429) /.test(c.title),
+  );
+  if (botBlocked.length < 3) return clusters;
+
+  const byOrigin = new Map<string, Cluster[]>();
+  for (const c of botBlocked) {
+    let origin = '';
+    try { origin = new URL(c.subject).origin; } catch { origin = 'unknown'; }
+    byOrigin.set(origin, [...(byOrigin.get(origin) ?? []), c]);
+  }
+
+  const merged: Cluster[] = [];
+  const absorbed = new Set<string>();
+
+  for (const [origin, items] of byOrigin) {
+    if (items.length < 3) continue;
+    for (const i of items) absorbed.add(i.key);
+    const totalObs = items.reduce((s, i) => s + i.observations, 0);
+    merged.push({
+      key: `infra:bot-protection:${origin}`,
+      family: 'endpoint',
+      types: ['infrastructure'],
+      title: `bot protection or rate limiting on ${origin} — ${items.length} resources blocked (${totalObs} observations)`,
+      subject: origin,
+      severity: 'medium',
+      confidence: 'low',
+      classification: 'finding',
+      observations: totalObs,
+      samples: items.flatMap((i) => i.samples.slice(0, 1)).slice(0, 3),
+      steps: [],
+      codeRefs: [],
+    });
+  }
+
+  return [...clusters.filter((c) => !absorbed.has(c.key)), ...merged].sort(
+    (a, b) =>
+      SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity] ||
+      b.observations - a.observations ||
+      a.key.localeCompare(b.key),
+  );
 }
 
 /**

@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { AppMap, Issue, Severity } from './types.js';
+import { WIDE_PENDING_SIGNALS as PENDING_SIGNALS } from '../browser/detectors-filters.js';
 
 /**
  * Static rule library (TRD §8, 15 rules). All rules are conservative:
@@ -429,7 +430,6 @@ export function noRateLimitAuth(ctx: RuleContext): Issue[] {
   return issues;
 }
 
-const PENDING_SIGNALS = /disabled|isPending|submitting|useFormStatus|setLoading|isLoading/i;
 const COMPONENT_FILE = /\.(tsx|jsx)$/;
 
 /** 14. missing-submit-guard: write call in a component with no pending/disable state anywhere. */

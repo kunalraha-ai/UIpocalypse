@@ -147,6 +147,9 @@ export function createServer(opts: { workspaceRoot?: string } = {}): ServerConte
           .object({
             destructive: z.boolean().optional(),
             externalSideEffects: z.boolean().optional(),
+            idempotencyReplay: z.boolean().optional().describe(
+              'Fix 8 opt-in: replay each double-fired write ONCE to verify server-side idempotency. Default off — makes one additional write request per duplicate found.',
+            ),
           })
           .optional(),
         race: z

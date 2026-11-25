@@ -240,8 +240,48 @@ describe('swarm orchestrator (Phase 4)', () => {
     const rows = listFindings(db2, result.runId).filter((r) => r.type === 'duplicate_request');
     expect(rows.length).toBeGreaterThanOrEqual(1);
     expect(JSON.parse(rows[0]!.evidence_json!).url).toContain('/api/echo');
+    // fix 8 default-off: no idempotency replay happens unless the operator
+    // opted in — the finding carries no verdict, no extra request was made
+    for (const r of rows) {
+      expect(JSON.parse(r.evidence_json!).idempotency).toBeUndefined();
+    }
     db2.close();
     await server2.close();
+  }, 90_000);
+
+  it('fix 8 (opt-in): idempotencyReplay makes ONE extra request per duplicate and records the verdict', async () => {
+    // Same deterministic pressure as the test above, but with the fix-8
+    // opt-in on. The fixture answers every POST with {"ok":true}, so the
+    // replay returns an identical response → verdict 'idempotent', severity
+    // downgraded to low. Default-off is pinned by the test above.
+    const server3 = await serveStatic(FIXTURE);
+    const db3 = openDb(join(mkdtempSync('/tmp/opencode/uip-idem-'), 'db.sqlite'));
+    const plan = PlanSchema.parse({ summary: 'fixture', goals: [], seedRoutes: [server3.url], nastyInputs: { long: ['z'.repeat(50)] } });
+    const result = await swarm({
+      url: server3.url,
+      config: { ...ws.config },
+      plan,
+      db: db3,
+      routes: ['/', '/page2.html'],
+      llm: createLlm({ LLM_API_KEY: '' }),
+      logger: ws.logger,
+      agents: 4,
+      budgetSeconds: 30,
+      perAgentSteps: 12,
+      personas: ['double-clicker'],
+      optIn: { idempotencyReplay: true },
+    });
+    const rows = listFindings(db3, result.runId).filter((r) => r.type === 'duplicate_request');
+    expect(rows.length).toBeGreaterThanOrEqual(1);
+    for (const r of rows) {
+      const ev = JSON.parse(r.evidence_json!);
+      expect(ev.url).toContain('/api/echo');
+      expect(ev.idempotency).toBe('idempotent'); // fixture echoes the same body every time
+      expect(ev.lastResponse).toBeDefined(); // the detector captured the original response
+      expect(r.severity).toBe('low'); // downgraded: repeats are absorbed
+    }
+    db3.close();
+    await server3.close();
   }, 90_000);
 
   it('repeat-activation suppression is RUN-SCOPED: prior-run feedback never masks this run (regression guarantee)', () => {

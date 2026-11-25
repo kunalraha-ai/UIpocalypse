@@ -32,6 +32,15 @@ export const ConfigSchema = z.object({
   skipActions: z.array(z.string()).default([]),
   destructiveOptIn: z.boolean().default(false),
   externalOptIn: z.boolean().default(false),
+  /**
+   * Fix 8 opt-in: when a duplicate submit is detected, replay the write ONCE
+   * to check whether the endpoint is idempotent (server rejects or absorbs
+   * the repeat). Off by default — it makes one additional write request per
+   * duplicate found. Destructive-looking URLs additionally require
+   * destructiveOptIn. Also available per-run via optIn.idempotencyReplay
+   * (web UI / API / MCP), which takes precedence over this flag.
+   */
+  idempotencyOptIn: z.boolean().default(false),
   /** Loud, explicit override for prod-like targets. Still requires the ownership token. */
   prodOverride: z.boolean().default(false),
   /** Expected value of /.well-known/uipocalypse.txt on non-local targets (SAFETY.md G2). */

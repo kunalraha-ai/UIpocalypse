@@ -1,4 +1,5 @@
 import type { Page } from 'playwright';
+import { shouldFlagConsoleError, rankDuplicateSubmit } from './detectors-filters.js';
 
 /**
  * Mechanical failure detectors (TRD §3.6). Every candidate carries evidence so
@@ -40,8 +41,10 @@ export const ALIVE_REASONS = ['mutation', 'request', 'nav', 'aria', 'dialog', 'd
 export class DetectorHub {
   private candidates: FindingCandidate[] = [];
   private readonly appOrigin: string;
-  /** per-page POST log for duplicate_request detection (same write ≥2× within 1 s from one agent) */
-  private readonly postLog = new Map<object, Array<{ url: string; time: number }>>();
+  /** per-page write log for duplicate_request detection (same write ≥2× within 1 s from one agent).
+   *  fix 8: entries carry method and the captured response so an opted-in run
+   *  can verify idempotency by replaying the request once. */
+  private readonly postLog = new Map<object, Array<{ url: string; time: number; method: string; status?: number; body?: string }>>();
 
   constructor(opts: { appOrigin: string }) {
     this.appOrigin = opts.appOrigin;
@@ -49,18 +52,21 @@ export class DetectorHub {
 
   attachPage(page: Page): void {
     const url = () => page.url();
-    const posts: Array<{ url: string; time: number }> = [];
+    const posts: Array<{ url: string; time: number; method: string; status?: number; body?: string }> = [];
     this.postLog.set(page, posts);
     page.on('request', (req) => {
       const method = req.method();
       if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') return;
+      // fix 8: the orchestrator's idempotency replay carries this marker —
+      // it must never count toward duplicate detection or failed_request
+      if (req.headers()['x-uipocalypse-replay']) return;
       const requestUrl = req.url();
       try {
         if (new URL(requestUrl).origin !== this.appOrigin) return;
       } catch {
         return;
       }
-      posts.push({ url: requestUrl, time: Date.now() });
+      posts.push({ url: requestUrl, time: Date.now(), method });
       if (posts.length > 200) posts.splice(0, 100);
     });
     page.on('pageerror', (err) => {
@@ -75,19 +81,40 @@ export class DetectorHub {
     });
     page.on('console', (msg) => {
       if (msg.type() === 'error') {
+        const text = msg.text().slice(0, 500);
+        // FP fixes 3+5: filter Chromium sandbox artifacts and styled console.log
+        // output that contains false "NaN" matches (see detectors-filters.ts)
+        if (!shouldFlagConsoleError(text)) return;
         this.candidates.push({
           type: 'console_error',
           severity: 'low',
           confidence: 'medium',
-          evidence: { text: msg.text().slice(0, 500) },
+          evidence: { text },
           steps: [],
           url: url(),
         });
       }
     });
-    page.on('response', (res) => {
+    page.on('response', async (res) => {
+      const req = res.request();
+      const method = req.method();
+      // fix 8: attach the captured response to the newest matching write-log
+      // entry (guarded — response bodies can throw or be huge)
+      if (method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS' && !req.headers()['x-uipocalypse-replay']) {
+        const requestUrl = req.url();
+        const entry = [...posts].reverse().find((p) => p.url === requestUrl && p.status === undefined);
+        if (entry) {
+          entry.status = res.status();
+          try {
+            entry.body = (await res.text()).slice(0, 200);
+          } catch {
+            entry.body = '';
+          }
+        }
+      }
       const status = res.status();
       if (status < 400) return;
+      if (req.headers()['x-uipocalypse-replay']) return; // our own replay is not an app failure
       const requestUrl = res.url();
       if (BENIGN.test(requestUrl)) return;
       try {
@@ -105,6 +132,7 @@ export class DetectorHub {
       });
     });
     page.on('requestfailed', (req) => {
+      if (req.headers()['x-uipocalypse-replay']) return; // our own replay is not an app failure
       const requestUrl = req.url();
       if (BENIGN.test(requestUrl)) return;
       try {
@@ -209,11 +237,24 @@ export class DetectorHub {
     }
     for (const [requestUrl, count] of seen) {
       if (count >= 2) {
+        // FP fix 6: rank by endpoint impact (pay/checkout = high, track/beacon = low)
+        const sev = rankDuplicateSubmit(requestUrl);
+        // fix 8: the newest captured response for this URL — the orchestrator
+        // uses it as the comparison baseline when the operator opted in
+        const last = [...posts].reverse().find((p) => p.url === requestUrl && p.status !== undefined);
+        const method = posts.find((p) => p.url === requestUrl)?.method ?? 'POST';
         findings.push({
           type: 'duplicate_request',
-          severity: 'medium',
+          severity: sev,
           confidence: 'medium',
-          evidence: { url: requestUrl.slice(0, 300), count, window: '1 step, <1s apart', note: 'no submit guard — the damage is not confirmed' },
+          evidence: {
+            url: requestUrl.slice(0, 300), count, method,
+            window: '1 step, <1s apart',
+            lastResponse: last ? { status: last.status, body: last.body } : undefined,
+            note: sev === 'low'
+              ? 'tracking/telemetry endpoint — likely no user-facing impact'
+              : 'no submit guard — the damage is not confirmed',
+          },
           steps: opts.steps,
           url: page.url(),
         });

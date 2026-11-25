@@ -13,6 +13,7 @@ import { RUNTIME_SOURCE } from '../runtime/runtime-source.js';
 import { StateGraph } from '../graph/graph.js';
 import { hashAriaSnapshot, normalizeRoute } from '../graph/hash.js';
 import { DetectorHub, type FindingCandidate, ALIVE_REASONS } from './detectors.js';
+import { checkIdempotency } from './detectors-filters.js';
 import { ALL_PERSONAS, createPersona, type PersonaDecision } from '../agent/personas.js';
 import { runRace, pgInvariantRunner, dbUrlFromEnv, dbHostFromUrl, attributeDuplicateEffects, type InvariantResult } from './race.js';
 import { withTimeout, OP_TIMEOUT_MS, armWatchdog } from './timeout.js';
@@ -42,7 +43,7 @@ export type SwarmOptions = {
   abort?: AbortSignal;
   /** reuse a run row created by the scout phase */
   runId?: number;
-  optIn?: { destructive?: boolean; externalSideEffects?: boolean };
+  optIn?: { destructive?: boolean; externalSideEffects?: boolean; idempotencyReplay?: boolean };
   /** directory for failure screenshots (workspace.screenshots) — omit to skip */
   screenshotDir?: string;
   raceTarget?: {
@@ -94,6 +95,9 @@ export async function swarm(opts: SwarmOptions): Promise<SwarmResult> {
     destructiveOptIn: opts.optIn?.destructive ?? opts.config.destructiveOptIn,
     externalOptIn: opts.optIn?.externalSideEffects ?? opts.config.externalOptIn,
   };
+  // fix 8: replay one extra request per duplicate found — explicit opt-in
+  // only (web UI checkbox / API / MCP / config idempotencyOptIn)
+  const idempotencyReplay = opts.optIn?.idempotencyReplay ?? opts.config.idempotencyOptIn ?? false;
   const guard = createGuard(effectiveConfig);
   const decision = await guard.checkTarget(opts.url);
   if (!decision.allowed) {
@@ -457,8 +461,60 @@ export async function swarm(opts: SwarmOptions): Promise<SwarmResult> {
         }
       }
       const dup = hub.duplicateRequests(page, agent.postIndex, { steps: agent.history.slice(-8) });
-      findings.push(...dup.findings.map((f) => ({ ...f, evidence: { ...f.evidence, persona: agent.persona.id } })));
+      const dupFindings = dup.findings.map((f) => ({ ...f, evidence: { ...f.evidence, persona: agent.persona.id } }));
+      findings.push(...dupFindings);
       agent.postIndex = dup.newIndex;
+
+      // fix 8 (opt-in): for each duplicate that just fired, replay the write
+      // ONCE — marker-headed so the detector ignores it — and compare against
+      // the captured original response. Never on runs without a confirmed
+      // safe DB (duplicate detection is disabled there anyway).
+      if (idempotencyReplay && dbWriteSafe && dupFindings.length > 0) {
+        for (const f of dupFindings) {
+          const ev = f.evidence as {
+            url?: string;
+            method?: string;
+            lastResponse?: { status: number; body?: string };
+            idempotency?: string;
+            idempotencyNote?: string;
+          };
+          const reqUrl = String(ev.url ?? '');
+          const method = String(ev.method ?? 'POST');
+          if (reqUrl && classifyAction({ id: 'idempotency-replay-check', label: reqUrl, method }) === 'destructive' && !effectiveConfig.destructiveOptIn) {
+            ev.idempotency = 'skipped';
+            ev.idempotencyNote = 'replay skipped — destructive-looking URL and destructive actions are not opted in';
+            continue;
+          }
+          if (!reqUrl) continue;
+          try {
+            const replay = await page.evaluate(
+              async ([u, m]) => {
+                const r = await fetch(u, { method: m, headers: { 'x-uipocalypse-replay': '1' } });
+                return { status: r.status, body: (await r.text()).slice(0, 200) };
+              },
+              [reqUrl, method] as const,
+            );
+            const verdict = await checkIdempotency(async () => replay, ev.lastResponse);
+            ev.idempotency = verdict;
+            ev.idempotencyNote =
+              verdict === 'idempotent'
+                ? `replay returned an identical response (${replay.status}) — repeats are absorbed, damage unlikely`
+                : verdict === 'harmful'
+                  ? `replay was accepted with a new response (${replay.status}) — the double-submit likely created a real second effect`
+                  : 'replay inconclusive — no original response captured, or the replay failed';
+            if (verdict === 'idempotent') {
+              f.severity = 'low';
+              f.confidence = 'high';
+            } else if (verdict === 'harmful') {
+              f.severity = 'high';
+              f.confidence = 'high';
+            }
+          } catch {
+            ev.idempotency = 'unknown';
+            ev.idempotencyNote = 'replay failed — treated as inconclusive';
+          }
+        }
+      }
 
       ramp.record(Date.now() - t0, hadError);
       if (ramp.shouldStop && degradedAtLevel === undefined) {

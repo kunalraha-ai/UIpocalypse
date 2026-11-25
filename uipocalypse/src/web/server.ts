@@ -154,7 +154,7 @@ export async function startWebServer(opts: {
     for (const w of [...job.waiters]) w(ev);
   }
 
-  async function startRun(input: { path?: string; url: string; agents?: number; budgetSeconds?: number; optIn?: { destructive?: boolean; externalSideEffects?: boolean }; liveTarget?: { attested?: boolean; ownershipToken?: string; prodOverride?: boolean } }): Promise<number> {
+  async function startRun(input: { path?: string; url: string; agents?: number; budgetSeconds?: number; optIn?: { destructive?: boolean; externalSideEffects?: boolean; idempotencyReplay?: boolean }; liveTarget?: { attested?: boolean; ownershipToken?: string; prodOverride?: boolean } }): Promise<number> {
     // live-target handling FIRST — before the job is registered, so a refusal
     // can never leave a zombie "running" job blocking the queue. Non-local
     // targets need an ownership claim: either the operator's one-click
@@ -346,7 +346,7 @@ export async function startWebServer(opts: {
 
           if (req.method === 'POST' && url.pathname === '/api/runs') {
             if (hasRunningJob()) return send(409, { error: 'a run is already in progress — one at a time on a local machine' });
-            const body = (await readBody()) as { path?: string; url?: string; agents?: number; budgetSeconds?: number; optIn?: { destructive?: boolean; externalSideEffects?: boolean }; liveTarget?: { attested?: boolean; ownershipToken?: string; prodOverride?: boolean } };
+            const body = (await readBody()) as { path?: string; url?: string; agents?: number; budgetSeconds?: number; optIn?: { destructive?: boolean; externalSideEffects?: boolean; idempotencyReplay?: boolean }; liveTarget?: { attested?: boolean; ownershipToken?: string; prodOverride?: boolean } };
             if (typeof body.url !== 'string' || !body.url.trim()) {
               return send(400, { error: '"url" (the target app) is required' });
             }

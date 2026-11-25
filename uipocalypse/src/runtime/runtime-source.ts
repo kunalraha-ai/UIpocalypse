@@ -258,7 +258,13 @@ export const RUNTIME_SOURCE = String.raw`
         }
       }
 
-      await delay(opts.waitMs ?? 500);
+      // FP fix 7: wait longer for media-heavy controls (audio/video loading)
+      var waitTime = opts.waitMs ?? 500;
+      if (el.closest && el.closest('audio, video, [class*="player"], [class*="audio"]')) {
+        waitTime = Math.max(waitTime, 2000); // media loading takes longer in headless
+      }
+
+      await delay(waitTime);
 
       const after = {
         mutations: M.count,
@@ -286,12 +292,14 @@ export const RUNTIME_SOURCE = String.raw`
         }
       }
       snapshotSpinners();
+      var elIsLink = el.tagName === 'A' && el.getAttribute('href') && el.getAttribute('href') !== '#';
       return {
-        dead: reasons.length === 0,
+        dead: reasons.length === 0 && !elIsLink && after.url === before.url,
         reasons: reasons,
         blocked: blocked,
         nav: after.url !== before.url,
         url: after.url,
+        isLink: !!elIsLink,
       };
     },
 

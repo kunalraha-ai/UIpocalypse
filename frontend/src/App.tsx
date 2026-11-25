@@ -652,6 +652,7 @@ function NewRun() {
   const [budget,setBudget]=useState(60)
   const [risky,setRisky]=useState(false)
   const [external,setExternal]=useState(false)
+  const [idem,setIdem]=useState(false)
   const [modal,setModal]=useState(false)
   const [error,setError]=useState('')
   const [launching,setLaunching]=useState(false)
@@ -665,7 +666,7 @@ function NewRun() {
   const launch=async()=>{ 
     setLaunching(true); setError('')
     try{
-      const {jobId}=await api.startRun({path: path||undefined,url,agents,budgetSeconds:budget,optIn:{destructive:risky,externalSideEffects:external},liveTarget: live?{attested:true}:undefined})
+      const {jobId}=await api.startRun({path: path||undefined,url,agents,budgetSeconds:budget,optIn:{destructive:risky,externalSideEffects:external,idempotencyReplay:idem},liveTarget: live?{attested:true}:undefined})
       navigate(`/app/live-run?job=${jobId}`)
     }catch(e){ setError(String(e instanceof Error?e.message:e)); setLaunching(false) }
   }
@@ -686,8 +687,9 @@ function NewRun() {
       <Card className="danger-zone"><h2>Risk controls</h2>
         <Toggle label="Allow destructive actions" warning="May delete or permanently change test data." value={risky} setValue={(v)=>v?setModal(true):setRisky(false)}/>
         <Toggle label="Allow external actions" warning="May trigger webhooks, email, or third-party services." value={external} setValue={setExternal}/>
+        <Toggle label="Verify duplicate submits (replay)" warning="Replays each double-fired write once to check server-side guards. One extra request per duplicate found." value={idem} setValue={setIdem}/>
       </Card>
-    </div><aside className="run-estimate"><Card><h3>Run estimate</h3><div><span>Agents</span><b>{agents}</b></div><div><span>Max duration</span><b>{budget>=60?`${budget/60} min`:`${budget}s`}</b></div><div><span>LLM mode</span><b>{status?(status.llmModeOn?'on':'off'):'…'}</b></div><div><span>Risk level</span><Badge tone={risky||external?'critical':'good'}>{risky||external?'ELEVATED':'GUARDED'}</Badge></div><Button onClick={launch} icon="play" disabled={launching||!url||(live&&!owned)}>{launching?'Launching…':path?'Review & launch':'Launch — URL only'}</Button><small>Nothing runs until you launch. The Safety Guard checks the target first.</small>
+    </div><aside className="run-estimate"><Card><h3>Run estimate</h3><div><span>Agents</span><b>{agents}</b></div><div><span>Max duration</span><b>{budget>=60?`${budget/60} min`:`${budget}s`}</b></div><div><span>LLM mode</span><b>{status?(status.llmModeOn?'on':'off'):'…'}</b></div><div><span>Risk level</span><Badge tone={risky||external||idem?'critical':'good'}>{risky||external||idem?'ELEVATED':'GUARDED'}</Badge></div><Button onClick={launch} icon="play" disabled={launching||!url||(live&&!owned)}>{launching?'Launching…':path?'Review & launch':'Launch — URL only'}</Button><small>Nothing runs until you launch. The Safety Guard checks the target first.</small>
     {error&&<Callout tone="warn" title="Launch failed">{error}</Callout>}
     </Card></aside></div>
     {modal&&<Modal title="Enable destructive actions?" onClose={()=>setModal(false)}><Callout tone="warn" title="This can permanently change test data">Only continue if this is a disposable test copy and you can restore its database.</Callout><label className="checkbox"><input type="checkbox"/><span>I understand this can delete test data.</span></label><div className="button-row"><Button variant="secondary" onClick={()=>setModal(false)}>Cancel</Button><Button variant="danger" onClick={()=>{setRisky(true);setModal(false)}}>Enable destructive actions</Button></div></Modal>}
