@@ -64,6 +64,36 @@ describe('collector (Phase 5, FR-C1)', () => {
     expect(redeem.observations).toBe(26);
   });
 
+  it('FP fix 2: >=3 403/429 clusters on one origin merge into ONE infrastructure finding that names the origin', () => {
+    const findings = [
+      row({ type: 'failed_request', evidence: { url: 'https://audora.art/_app/a.js', status: 403 } }),
+      row({ type: 'failed_request', evidence: { url: 'https://audora.art/_app/b.js', status: 403 } }),
+      row({ type: 'failed_request', evidence: { url: 'https://audora.art/_app/c.js', status: 403 } }),
+      row({ type: 'failed_request', evidence: { url: 'https://audora.art/_app/d.js', status: 403 } }),
+    ];
+    const clusters = clusterFindings(findings, APP_MAP);
+    const infra = clusters.filter((c) => c.types.includes('infrastructure'));
+    expect(infra).toHaveLength(1);
+    // the cluster subject is route-normalized (no origin) — the merged title
+    // must fall back to the absolute URL in the evidence, never "unknown"
+    expect(infra[0]!.title).toContain('https://audora.art');
+    expect(infra[0]!.title).not.toContain('unknown');
+    expect(infra[0]!.observations).toBe(4);
+    // the individual 403s are gone
+    expect(clusters.filter((c) => c.types.includes('failed_request'))).toHaveLength(0);
+  });
+
+  it('FP fix 2 edge: scattered 403s on DIFFERENT origins stay individual findings', () => {
+    const findings = [
+      row({ type: 'failed_request', evidence: { url: 'https://a.example/x', status: 403 } }),
+      row({ type: 'failed_request', evidence: { url: 'https://b.example/y', status: 403 } }),
+      row({ type: 'failed_request', evidence: { url: 'https://c.example/z', status: 403 } }),
+    ];
+    const clusters = clusterFindings(findings, APP_MAP);
+    expect(clusters.some((c) => c.types.includes('infrastructure'))).toBe(false);
+    expect(clusters.filter((c) => c.types.includes('failed_request'))).toHaveLength(3);
+  });
+
   it('duplicate_effect and race_violation cluster by DB table, merging per table', () => {
     const findings = [
       row({ type: 'duplicate_effect', severity: 'high', confidence: 'high', evidence: { invariant: 'no dup tx', sql: 'select count(*) from transactions t1 join transactions t2 on ...', expected: 0, actual: 3 } }),

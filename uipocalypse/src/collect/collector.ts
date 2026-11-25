@@ -273,10 +273,31 @@ function mergeBotProtectionClusters(clusters: Cluster[]): Cluster[] {
   );
   if (botBlocked.length < 3) return clusters;
 
+  // The cluster subject is route-normalized (no origin) — resolve the real
+  // origin from the absolute URLs the detector recorded in the evidence.
+  // Without this, every origin falls into one "unknown" bucket and unrelated
+  // hosts get merged into a single finding (seen live on audora.art).
+  const originOf = (c: Cluster): string => {
+    for (const s of c.samples) {
+      const u = (s as Record<string, unknown> | undefined)?.url;
+      if (typeof u === 'string' && /^https?:\/\//.test(u)) {
+        try {
+          return new URL(u).origin;
+        } catch {
+          /* try the next sample */
+        }
+      }
+    }
+    try {
+      return new URL(c.subject).origin;
+    } catch {
+      return 'unknown';
+    }
+  };
+
   const byOrigin = new Map<string, Cluster[]>();
   for (const c of botBlocked) {
-    let origin = '';
-    try { origin = new URL(c.subject).origin; } catch { origin = 'unknown'; }
+    const origin = originOf(c);
     byOrigin.set(origin, [...(byOrigin.get(origin) ?? []), c]);
   }
 
