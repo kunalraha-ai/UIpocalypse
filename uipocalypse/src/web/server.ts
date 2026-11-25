@@ -6,6 +6,7 @@ import { dirname, extname, join, normalize } from 'node:path';
 import { createLlmSet, llmModeLine } from '../llm/index.js';
 import { loadConfig } from '../config.js';
 import { initWorkspace, type Workspace } from '../workspace.js';
+import { findDueMonitors, stampMonitorLaunched, stampMonitorRunId } from './monitors.js';
 import { openDb, listRuns, getRun, type Db } from '../db/index.js';
 import { createLogger, type Logger } from '../logger.js';
 import { scanCodebase } from '../tools/scan-codebase.js';
@@ -154,7 +155,7 @@ export async function startWebServer(opts: {
     for (const w of [...job.waiters]) w(ev);
   }
 
-  async function startRun(input: { path?: string; url: string; agents?: number; budgetSeconds?: number; optIn?: { destructive?: boolean; externalSideEffects?: boolean; idempotencyReplay?: boolean }; liveTarget?: { attested?: boolean; ownershipToken?: string; prodOverride?: boolean } }): Promise<number> {
+  async function startRun(input: { path?: string; url: string; agents?: number; budgetSeconds?: number; optIn?: { destructive?: boolean; externalSideEffects?: boolean; idempotencyReplay?: boolean }; liveTarget?: { attested?: boolean; ownershipToken?: string; prodOverride?: boolean }; onJobDone?: (job: Job) => void }): Promise<number> {
     // live-target handling FIRST — before the job is registered, so a refusal
     // can never leave a zombie "running" job blocking the queue. Non-local
     // targets need an ownership claim: either the operator's one-click
@@ -295,6 +296,9 @@ export async function startWebServer(opts: {
         job.error = String(e);
         emit(job, 'error', { error: String(e) });
       }
+      // lifecycle hook — fired from the job's own completion, so callers
+      // (e.g. the monitor scheduler) never need to poll for the final state
+      input.onJobDone?.(job);
     })();
 
     return jobId;
@@ -439,7 +443,7 @@ export async function startWebServer(opts: {
               const lastRunId = r.last_run_id as number | null;
               const lastRun = lastRunId ? getRun(db, lastRunId) : null;
               const findings = lastRunId
-                ? (db.prepare('SELECT COUNT(DISTINCT cluster_id)::int AS n FROM findings WHERE run_id = ?').get(lastRunId) as { n: number }).n
+                ? (db.prepare('SELECT COUNT(DISTINCT cluster_id) AS n FROM findings WHERE run_id = ?').get(lastRunId) as { n: number }).n
                 : 0;
               return {
                 id: r.id,
@@ -499,28 +503,19 @@ export async function startWebServer(opts: {
             const monitorUrl = monitor.url as string;
             const host = (() => { try { return new URL(monitorUrl).hostname; } catch { return ''; } })();
             const isLive = host !== '' && !isLocalHost(host) && !hostMatches(host, config.allowHosts);
-            if (isLive) {
-              // monitors imply ownership: the user added the URL deliberately
-              config = { ...config, allowHosts: [...config.allowHosts, host] };
-            }
+            // monitors imply ownership: the user added the URL deliberately.
+            // The attestation flows through startRun's per-run config — the
+            // shared `config` is never mutated (that broke later manual runs).
             const jobId = await startRun({
               url: monitorUrl,
               agents: 5,
               budgetSeconds: 60,
               liveTarget: isLive ? { attested: true } : undefined,
+              onJobDone: (job) => {
+                if (job.runId) stampMonitorRunId(db, id, job.runId);
+              },
             });
-            db.prepare('UPDATE monitors SET last_run_at = datetime("now"), last_run_id = NULL WHERE id = ?').run(id);
-            // update last_run_id once the job completes
-            void (async () => {
-              for (let i = 0; i < 120; i++) {
-                await new Promise((r) => setTimeout(r, 5000));
-                const job = jobs.get(jobId);
-                if (job && job.status !== 'running' && job.runId) {
-                  db.prepare('UPDATE monitors SET last_run_id = ? WHERE id = ?').run(job.runId, id);
-                  break;
-                }
-              }
-            })();
+            stampMonitorLaunched(db, id);
             return send(202, { jobId });
           }
 
@@ -579,30 +574,24 @@ export async function startWebServer(opts: {
   // ---- monitor scheduler: checks every 60s if any monitor is due
   const schedulerTimer = setInterval(async () => {
     try {
-      const due = db
-        .prepare(
-          `SELECT * FROM monitors WHERE enabled = 1 AND frequency != 'manual' AND
-           (last_run_at IS NULL OR last_run_at <= datetime('now', '-' ||
-             CASE frequency WHEN 'hourly' THEN '1 hours'
-                             WHEN 'daily'  THEN '1 days'
-                             WHEN 'weekly' THEN '7 days' END))`,
-        )
-        .all() as Array<Record<string, unknown>>;
+      const due = findDueMonitors(db);
       for (const monitor of due) {
         if (hasRunningJob()) break; // one at a time
         const monitorUrl = monitor.url as string;
         const host = (() => { try { return new URL(monitorUrl).hostname; } catch { return ''; } })();
         const isLive = host !== '' && !isLocalHost(host) && !hostMatches(host, config.allowHosts);
-        if (isLive) {
-          config = { ...config, allowHosts: [...config.allowHosts, host] };
-        }
+        // attestation flows through startRun's per-run config; the shared
+        // config is never mutated (that was the runaway-scheduler bug's twin)
         const jobId = await startRun({
           url: monitorUrl,
           agents: 3,
           budgetSeconds: 45,
           liveTarget: isLive ? { attested: true } : undefined,
+          onJobDone: (job) => {
+            if (job.runId) stampMonitorRunId(db, monitor.id, job.runId);
+          },
         });
-        db.prepare('UPDATE monitors SET last_run_at = datetime("now") WHERE id = ?').run(monitor.id);
+        stampMonitorLaunched(db, monitor.id);
         logger.info('monitor scheduled run started', { monitorId: monitor.id, url: monitorUrl, jobId });
       }
     } catch (e) {
