@@ -653,6 +653,27 @@ function NewRun() {
   const [risky,setRisky]=useState(false)
   const [external,setExternal]=useState(false)
   const [idem,setIdem]=useState(false)
+  const [clones,setClones]=useState<Array<{name:string;sourceName:string;url:string;createdAt:string}>>([])
+  const [safeDb,setSafeDb]=useState('')
+  const [dbSource,setDbSource]=useState('')
+  const [dbBusy,setDbBusy]=useState(false)
+  const [dbNote,setDbNote]=useState('')
+  useEffect(()=>{ api.clones().then(r=>setClones(r.clones)).catch(()=>{}) },[])
+  const prepareClone=async()=>{
+    if(!dbSource.trim()) return
+    setDbBusy(true); setDbNote('')
+    try{
+      const r=await api.cloneDb(dbSource.trim())
+      setSafeDb(r.clone.url)
+      api.clones().then(res=>setClones(res.clones)).catch(()=>{})
+      setDbNote((r.droppedPrevious?`Replaced previous copy (${r.droppedPrevious}). `:'')+'Copy ready — restart your app with the DATABASE_URL below, then launch.')
+    }catch(e){ setDbNote(String(e instanceof Error?e.message:e)) }
+    setDbBusy(false)
+  }
+  const removeClone=async(name:string)=>{
+    await api.dropClone(name).catch(()=>{})
+    api.clones().then(r=>{setClones(r.clones); if(safeDb&&!r.clones.some(c=>c.url===safeDb)) setSafeDb('')}).catch(()=>{})
+  }
   const [modal,setModal]=useState(false)
   const [error,setError]=useState('')
   const [launching,setLaunching]=useState(false)
@@ -666,7 +687,7 @@ function NewRun() {
   const launch=async()=>{ 
     setLaunching(true); setError('')
     try{
-      const {jobId}=await api.startRun({path: path||undefined,url,agents,budgetSeconds:budget,optIn:{destructive:risky,externalSideEffects:external,idempotencyReplay:idem},liveTarget: live?{attested:true}:undefined})
+      const {jobId}=await api.startRun({path: path||undefined,url,agents,budgetSeconds:budget,optIn:{destructive:risky,externalSideEffects:external,idempotencyReplay:idem},liveTarget: live?{attested:true}:undefined,safeDbUrl: safeDb||undefined})
       navigate(`/app/live-run?job=${jobId}`)
     }catch(e){ setError(String(e instanceof Error?e.message:e)); setLaunching(false) }
   }
@@ -683,13 +704,28 @@ function NewRun() {
         </Callout>}
       </Card>
       <Card><h2>Run shape</h2><label className="range-label"><span>Browser agents <b>{agents}</b></span><input type="range" min="1" max="100" value={agents} onChange={e=>setAgents(+e.target.value)}/></label><label className="field"><span>Time budget</span><select value={budget} onChange={e=>setBudget(+e.target.value)}><option value={30}>30 seconds</option><option value={60}>1 minute</option><option value={120}>2 minutes</option><option value={300}>5 minutes</option></select></label></Card>
+      <Card><h2>Safe database</h2>
+        <p className="lede-small">Clone your local Postgres into a throwaway copy. Restart the app against it, and this run tests in write mode — duplicate writes, race damage and destructive clicks all land in the copy.</p>
+        <label className="field"><span>App's local Postgres connection string</span><input value={dbSource} onChange={e=>setDbSource(e.target.value)} placeholder="postgres://user:pass@localhost:5432/mydb"/></label>
+        <div className="button-row"><Button variant="secondary" onClick={prepareClone} disabled={dbBusy||!dbSource.trim()}>{dbBusy?'Preparing copy…':'Prepare safe copy'}</Button></div>
+        {clones.length>0&&<label className="field" style={{marginTop:12}}><span>Run against</span>
+          <select value={safeDb} onChange={e=>setSafeDb(e.target.value)}>
+            <option value="">No safe DB — read-only mode</option>
+            {clones.map(c=><option key={c.name} value={c.url}>{c.name} · from {c.sourceName}</option>)}
+          </select></label>}
+        {clones.length>0&&<div style={{display:'flex',flexDirection:'column',gap:4,marginTop:8}}>
+          {clones.map(c=><div key={c.name} className="host-row" style={{padding:'8px 10px'}}><span style={{width:20,height:20,fontSize:10,background:'var(--surface-2)',color:'var(--muted)'}}>db</span><div><b style={{fontSize:10}}>{c.name}</b><small style={{fontSize:9}}>from {c.sourceName} · {new Date(c.createdAt).toLocaleString()}</small></div><button className="icon-btn" title="Drop this clone" onClick={()=>removeClone(c.name)}><Icon name="x"/></button></div>)}
+        </div>}
+        {safeDb&&<CodeBlock code={`DATABASE_URL="${safeDb}"\n# restart your dev server with this, then launch the run`}/>}
+        {dbNote&&<Callout tone={safeDb?'safe':'warn'} title={safeDb?'Safe DB attached':'Safe DB'}>{dbNote}</Callout>}
+      </Card>
       <Card><h2>Personas</h2><div className="toggle-grid">{personas.map(([l,n],i)=><label className="toggle-row" key={n}><span className="mini-avatar">{l}</span><b>{n}</b><input type="checkbox" checked disabled title="The full roster runs by default"/><i/></label>)}</div><small style={{opacity:.6}}>The full roster runs by default — narrowing it blinded duplicate detection once (phase-5 lesson).</small></Card>
       <Card className="danger-zone"><h2>Risk controls</h2>
         <Toggle label="Allow destructive actions" warning="May delete or permanently change test data." value={risky} setValue={(v)=>v?setModal(true):setRisky(false)}/>
         <Toggle label="Allow external actions" warning="May trigger webhooks, email, or third-party services." value={external} setValue={setExternal}/>
         <Toggle label="Verify duplicate submits (replay)" warning="Replays each double-fired write once to check server-side guards. One extra request per duplicate found." value={idem} setValue={setIdem}/>
       </Card>
-    </div><aside className="run-estimate"><Card><h3>Run estimate</h3><div><span>Agents</span><b>{agents}</b></div><div><span>Max duration</span><b>{budget>=60?`${budget/60} min`:`${budget}s`}</b></div><div><span>LLM mode</span><b>{status?(status.llmModeOn?'on':'off'):'…'}</b></div><div><span>Risk level</span><Badge tone={risky||external||idem?'critical':'good'}>{risky||external||idem?'ELEVATED':'GUARDED'}</Badge></div><Button onClick={launch} icon="play" disabled={launching||!url||(live&&!owned)}>{launching?'Launching…':path?'Review & launch':'Launch — URL only'}</Button><small>Nothing runs until you launch. The Safety Guard checks the target first.</small>
+    </div><aside className="run-estimate"><Card><h3>Run estimate</h3><div><span>Agents</span><b>{agents}</b></div><div><span>Max duration</span><b>{budget>=60?`${budget/60} min`:`${budget}s`}</b></div><div><span>LLM mode</span><b>{status?(status.llmModeOn?'on':'off'):'…'}</b></div><div><span>Safe DB</span><b>{safeDb?'clone attached':'read-only'}</b></div><div><span>Risk level</span><Badge tone={risky||external||idem?'critical':'good'}>{risky||external||idem?'ELEVATED':'GUARDED'}</Badge></div><Button onClick={launch} icon="play" disabled={launching||!url||(live&&!owned)}>{launching?'Launching…':path?'Review & launch':'Launch — URL only'}</Button><small>Nothing runs until you launch. The Safety Guard checks the target first.</small>
     {error&&<Callout tone="warn" title="Launch failed">{error}</Callout>}
     </Card></aside></div>
     {modal&&<Modal title="Enable destructive actions?" onClose={()=>setModal(false)}><Callout tone="warn" title="This can permanently change test data">Only continue if this is a disposable test copy and you can restore its database.</Callout><label className="checkbox"><input type="checkbox"/><span>I understand this can delete test data.</span></label><div className="button-row"><Button variant="secondary" onClick={()=>setModal(false)}>Cancel</Button><Button variant="danger" onClick={()=>{setRisky(true);setModal(false)}}>Enable destructive actions</Button></div></Modal>}

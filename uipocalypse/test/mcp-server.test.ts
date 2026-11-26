@@ -39,6 +39,8 @@ describe('MCP server over stdio (Phase 1 deliverable: connectable + stub scan)',
         'diff_runs',
         'verify_deployment_safety',
         'verify_fix',
+        'prepare_safe_db',
+        'drop_safe_db',
       ]),
     );
 

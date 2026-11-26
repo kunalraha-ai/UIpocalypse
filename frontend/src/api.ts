@@ -174,7 +174,7 @@ export const api = {
   graph: (runId: number) => get<Graph>(`/api/runs/${runId}/graph`),
   scan: (path: string) => post<{ issues: StaticIssue[]; summary: { routes: number; elements: number; envVars: number } }>('/api/scan', { path }),
   diff: (runs: number[], path: string) => get<Diff>(`/api/diff?runs=${runs.join(',')}&path=${encodeURIComponent(path)}`),
-  startRun: (input: { path?: string; url: string; agents?: number; budgetSeconds?: number; optIn?: { destructive?: boolean; externalSideEffects?: boolean; idempotencyReplay?: boolean }; liveTarget?: { attested?: boolean; ownershipToken?: string; prodOverride?: boolean } }) =>
+  startRun: (input: { path?: string; url: string; agents?: number; budgetSeconds?: number; optIn?: { destructive?: boolean; externalSideEffects?: boolean; idempotencyReplay?: boolean }; liveTarget?: { attested?: boolean; ownershipToken?: string; prodOverride?: boolean }; safeDbUrl?: string }) =>
     post<{ jobId: number }>('/api/runs', input),
   job: (jobId: number) => get<{ jobId: number; status: 'running' | 'done' | 'error'; runId?: number; error?: string }>(`/api/jobs/${jobId}`),
 
@@ -189,6 +189,12 @@ export const api = {
     post<{ started: boolean }>(`/api/runs/${runId}/verify`, key ? { key } : {}),
   verifyStatus: (runId: number) =>
     get<{ status: 'never' | 'running' | 'done'; results: Array<{ key: string; type: string; verdict: string; note: string }>; error?: string }>(`/api/runs/${runId}/verify`),
+
+  // ---- safe DB clones (write-mode testing against a throwaway copy)
+  clones: () => get<{ clones: Array<{ name: string; sourceName: string; url: string; createdAt: string }> }>('/api/db/clones'),
+  cloneDb: (sourceUrl: string) =>
+    post<{ clone: { name: string; url: string }; droppedPrevious?: string; instructions: string }>('/api/db/clone', { sourceUrl }),
+  dropClone: (name: string) => fetch(`/api/db/clones/${name}`, { method: 'DELETE' }).then((r) => r.json()),
 
   // ---- monitors
   monitors: () => get<{ monitors: Monitor[] }>('/api/monitors'),

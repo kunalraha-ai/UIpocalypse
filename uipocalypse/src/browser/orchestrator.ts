@@ -75,6 +75,12 @@ export type SwarmOptions = {
   cameraActive?: () => boolean;
   /** camera sampling interval (default 1000 ms) */
   frameIntervalMs?: number;
+  /**
+   * Safe DB clone connection string (safe-database branching): the run's
+   * invariants read the throwaway copy instead of the env credential, and a
+   * prepared clone counts as a confirmed safe DB for write-mode gating.
+   */
+  dbUrl?: string;
   raceTarget?: {
     url: string;
     actionLabel: string;
@@ -154,7 +160,8 @@ export async function swarm(opts: SwarmOptions): Promise<SwarmResult> {
   // the Guard cannot confirm a safe DB, the swarm still runs but writes
   // and form submits are skipped. The Guard's refusal of write-heavy modes
   // (race, fuzz) is NOT weakened — those are separate, stronger gates.
-  const dbWriteSafe = decision.isLocal && effectiveConfig.db.allowedHosts.length > 0;
+  // A prepared safe-DB clone (opts.dbUrl) counts as a confirmed safe DB.
+  const dbWriteSafe = decision.isLocal && (effectiveConfig.db.allowedHosts.length > 0 || !!opts.dbUrl);
   const disabledClasses: string[] = [];
   if (!dbWriteSafe) {
     disabledClasses.push('duplicate_request', 'duplicate_effect', 'race_mode', 'form_submits');
@@ -722,8 +729,10 @@ export async function swarm(opts: SwarmOptions): Promise<SwarmResult> {
   // proves the damage landed and belongs to the swarm's double-clicks. Skipped
   // when the DB is not allow-listed (same G4 gate as race mode) and when no
   // duplicate_request was observed (an invariant failure without duplicates is
-  // not this type).
-  const dbUrl = dbUrlFromEnv();
+  // not this type). A prepared safe-DB clone (opts.dbUrl) overrides the env
+  // credential — the app was restarted against the clone, so the invariants
+  // must read the clone too.
+  const dbUrl = opts.dbUrl ?? dbUrlFromEnv();
   const dbHost = dbUrl ? dbHostFromUrl(dbUrl) : null;
   const modesOk =
     dbUrl && dbHost

@@ -5,6 +5,7 @@ import { initWorkspace } from './workspace.js';
 import { createLogger } from './logger.js';
 import { openDb, listRuns, getRun, type Db } from './db/index.js';
 import { verifyRunFixes } from './browser/replay.js';
+import { cloneLocalPostgres, dropClone } from './tools/clone-db.js';
 import { scanCodebase } from './tools/scan-codebase.js';
 import { loadConfig } from './config.js';
 import { createLlm, createLlmSet, healthCheck, llmModeLine } from './llm/index.js';
@@ -161,9 +162,15 @@ export function createServer(opts: { workspaceRoot?: string } = {}): ServerConte
             contexts: z.number().int().min(2).max(50).optional().describe('Concurrent firers (default 20)'),
           })
           .optional(),
+        dbUrl: z
+          .string()
+          .optional()
+          .describe(
+            'Safe DB clone URL from prepare_safe_db — the run reads invariants from the throwaway copy and unlocks write-mode testing. The app must be restarted against this URL first.',
+          ),
       },
     },
-    async ({ url, planId, agents, budgetSeconds, optIn, race }) => {
+    async ({ url, planId, agents, budgetSeconds, optIn, race, dbUrl }) => {
       const { config } = loadConfig();
       let plan: Plan;
       let routes: string[] = [];
@@ -225,6 +232,7 @@ export function createServer(opts: { workspaceRoot?: string } = {}): ServerConte
           runId: exploreResult.runId,
           screenshotDir: workspace.screenshots,
           optIn,
+          dbUrl,
           raceTarget: race
             ? {
                 url: race.url ?? url,
@@ -305,6 +313,65 @@ export function createServer(opts: { workspaceRoot?: string } = {}): ServerConte
         findings: (db.prepare('SELECT COUNT(*) AS n FROM findings WHERE run_id = ?').get(r.id) as { n: number }).n,
       }));
       return text(runs);
+    },
+  );
+
+  server.registerTool(
+    'prepare_safe_db',
+    {
+      title: 'Prepare a safe DB copy',
+      description:
+        'Clone the LOCAL Postgres database into a throwaway sibling, so the app can restart against the copy and runs get write-mode testing: duplicate writes, race damage and destructive clicks all land in the clone. One clone per source — re-cloning replaces the previous copy. LOCAL POSTGRES ONLY (the source host must be in db.allowedHosts); needs psql, pg_dump and pg_restore on PATH. After this, tell the user to restart their app with DATABASE_URL set to the returned clone URL, then call run_swarm with dbUrl.',
+      inputSchema: {
+        sourceUrl: z
+          .string()
+          .describe('The app\'s local Postgres connection string, e.g. postgres://user:pass@localhost:5432/mydb'),
+      },
+    },
+    async ({ sourceUrl }) => {
+      try {
+        const { config } = loadConfig();
+        const result = await cloneLocalPostgres({ sourceUrl, db, allowHosts: config.db.allowedHosts, logger });
+        const lines = [
+          `Safe DB copy ready: ${result.clone.name}`,
+          `Clone URL (restart the app with DATABASE_URL set to this):`,
+          `  ${result.clone.url}`,
+          result.droppedPrevious ? `Replaced previous clone: ${result.droppedPrevious}` : '',
+          `Then: run_swarm with dbUrl set to the clone URL. Duplicate writes, race mode and invariants all read the copy.`,
+        ].filter(Boolean);
+        return text(lines.join('\n'));
+      } catch (e) {
+        return { isError: true, content: [{ type: 'text' as const, text: `${e}` }] };
+      }
+    },
+  );
+
+  server.registerTool(
+    'drop_safe_db',
+    {
+      title: 'Drop a safe DB copy',
+      description: 'Drop a cloned database created by prepare_safe_db (WITH (FORCE) on Postgres 13+, so an app still connected is disconnected).',
+      inputSchema: {
+        name: z.string().describe('Clone name from prepare_safe_db'),
+        sourceUrl: z.string().optional().describe('The original connection string (for the maintenance connection). Defaults to postgres://localhost:5432/<source>.'),
+      },
+    },
+    async ({ name, sourceUrl }) => {
+      try {
+        const { config } = loadConfig();
+        const row = db.prepare('SELECT source_name FROM db_clones WHERE name = ?').get(name) as { source_name: string } | undefined;
+        if (!row) return { isError: true, content: [{ type: 'text' as const, text: `No such clone: ${name}` }] };
+        const dropped = await dropClone({
+          name,
+          sourceUrl: sourceUrl ?? `postgres://localhost:5432/${row.source_name}`,
+          db,
+          allowHosts: config.db.allowedHosts,
+          logger,
+        });
+        return text(dropped ? `Dropped clone ${name}.` : `Clone ${name} was already gone.`);
+      } catch (e) {
+        return { isError: true, content: [{ type: 'text' as const, text: `${e}` }] };
+      }
     },
   );
 

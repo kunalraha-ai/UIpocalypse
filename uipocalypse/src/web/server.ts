@@ -8,6 +8,7 @@ import { loadConfig } from '../config.js';
 import { initWorkspace, type Workspace } from '../workspace.js';
 import { findDueMonitors, stampMonitorLaunched, stampMonitorRunId } from './monitors.js';
 import { verifyRunFixes } from '../browser/replay.js';
+import { cloneLocalPostgres, dropClone, listClones } from '../tools/clone-db.js';
 import { openDb, listRuns, getRun, addIgnoredFinding, listIgnoredFindings, removeIgnoredFinding, type Db } from '../db/index.js';
 import { createLogger, type Logger } from '../logger.js';
 import { scanCodebase } from '../tools/scan-codebase.js';
@@ -166,7 +167,7 @@ export async function startWebServer(opts: {
     for (const w of [...job.waiters]) w(ev);
   }
 
-  async function startRun(input: { path?: string; url: string; agents?: number; budgetSeconds?: number; optIn?: { destructive?: boolean; externalSideEffects?: boolean; idempotencyReplay?: boolean }; liveTarget?: { attested?: boolean; ownershipToken?: string; prodOverride?: boolean }; onJobDone?: (job: Job) => void }): Promise<number> {
+  async function startRun(input: { path?: string; url: string; agents?: number; budgetSeconds?: number; optIn?: { destructive?: boolean; externalSideEffects?: boolean; idempotencyReplay?: boolean }; liveTarget?: { attested?: boolean; ownershipToken?: string; prodOverride?: boolean }; safeDbUrl?: string; onJobDone?: (job: Job) => void }): Promise<number> {
     // live-target handling FIRST — before the job is registered, so a refusal
     // can never leave a zombie "running" job blocking the queue. Non-local
     // targets need an ownership claim: either the operator's one-click
@@ -297,6 +298,9 @@ export async function startWebServer(opts: {
             // swarm camera: stream frames to whoever is watching the live run
             onFrame: (frame) => emitVolatile(job, 'frame', frame),
             cameraActive: () => job.waiters.length > 0,
+            // safe DB clone: invariants read the throwaway copy, and its
+            // presence unlocks write-mode testing for this local run
+            dbUrl: input.safeDbUrl,
           });
           emit(job, 'swarm', {
             steps: swarmResult.steps,
@@ -375,7 +379,7 @@ export async function startWebServer(opts: {
 
           if (req.method === 'POST' && url.pathname === '/api/runs') {
             if (hasRunningJob()) return send(409, { error: 'a run is already in progress — one at a time on a local machine' });
-            const body = (await readBody()) as { path?: string; url?: string; agents?: number; budgetSeconds?: number; optIn?: { destructive?: boolean; externalSideEffects?: boolean; idempotencyReplay?: boolean }; liveTarget?: { attested?: boolean; ownershipToken?: string; prodOverride?: boolean } };
+            const body = (await readBody()) as { path?: string; url?: string; agents?: number; budgetSeconds?: number; optIn?: { destructive?: boolean; externalSideEffects?: boolean; idempotencyReplay?: boolean }; liveTarget?: { attested?: boolean; ownershipToken?: string; prodOverride?: boolean }; safeDbUrl?: string };
             if (typeof body.url !== 'string' || !body.url.trim()) {
               return send(400, { error: '"url" (the target app) is required' });
             }
@@ -393,6 +397,7 @@ export async function startWebServer(opts: {
               budgetSeconds: typeof body.budgetSeconds === 'number' ? body.budgetSeconds : undefined,
               optIn: body.optIn,
               liveTarget: body.liveTarget,
+              safeDbUrl: typeof body.safeDbUrl === 'string' ? body.safeDbUrl : undefined,
             });
             return send(202, { jobId });
           }
@@ -493,6 +498,56 @@ export async function startWebServer(opts: {
             if (!removed) return send(404, { error: 'no such acknowledged finding' });
             return send(200, { removed: true });
           }
+
+          // ---- safe DB clones (write-mode testing against a throwaway copy)
+          if (url.pathname === '/api/db/clones' && req.method === 'GET') {
+            return send(200, { clones: listClones(db) });
+          }
+
+          if (url.pathname === '/api/db/clone' && req.method === 'POST') {
+            const body = (await readBody()) as { sourceUrl?: string };
+            if (typeof body.sourceUrl !== 'string' || !body.sourceUrl.trim()) {
+              return send(400, { error: '"sourceUrl" (your local Postgres connection string) is required' });
+            }
+            try {
+              const result = await cloneLocalPostgres({
+                sourceUrl: body.sourceUrl.trim(),
+                db,
+                allowHosts: config.db.allowedHosts,
+                logger,
+              });
+              return send(201, {
+                clone: result.clone,
+                droppedPrevious: result.droppedPrevious,
+                instructions: `Restart your app with DATABASE_URL set to the clone URL below, then launch the run — write testing, duplicate-write detection and race mode all land in the copy.`,
+              });
+            } catch (e) {
+              return send(422, { error: String(e instanceof Error ? e.message : e) });
+            }
+          }
+
+          const dropCloneMatch = /^\/api\/db\/clones\/([A-Za-z0-9_]+)$/.exec(url.pathname);
+          if (dropCloneMatch && req.method === 'DELETE') {
+            const body = (await readBody().catch(() => ({}))) as { sourceUrl?: string };
+            // the maintenance connection comes from the source the clone was
+            // created from — tracked in the row's own provenance
+            const row = db.prepare('SELECT source_name FROM db_clones WHERE name = ?').get(dropCloneMatch[1]) as
+              | { source_name: string }
+              | undefined;
+            if (!row) return send(404, { error: 'no such clone' });
+            const sourceUrl = body.sourceUrl?.trim() || `postgres://localhost:5432/${row.source_name}`;
+            const dropped = await dropClone({
+              name: dropCloneMatch[1],
+              sourceUrl,
+              db,
+              allowHosts: config.db.allowedHosts,
+              logger,
+            }).catch((e) => {
+              throw new HttpError(422, String(e instanceof Error ? e.message : e));
+            });
+            return send(200, { dropped });
+          }
+
 
           // ---- verified-fix loop: replay a run's findings against the app NOW
           const verifyMatch = /^\/api\/runs\/(\d+)\/verify$/.exec(url.pathname);

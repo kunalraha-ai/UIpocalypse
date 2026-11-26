@@ -105,6 +105,17 @@ CREATE TABLE IF NOT EXISTS fix_verdicts (
   PRIMARY KEY(run_id, cluster_key)
 );
 
+-- safe DB clones (verified write-mode testing): one throwaway Postgres copy
+-- per source database. The clone URL stays on the machine that created it —
+-- a local tool must not ship credentials anywhere.
+CREATE TABLE IF NOT EXISTS db_clones (
+  id INTEGER PRIMARY KEY,
+  name TEXT UNIQUE NOT NULL,
+  source_name TEXT NOT NULL,
+  clone_url TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS ignored_findings (
   id INTEGER PRIMARY KEY,
   cluster_key TEXT UNIQUE NOT NULL,
