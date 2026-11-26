@@ -864,6 +864,8 @@ function FindingDetail() {
   const [verdict,setVerdict]=useState('unsure'); const [toast,setToast]=useState(false)
   const [verifying,setVerifying]=useState<'idle'|'running'|'done'>('idle')
   const [verifyError,setVerifyError]=useState('')
+  const [exported,setExported]=useState<Array<{filename:string;content:string}>|null>(null)
+  const [exporting,setExporting]=useState(false)
   useEffect(()=>{ if(runId) api.report(runId).then(r=>setReport(r.report)).catch(()=>{}) },[runId])
   const issue=report?.issues.find(i=>i.key===findingKey)??null
   const verifyFix=async()=>{
@@ -886,13 +888,22 @@ function FindingDetail() {
       setVerifyError('verification timed out'); setVerifying('idle')
     }catch(e){ setVerifyError(String(e instanceof Error?e.message:e)); setVerifying('idle') }
   }
+  const exportTest=async()=>{
+    if(!runId) return
+    setExporting(true); setExported(null)
+    try{
+      const r=await api.exportTest(runId, findingKey)
+      setExported(r.files.length?r.files:null)
+    }catch(e){ setVerifyError(String(e instanceof Error?e.message:e)) }
+    setExporting(false)
+  }
   if(report&&!issue) return <div className="app-page"><AppPageHead title="Finding not found" copy={`No finding with key ${findingKey} in run #${runId}.`}/><Button to={`/app/report?run=${runId}`} variant="secondary">Back to report</Button></div>
   if(!report) return <div className="app-page"><AppPageHead title="Loading finding…"/></div>
   const sevTone=(s:string)=>s==='high'?'high':s==='critical'?'critical':s==='medium'?'medium':'neutral'
   const copyPrompt=()=>{ navigator.clipboard?.writeText(issue!.fixPrompt); setToast(true); setTimeout(()=>setToast(false),1800) }
   const v=issueVerdicts(issue!)
   const fv=v.fixVerified
-  return <div className="app-page"><AppPageHead title={issue!.title} copy={`Run #${runId} · ${issue!.observations} observations`} actions={<><Button icon="copy" onClick={copyPrompt}>Copy fix prompt</Button><Button variant="secondary" icon="check" disabled={verifying==='running'} onClick={verifyFix}>{verifying==='running'?'Verifying…':'Verify fix'}</Button></>}/>
+  return <div className="app-page"><AppPageHead title={issue!.title} copy={`Run #${runId} · ${issue!.observations} observations`} actions={<><Button icon="copy" onClick={copyPrompt}>Copy fix prompt</Button><Button variant="secondary" icon="check" disabled={verifying==='running'} onClick={verifyFix}>{verifying==='running'?'Verifying…':'Verify fix'}</Button>{fv&&fv.verdict==='fixed'&&<Button variant="secondary" icon="file" disabled={exporting} onClick={exportTest}>{exporting?'Exporting…':'Export Playwright test'}</Button>}</>}/>
     <div className="finding-badges"><Badge tone={sevTone(issue!.severity) as 'critical'|'high'|'medium'|'neutral'}>{issue!.severity}</Badge><Badge tone="good">{issue!.confidence} confidence</Badge>{issue!.types.slice(0,2).map(t=><Badge tone="blue" key={t}>{t.replace(/_/g,' ')}</Badge>)}
       {v.reproduced===true&&<Badge tone="good">Reproduced on retry</Badge>}
       {v.reproduced===false&&<Badge tone="critical">Flaky — downgraded</Badge>}
@@ -908,6 +919,10 @@ function FindingDetail() {
     {fv&&<Callout tone={fv.verdict==='fixed'?'safe':fv.verdict==='still-broken'?'warn':'info'} title={`Fix verification — ${fv.verdict === 'still-broken' ? 'still broken' : fv.verdict}`}>
       {fv.note}<small style={{display:'block',marginTop:6,opacity:.6}}>verified {new Date(fv.verifiedAt).toLocaleString()} — replayed against the app as it was at that moment. Verify again after any further change.</small>
     </Callout>}
+    {exported&&exported.map(f=><Card key={f.filename}><div className="card-head"><h2>{f.filename}</h2><Badge tone="neutral">yours to keep</Badge></div>
+      <p className="lede-small">A self-contained Playwright test — it pins this fix forever. Save it in your repo (e.g. tests/), then <code>npm i -D @playwright/test && npx playwright install chromium</code>. Set <code>UIP_BASE_URL</code> if the port changes.</p>
+      <CodeBlock code={f.content}/>
+    </Card>)}
     {(v.reproNote||v.idempotencyNote||v.corroboration)&&<Callout tone="info" title="How this verdict was reached">
       {v.reproNote&&<p style={{margin:'0 0 6px'}}>{v.reproNote}</p>}
       {v.idempotencyNote&&<p style={{margin:'0 0 6px'}}>{v.idempotencyNote}</p>}

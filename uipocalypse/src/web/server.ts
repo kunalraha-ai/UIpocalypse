@@ -9,6 +9,7 @@ import { initWorkspace, type Workspace } from '../workspace.js';
 import { findDueMonitors, stampMonitorLaunched, stampMonitorRunId } from './monitors.js';
 import { verifyRunFixes } from '../browser/replay.js';
 import { cloneLocalPostgres, dropClone, listClones } from '../tools/clone-db.js';
+import { exportRunTests } from '../tools/export-test.js';
 import { openDb, listRuns, getRun, addIgnoredFinding, listIgnoredFindings, removeIgnoredFinding, type Db } from '../db/index.js';
 import { createLogger, type Logger } from '../logger.js';
 import { scanCodebase } from '../tools/scan-codebase.js';
@@ -497,6 +498,28 @@ export async function startWebServer(opts: {
             const removed = removeIgnoredFinding(db, Number(unignoreMatch[1]));
             if (!removed) return send(404, { error: 'no such acknowledged finding' });
             return send(200, { removed: true });
+          }
+
+          // ---- bugs become permanent tests: export fixed findings as Playwright specs
+          const exportTestMatch = /^\/api\/runs\/(\d+)\/export-test$/.exec(url.pathname);
+          if (exportTestMatch && req.method === 'POST') {
+            const runId = Number(exportTestMatch[1]);
+            if (!getRun(db, runId)) return send(404, { error: 'no such run' });
+            const body = (await readBody().catch(() => ({}))) as { key?: string; stress?: number };
+            try {
+              const result = await exportRunTests({
+                db,
+                runId,
+                logger,
+                keys: body.key ? [body.key] : undefined,
+                // the stability gate replays against the live app — same
+                // consent as verify_fix, same safe class
+                stress: typeof body.stress === 'number' ? body.stress : 0,
+              });
+              return send(200, { files: result.files, skipped: result.skipped });
+            } catch (e) {
+              return send(422, { error: String(e instanceof Error ? e.message : e) });
+            }
           }
 
           // ---- safe DB clones (write-mode testing against a throwaway copy)

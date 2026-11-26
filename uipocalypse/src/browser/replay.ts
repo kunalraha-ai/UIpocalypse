@@ -75,8 +75,10 @@ async function settle(page: Page, ms = 2000): Promise<void> {
 }
 
 /** Replay one finding on a fresh page. Returns the verdict + a note in the
- *  product's own voice. Never throws — a failed replay is a verdict. */
-async function replayFinding(
+ *  product's own voice. Never throws — a failed replay is a verdict.
+ *  Exported for the test-export stability gate, which re-runs a finding's
+ *  replay N times before emitting a permanent test. */
+export async function replayFinding(
   page: Page,
   type: string,
   ev: Record<string, unknown>,

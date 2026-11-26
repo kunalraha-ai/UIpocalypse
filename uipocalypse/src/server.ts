@@ -6,6 +6,7 @@ import { createLogger } from './logger.js';
 import { openDb, listRuns, getRun, type Db } from './db/index.js';
 import { verifyRunFixes } from './browser/replay.js';
 import { cloneLocalPostgres, dropClone } from './tools/clone-db.js';
+import { exportRunTests } from './tools/export-test.js';
 import { scanCodebase } from './tools/scan-codebase.js';
 import { loadConfig } from './config.js';
 import { createLlm, createLlmSet, healthCheck, llmModeLine } from './llm/index.js';
@@ -324,6 +325,57 @@ export function createServer(opts: { workspaceRoot?: string } = {}): ServerConte
         findings: (db.prepare('SELECT COUNT(*) AS n FROM findings WHERE run_id = ?').get(r.id) as { n: number }).n,
       }));
       return text(runs);
+    },
+  );
+
+  server.registerTool(
+    'export_tests',
+    {
+      title: 'Export confirmed fixes as Playwright tests',
+      description:
+        'Every finding the verified-fix loop confirmed as FIXED becomes a self-contained Playwright test the user owns — the suite compounds with the product, no lock-in. Only fixed clusters export (fix a still-broken bug first); the optional stability gate re-runs each replay N times and REFUSES to emit a test that cannot pass consistently. Files depend on @playwright/test only; BASE_URL defaults to the recorded origin and can be overridden with UIP_BASE_URL.',
+      inputSchema: {
+        runId: z.number().int().min(1).describe('Run id whose fixed findings to export'),
+        outDir: z.string().optional().describe('Directory to write the .spec.ts files into (default: tests/uipocalypse under the cwd)'),
+        key: z.string().optional().describe('Cluster key to export (default: all eligible clusters)'),
+        stress: z
+          .number()
+          .int()
+          .min(1)
+          .max(20)
+          .optional()
+          .describe('Stability gate: re-run each finding\'s replay N times against the live app first. A test that cannot pass N/N is refused with its rate. The app must be running.'),
+        url: z.string().optional().describe('Where the app lives now (for the stability gate; default: the run\'s target URL)'),
+      },
+    },
+    async ({ runId, outDir, key, stress, url }) => {
+      try {
+        const run = getRun(db, runId);
+        if (!run) return { isError: true, content: [{ type: 'text' as const, text: `Run ${runId} not found.` }] };
+        const dir = outDir ?? join(process.cwd(), 'tests', 'uipocalypse');
+        const result = await exportRunTests({
+          db,
+          runId,
+          logger,
+          outDir: dir,
+          keys: key ? [key] : undefined,
+          stress,
+          baseUrl: url ?? run.target_url,
+        });
+        const lines = [
+          result.files.length > 0
+            ? `Exported ${result.files.length} Playwright test${result.files.length === 1 ? '' : 's'} to ${dir}:`
+            : 'No tests exported.',
+          ...result.files.map((f) => `  ${f.filename}`),
+          ...result.skipped.map((s) => `  skipped ${s.key}: ${s.reason}`),
+        ];
+        if (result.files.length > 0) {
+          lines.push('Run them: npx playwright test (needs @playwright/test: npm i -D @playwright/test)');
+        }
+        return text(lines.join('\n'));
+      } catch (e) {
+        return { isError: true, content: [{ type: 'text' as const, text: `${e}` }] };
+      }
     },
   );
 
