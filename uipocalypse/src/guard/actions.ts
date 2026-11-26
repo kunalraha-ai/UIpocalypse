@@ -15,6 +15,13 @@ export type ActionLike = {
   /** HTTP method the action would trigger, when known (from the code map or network layer). */
   method?: string;
   kind?: string;
+  /**
+   * Set by static↔runtime corroboration (corroborate.ts): the app-map's
+   * predicted method contradicts the label regex (e.g. "Remove filter" in a
+   * write-free component file). Takes precedence over classifyAction so the
+   * guard stays the single consumer of risk decisions.
+   */
+  riskOverride?: RiskClass;
 };
 
 // SAFETY.md G5 label signals
@@ -55,11 +62,13 @@ export function filterActions<T extends ActionLike>(
       skipped.push({ action, reason: `config skipActions: "${label}"` });
       continue;
     }
-    const risk = classifyAction(action);
+    const risk = action.riskOverride ?? classifyAction(action);
     if (risk === 'destructive' && !config.destructiveOptIn) {
       skipped.push({
         action,
-        reason: `destructive action "${label}" — requires opt-in (destructiveOptIn) (SAFETY.md G5)`,
+        reason: action.riskOverride
+          ? `destructive action "${label}" (corroborated by the app map's predicted method) — requires opt-in (destructiveOptIn) (SAFETY.md G5)`
+          : `destructive action "${label}" — requires opt-in (destructiveOptIn) (SAFETY.md G5)`,
       });
       continue;
     }

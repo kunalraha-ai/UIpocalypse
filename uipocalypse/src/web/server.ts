@@ -203,6 +203,7 @@ export async function startWebServer(opts: {
         if (isLiveTarget) emit(job, 'liveTarget', { host, note: 'live target — read-only unless a safe DB is configured' });
         emit(job, 'phase', { phase: 'scan' });
         let appMap: AppMap = EMPTY_APP_MAP;
+        let staticIssues: import('../analyzer/types.js').Issue[] = [];
         if (!path) {
           // URL-only run: no source to scan — say so honestly and use an empty
           // app map (plan defaults to the full persona roster + the target seed)
@@ -211,6 +212,7 @@ export async function startWebServer(opts: {
           const resolved = await resolveSource(path, workspace);
           const scanned = await scanCodebase({ path: resolved }, { logger });
           appMap = scanned.appMap;
+          staticIssues = scanned.issues; // static↔runtime corroboration input
           emit(job, 'scan', { staticIssues: scanned.issues.length, clonedFrom: resolved === path ? undefined : path });
         }
 
@@ -279,6 +281,8 @@ export async function startWebServer(opts: {
             budgetSeconds: input.budgetSeconds,
             screenshotDir: workspace.screenshots,
             optIn: input.optIn,
+            appMap: path ? appMap : undefined,
+            staticIssues: path ? staticIssues : undefined,
           });
           emit(job, 'swarm', { steps: swarmResult.steps, findings: swarmResult.findingCounts, coverage: swarmResult.coverage });
         } finally {

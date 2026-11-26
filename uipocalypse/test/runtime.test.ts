@@ -143,9 +143,10 @@ describe('in-page runtime (TRD §3.5) on the static fixture', () => {
     const actions = await page.evaluate(() => window.__uip.getActions());
     const link = actions.find((a: { name: string }) => a.name === 'Page 2')!;
     // a full page navigation kills the JS context before perform can return -
-    // the runner treats that rejection as a nav signal
+    // the runner treats that rejection as a nav signal. Under parallel suite
+    // load the same death can surface as "closed" instead of "destroyed".
     await expect(page.evaluate((id) => window.__uip.perform(id), link.id)).rejects.toThrow(
-      /destroyed|navigation/i,
+      /destroyed|navigation|closed/i,
     );
     await page.waitForLoadState('load');
     // the runtime re-installs on the new document

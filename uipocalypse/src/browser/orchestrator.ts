@@ -15,6 +15,8 @@ import { hashAriaSnapshot, normalizeRoute } from '../graph/hash.js';
 import { DetectorHub, type FindingCandidate, ALIVE_REASONS } from './detectors.js';
 import { checkIdempotency } from './detectors-filters.js';
 import { verifyFindings, type VerificationStats } from './verify.js';
+import { enrichedRisk, deadHandlerLabels, annotateCorroboration, type EnrichedRisk } from './corroborate.js';
+import type { AppMap, Issue } from '../analyzer/types.js';
 import { ALL_PERSONAS, createPersona, type PersonaDecision } from '../agent/personas.js';
 import { runRace, pgInvariantRunner, dbUrlFromEnv, dbHostFromUrl, attributeDuplicateEffects, type InvariantResult } from './race.js';
 import { withTimeout, OP_TIMEOUT_MS, armWatchdog } from './timeout.js';
@@ -45,6 +47,13 @@ export type SwarmOptions = {
   /** reuse a run row created by the scout phase */
   runId?: number;
   optIn?: { destructive?: boolean; externalSideEffects?: boolean; idempotencyReplay?: boolean };
+  /**
+   * Static↔runtime corroboration inputs (path runs have them; URL-only runs
+   * don't, and the label verdicts stand). The web dashboard passes both from
+   * its source scan; the MCP server's plan path can follow later.
+   */
+  appMap?: AppMap;
+  staticIssues?: Issue[];
   /** directory for failure screenshots (workspace.screenshots) — omit to skip */
   screenshotDir?: string;
   raceTarget?: {
@@ -101,6 +110,21 @@ export async function swarm(opts: SwarmOptions): Promise<SwarmResult> {
   // fix 8: replay one extra request per duplicate found — explicit opt-in
   // only (web UI checkbox / API / MCP / config idempotencyOptIn)
   const idempotencyReplay = opts.optIn?.idempotencyReplay ?? opts.config.idempotencyOptIn ?? false;
+
+  // static↔runtime corroboration: label → enriched risk (cached — labels
+  // repeat heavily), and the static dead-handler label set for dead-click
+  // corroboration. No app map (URL-only runs) → every lookup falls through
+  // to the label verdict, behavior unchanged.
+  const riskByLabel = new Map<string, EnrichedRisk>();
+  const enrichedRiskFor = (label: string): EnrichedRisk => {
+    let r = riskByLabel.get(label);
+    if (!r) {
+      r = enrichedRisk(opts.appMap, label);
+      riskByLabel.set(label, r);
+    }
+    return r;
+  };
+  const staticDeadLabels = deadHandlerLabels(opts.staticIssues);
   const guard = createGuard(effectiveConfig);
   const decision = await guard.checkTarget(opts.url);
   if (!decision.allowed) {
@@ -245,7 +269,18 @@ export async function swarm(opts: SwarmOptions): Promise<SwarmResult> {
       return { ...a, locator: `${sig}#${n}` };
     });
     const { allowed, skipped } = guard.filterActions(
-      actions.map((a) => ({ id: a.id, label: a.name })),
+      actions.map((a) => {
+        const enriched = enrichedRiskFor(a.name);
+        return {
+          id: a.id,
+          label: a.name,
+          method: enriched.method,
+          // corroboration speaks here: the app map's predicted method can
+          // upgrade a benign label to destructive or downgrade a
+          // destructive-looking label to testable 'write'
+          riskOverride: enriched.via === 'method' ? enriched.risk : undefined,
+        };
+      }),
       { dbOk: decision.isLocal },
     );
     const allowedIds = new Set(allowed.map((a) => a.id));
@@ -255,11 +290,15 @@ export async function swarm(opts: SwarmOptions): Promise<SwarmResult> {
       // read-only mode: also skip write-class actions (form submits, POST triggers)
       // that the Guard would normally allow with a safe DB
       for (const a of actions) {
-        if (allowedIds.has(a.id) && (a.textLike || /submit|send|save|create|add|buy|pay|order|checkout|redeem/i.test(a.name))) {
+        const en = enrichedRiskFor(a.name);
+        const predictedWrite = en.via === 'method' && en.risk !== 'safe';
+        if (allowedIds.has(a.id) && (a.textLike || predictedWrite || /submit|send|save|create|add|buy|pay|order|checkout|redeem/i.test(a.name))) {
           allowedIds.delete(a.id);
-          const reason = 'read-only mode: no safe DB — writes and form submits skipped';
+          const reason = predictedWrite
+            ? 'read-only mode: no safe DB — the app map predicts this control writes (skipped, not tested)'
+            : 'read-only mode: no safe DB — writes and form submits skipped';
           skipReasonById.set(a.id, reason);
-          skipped.push({ action: { id: a.id, label: a.name }, reason });
+          skipped.push({ action: { id: a.id, label: a.name, method: en.method, riskOverride: undefined }, reason });
         }
       }
     }
@@ -278,7 +317,7 @@ export async function swarm(opts: SwarmOptions): Promise<SwarmResult> {
         locator: a.locator,
         kind: a.role ?? 'unknown',
         label: a.name.slice(0, 80),
-        riskClass: classifyAction({ id: a.id, label: a.name }),
+        riskClass: enrichedRiskFor(a.name).risk,
         skipReason: reason,
       });
       const key = `${a.name}::${reason}`;
@@ -353,7 +392,7 @@ export async function swarm(opts: SwarmOptions): Promise<SwarmResult> {
         locator: actionLocator,
         kind: action?.role ?? 'unknown',
         label: label.slice(0, 80),
-        riskClass: action?.risky ? 'destructive' : 'safe',
+        riskClass: enrichedRiskFor(label).risk,
       });
 
       let result;
@@ -460,7 +499,12 @@ export async function swarm(opts: SwarmOptions): Promise<SwarmResult> {
             url: page.url(),
             actionId: choice.runtimeId,
           });
-          if (verdict) findings.push({ ...verdict, screenshot: await screenshot(page) });
+          if (verdict) {
+            // static↔runtime corroboration: the source side flags the same
+            // control — both layers agree (never a downgrade when silent)
+            annotateCorroboration(verdict.evidence as { action?: unknown; corroboration?: string }, staticDeadLabels);
+            findings.push({ ...verdict, screenshot: await screenshot(page) });
+          }
         }
       }
       const dup = hub.duplicateRequests(page, agent.postIndex, { steps: agent.history.slice(-8) });

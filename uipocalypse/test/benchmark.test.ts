@@ -59,6 +59,7 @@ const FLAKY_TRUTH: Truth = {
     { type: 'dead_click', match: evAction('Store only'), label: 'decoy: localStorage-only effect (storage signal)' },
     { type: 'dead_click', match: evAction('Error only'), label: 'decoy: console.error-only effect (console signal)' },
     { type: 'dead_click', match: evAction('Wears out'), label: 'decoy: works on first click per page — later deads suppress to inconsistent_feedback' },
+    { type: 'dead_click', match: evAction('Remove filter'), label: 'decoy: destructive-sounding UI toggle — label-skipped without a source map, tested with one' },
   ],
 };
 
