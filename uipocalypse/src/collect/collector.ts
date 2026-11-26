@@ -254,7 +254,10 @@ export function clusterFindings(findings: FindingRow[], appMap: AppMap): Cluster
       title: d.title,
       subject: d.subject,
       severity: d.severity,
-      confidence: d.confidence,
+      // observation-derived confidence: a finding seen >= 2 times in one run
+      // is upgraded medium -> high ("observed twice"). One-offs keep their
+      // original confidence; 'low' never upgrades on repetition alone.
+      confidence: d.classification === 'finding' && d.observations >= 2 && d.confidence === 'medium' ? 'high' : d.confidence,
       classification: d.classification,
       observations: d.observations,
       samples: d.samples,
@@ -308,11 +311,25 @@ function mergeBotProtectionClusters(clusters: Cluster[]): Cluster[] {
     if (items.length < 3) continue;
     for (const i of items) absorbed.add(i.key);
     const totalObs = items.reduce((s, i) => s + i.observations, 0);
+    // fix 6 (WAF fingerprint): name the wall when the evidence does —
+    // cf-mitigated: challenge responses were captured during the run
+    const wafs = new Set(
+      items
+        .flatMap((i) => i.samples.map((s) => (s as Record<string, unknown> | undefined)?.waf))
+        .filter((w): w is string => typeof w === 'string'),
+    );
+    const isChallenge = wafs.has('cloudflare-challenge');
+    const behindCloudflare = wafs.has('cloudflare');
+    const title = isChallenge
+      ? `Cloudflare bot challenge on ${origin} — ${items.length} resources blocked (${totalObs} observations)`
+      : behindCloudflare
+        ? `bot protection or rate limiting behind Cloudflare on ${origin} — ${items.length} resources blocked (${totalObs} observations)`
+        : `bot protection or rate limiting on ${origin} — ${items.length} resources blocked (${totalObs} observations)`;
     merged.push({
       key: `infra:bot-protection:${origin}`,
       family: 'endpoint',
       types: ['infrastructure'],
-      title: `bot protection or rate limiting on ${origin} — ${items.length} resources blocked (${totalObs} observations)`,
+      title,
       subject: origin,
       severity: 'medium',
       confidence: 'low',

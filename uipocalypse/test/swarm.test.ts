@@ -239,7 +239,9 @@ describe('swarm orchestrator (Phase 4)', () => {
     });
     const rows = listFindings(db2, result.runId).filter((r) => r.type === 'duplicate_request');
     expect(rows.length).toBeGreaterThanOrEqual(1);
-    expect(JSON.parse(rows[0]!.evidence_json!).url).toContain('/api/echo');
+    // the fixture's plain /api/echo double-fire is detected (GraphQL ops are
+    // keyed separately — their test is below)
+    expect(rows.some((r) => JSON.parse(r.evidence_json!).url?.includes('/api/echo'))).toBe(true);
     // fix 8 default-off: no idempotency replay happens unless the operator
     // opted in — the finding carries no verdict, no extra request was made
     for (const r of rows) {
@@ -275,13 +277,52 @@ describe('swarm orchestrator (Phase 4)', () => {
     expect(rows.length).toBeGreaterThanOrEqual(1);
     for (const r of rows) {
       const ev = JSON.parse(r.evidence_json!);
-      expect(ev.url).toContain('/api/echo');
-      expect(ev.idempotency).toBe('idempotent'); // fixture echoes the same body every time
       expect(ev.lastResponse).toBeDefined(); // the detector captured the original response
+      expect(ev.idempotency).toBe('idempotent'); // fixture echoes the same body every time
       expect(r.severity).toBe('low'); // downgraded: repeats are absorbed
     }
+    // the plain /api/echo double-fire is among them
+    expect(rows.some((r) => JSON.parse(r.evidence_json!).url?.includes('/api/echo'))).toBe(true);
     db3.close();
     await server3.close();
+  }, 90_000);
+
+  it('duplicate keying: GraphQL mutations key by operation, not endpoint URL', async () => {
+    // One click on "Fire two ops" fires TWO DIFFERENT mutations at one
+    // endpoint — URL keying reads that as a double-submit (a FALSE
+    // duplicate). The Double-Clicker's double-fire of "GraphQL submit" is a
+    // TRUE duplicate, and must now be reported by operation name.
+    const server4 = await serveStatic(FIXTURE);
+    const db4 = openDb(join(mkdtempSync('/tmp/opencode/uip-gql-'), 'db.sqlite'));
+    const plan = PlanSchema.parse({ summary: 'fixture', goals: [], seedRoutes: [server4.url], nastyInputs: { long: ['z'.repeat(50)] } });
+    const result = await swarm({
+      url: server4.url,
+      config: { ...ws.config },
+      plan,
+      db: db4,
+      routes: ['/', '/page2.html'],
+      llm: createLlm({ LLM_API_KEY: '' }),
+      logger: ws.logger,
+      agents: 4,
+      budgetSeconds: 30,
+      perAgentSteps: 12,
+      personas: ['double-clicker'],
+    });
+    const rows = listFindings(db4, result.runId).filter((r) => r.type === 'duplicate_request');
+    // the true duplicate: the double-fired GraphQL submit, keyed by operation
+    const gql = rows.filter((r) => JSON.parse(r.evidence_json!).url?.includes('/api/graphql'));
+    expect(gql.length).toBeGreaterThanOrEqual(1);
+    // every graphql duplicate names its operation — never a bare-URL conflation
+    for (const r of gql) {
+      const ev = JSON.parse(r.evidence_json!);
+      expect(ev.operation).toBeDefined();
+    }
+    expect(gql.some((r) => JSON.parse(r.evidence_json!).operation === 'graphql:EchoMut')).toBe(true);
+    // the false-duplicate class is gone: IncA/IncB from ONE click never cluster
+    expect(gql.some((r) => JSON.parse(r.evidence_json!).operation === 'graphql:IncA')).toBe(false);
+    expect(gql.some((r) => JSON.parse(r.evidence_json!).operation === 'graphql:IncB')).toBe(false);
+    db4.close();
+    await server4.close();
   }, 90_000);
 
   it('repeat-activation suppression is RUN-SCOPED: prior-run feedback never masks this run (regression guarantee)', () => {

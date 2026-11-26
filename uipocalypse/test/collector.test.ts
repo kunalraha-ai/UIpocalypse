@@ -94,6 +94,32 @@ describe('collector (Phase 5, FR-C1)', () => {
     expect(clusters.filter((c) => c.types.includes('failed_request'))).toHaveLength(3);
   });
 
+  it('WAF fingerprint: Cloudflare-challenge 403s name the wall in the merged title', () => {
+    const findings = [
+      row({ type: 'failed_request', evidence: { url: 'https://audora.art/_app/a.js', status: 403, waf: 'cloudflare-challenge' } }),
+      row({ type: 'failed_request', evidence: { url: 'https://audora.art/_app/b.js', status: 403, waf: 'cloudflare-challenge' } }),
+      row({ type: 'failed_request', evidence: { url: 'https://audora.art/_app/c.js', status: 403, waf: 'cloudflare-challenge' } }),
+    ];
+    const clusters = clusterFindings(findings, APP_MAP);
+    const infra = clusters.filter((c) => c.types.includes('infrastructure'));
+    expect(infra).toHaveLength(1);
+    expect(infra[0]!.title).toContain('Cloudflare');
+    expect(infra[0]!.title).toContain('https://audora.art');
+  });
+
+  it('observation-derived confidence: >=2 observations on a finding cluster upgrades medium to high', () => {
+    const findings = [
+      row({ type: 'console_error', confidence: 'medium', evidence: { text: 'Uncaught TypeError: x is undefined' } }),
+      row({ type: 'console_error', confidence: 'medium', evidence: { text: 'Uncaught TypeError: x is undefined' } }),
+      row({ type: 'console_error', confidence: 'medium', evidence: { text: 'Uncaught TypeError: DIFFERENT message' } }),
+    ];
+    const clusters = clusterFindings(findings, APP_MAP);
+    const twice = clusters.find((c) => c.observations === 2)!;
+    expect(twice.confidence).toBe('high'); // observed twice — high confidence
+    const once = clusters.find((c) => c.observations === 1)!;
+    expect(once.confidence).toBe('medium'); // one-off stays medium
+  });
+
   it('duplicate_effect and race_violation cluster by DB table, merging per table', () => {
     const findings = [
       row({ type: 'duplicate_effect', severity: 'high', confidence: 'high', evidence: { invariant: 'no dup tx', sql: 'select count(*) from transactions t1 join transactions t2 on ...', expected: 0, actual: 3 } }),

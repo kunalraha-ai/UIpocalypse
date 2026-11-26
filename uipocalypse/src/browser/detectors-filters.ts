@@ -87,6 +87,28 @@ export function rankDuplicateSubmit(url: string): 'high' | 'medium' | 'low' {
   return 'medium';
 }
 
+// ---- fix 5 (dup keying): GraphQL operations and Next.js Server Actions ----
+// All GraphQL mutations hit ONE endpoint and Server Actions POST the page
+// URL — keying duplicates by URL conflates different operations. The
+// discriminator extracts ONLY the operation identifier from the request
+// (never the body — bodies can carry user data and must not be stored).
+
+/** Operation discriminator for write requests. Returns a stable operation id
+ *  when one is detectable (GraphQL operationName/query name, Next-Action id),
+ *  else undefined (plain URL keying). Pure + testable. */
+export function operationOf(input: { postData?: string | null; nextAction?: string | null }): string | undefined {
+  if (typeof input.nextAction === 'string' && input.nextAction) {
+    return `action:${input.nextAction.slice(0, 64)}`;
+  }
+  const body = typeof input.postData === 'string' ? input.postData.slice(0, 2000) : '';
+  if (!body) return undefined;
+  const opName = body.match(/"operationName"\s*:\s*"([^"]{1,80})"/);
+  if (opName?.[1]) return `graphql:${opName[1]}`;
+  const query = body.match(/"(?:query|mutation)"\s*:\s*"(mutation|query)\s+([A-Za-z_][\w]{0,80})/);
+  if (query?.[2]) return `graphql:${query[2]}`;
+  return undefined;
+}
+
 // ---- fix 8: idempotency check for duplicate-submits ----
 
 /** After detecting a double-submit, make one more request. If the server

@@ -1,5 +1,6 @@
 import type { Page } from 'playwright';
 import { shouldFlagConsoleError, rankDuplicateSubmit } from './detectors-filters.js';
+import { operationOf } from './detectors-filters.js';
 
 /**
  * Mechanical failure detectors (TRD §3.6). Every candidate carries evidence so
@@ -43,8 +44,10 @@ export class DetectorHub {
   private readonly appOrigin: string;
   /** per-page write log for duplicate_request detection (same write ≥2× within 1 s from one agent).
    *  fix 8: entries carry method and the captured response so an opted-in run
-   *  can verify idempotency by replaying the request once. */
-  private readonly postLog = new Map<object, Array<{ url: string; time: number; method: string; status?: number; body?: string }>>();
+   *  can verify idempotency by replaying the request once. fix 5 (dup keying):
+   *  entries carry the GraphQL/Server-Action operation discriminator so
+   *  different mutations at one endpoint are never conflated. */
+  private readonly postLog = new Map<object, Array<{ url: string; time: number; method: string; op?: string; status?: number; body?: string }>>();
 
   constructor(opts: { appOrigin: string }) {
     this.appOrigin = opts.appOrigin;
@@ -52,7 +55,7 @@ export class DetectorHub {
 
   attachPage(page: Page): void {
     const url = () => page.url();
-    const posts: Array<{ url: string; time: number; method: string; status?: number; body?: string }> = [];
+    const posts: Array<{ url: string; time: number; method: string; op?: string; status?: number; body?: string }> = [];
     this.postLog.set(page, posts);
     page.on('request', (req) => {
       const method = req.method();
@@ -61,12 +64,15 @@ export class DetectorHub {
       // it must never count toward duplicate detection or failed_request
       if (req.headers()['x-uipocalypse-replay']) return;
       const requestUrl = req.url();
+      // fix 5 (dup keying): only the operation IDENTIFIER is extracted —
+      // request bodies can carry user data and are never stored
+      const op = operationOf({ postData: req.postData(), nextAction: req.headers()['next-action'] ?? null });
       try {
         if (new URL(requestUrl).origin !== this.appOrigin) return;
       } catch {
         return;
       }
-      posts.push({ url: requestUrl, time: Date.now(), method });
+      posts.push({ url: requestUrl, time: Date.now(), method, op });
       if (posts.length > 200) posts.splice(0, 100);
     });
     page.on('pageerror', (err) => {
@@ -116,6 +122,16 @@ export class DetectorHub {
       if (status < 400) return;
       if (req.headers()['x-uipocalypse-replay']) return; // our own replay is not an app failure
       const requestUrl = res.url();
+      // fix 6 (WAF fingerprint): name the wall, don't guess — cf-mitigated:
+      // challenge is a Cloudflare bot challenge; a bare cf-ray only says the
+      // site sits behind Cloudflare. No header, no claim.
+      const resHeaders = res.headers();
+      const waf =
+        String(resHeaders['cf-mitigated'] ?? '').toLowerCase() === 'challenge'
+          ? 'cloudflare-challenge'
+          : resHeaders['cf-ray']
+            ? 'cloudflare'
+            : undefined;
       if (BENIGN.test(requestUrl)) return;
       try {
         if (new URL(requestUrl).origin !== this.appOrigin) return;
@@ -126,7 +142,7 @@ export class DetectorHub {
         type: 'failed_request',
         severity: status >= 500 ? 'high' : 'medium',
         confidence: 'high',
-        evidence: { url: requestUrl.slice(0, 300), status },
+        evidence: waf ? { url: requestUrl.slice(0, 300), status, waf } : { url: requestUrl.slice(0, 300), status },
         steps: [],
         url: url(),
       });
@@ -230,30 +246,39 @@ export class DetectorHub {
   duplicateRequests(page: Page, sinceIndex: number, opts: { steps: string[] }): { findings: FindingCandidate[]; newIndex: number } {
     const posts = this.postLog.get(page) ?? [];
     const findings: FindingCandidate[] = [];
+    // fix 5 (dup keying): GraphQL mutations share one endpoint and Server
+    // Actions POST the page URL — key by operation when one is detectable so
+    // two DIFFERENT mutations never read as one double-submit
     const seen = new Map<string, number>();
     for (let i = sinceIndex; i < posts.length; i++) {
       const post = posts[i]!;
-      seen.set(post.url, (seen.get(post.url) ?? 0) + 1);
+      const key = post.op ? `${post.url}#${post.op}` : post.url;
+      seen.set(key, (seen.get(key) ?? 0) + 1);
     }
-    for (const [requestUrl, count] of seen) {
+    for (const [key, count] of seen) {
       if (count >= 2) {
+        const requestUrl = key.split('#')[0]!;
+        const op = key.includes('#') ? key.split('#')[1] : undefined;
         // FP fix 6: rank by endpoint impact (pay/checkout = high, track/beacon = low)
         const sev = rankDuplicateSubmit(requestUrl);
-        // fix 8: the newest captured response for this URL — the orchestrator
+        // fix 8: the newest captured response for this write — the orchestrator
         // uses it as the comparison baseline when the operator opted in
-        const last = [...posts].reverse().find((p) => p.url === requestUrl && p.status !== undefined);
-        const method = posts.find((p) => p.url === requestUrl)?.method ?? 'POST';
+        const last = [...posts].reverse().find((p) => p.url === requestUrl && (!op || p.op === op) && p.status !== undefined);
+        const method = posts.find((p) => p.url === requestUrl && (!op || p.op === op))?.method ?? 'POST';
         findings.push({
           type: 'duplicate_request',
           severity: sev,
           confidence: 'medium',
           evidence: {
             url: requestUrl.slice(0, 300), count, method,
+            operation: op,
             window: '1 step, <1s apart',
             lastResponse: last ? { status: last.status, body: last.body } : undefined,
-            note: sev === 'low'
-              ? 'tracking/telemetry endpoint — likely no user-facing impact'
-              : 'no submit guard — the damage is not confirmed',
+            note: op
+              ? 'keyed by GraphQL/Server-Action operation — same endpoint, different mutations are never conflated'
+              : sev === 'low'
+                ? 'tracking/telemetry endpoint — likely no user-facing impact'
+                : 'no submit guard — the damage is not confirmed',
           },
           steps: opts.steps,
           url: page.url(),

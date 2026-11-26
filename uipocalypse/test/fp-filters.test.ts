@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import type { Page } from 'playwright';
 import { analyze } from '../src/analyzer/analyzer.js';
+import { DetectorHub } from '../src/browser/detectors.js';
 import {
   checkIdempotency,
   isNavigationLink,
+  operationOf,
   rankDuplicateSubmit,
   shouldFlagConsoleError,
   shouldFlagDeadClick,
@@ -115,6 +118,27 @@ describe('fix 4 (pattern): WIDE_PENDING_SIGNALS is the single submit-guard regex
   });
 });
 
+describe('fix 5 (dup keying): GraphQL/Server-Action operations are distinct keys', () => {
+  it('extracts the GraphQL operationName from the request body', () => {
+    expect(operationOf({ postData: '{"operationName":"IncA","query":"mutation IncA { incA }"}' })).toBe('graphql:IncA');
+  });
+  it('falls back to the first field of the query when operationName is absent', () => {
+    expect(operationOf({ postData: '{"query":"mutation RedeemCoupon { redeem }"}' })).toBe('graphql:RedeemCoupon');
+  });
+  it('keys Next.js Server Actions by their Next-Action id', () => {
+    expect(operationOf({ postData: 'anything', nextAction: 'abc123' })).toBe('action:abc123');
+  });
+  it('plain POSTs without operation markers stay URL-keyed', () => {
+    expect(operationOf({ postData: '{"foo":"bar"}' })).toBeUndefined();
+    expect(operationOf({ postData: null })).toBeUndefined();
+    expect(operationOf({})).toBeUndefined();
+  });
+  it('never looks at more than the first 2 KB of a body', () => {
+    const big = 'x'.repeat(5000) + '"operationName":"Hidden"';
+    expect(operationOf({ postData: big })).toBeUndefined();
+  });
+});
+
 describe('fix 8: idempotency replay — one extra request decides the verdict', () => {
   it('identical response on replay = idempotent (server absorbs repeats)', async () => {
     const verdict = await checkIdempotency(
@@ -153,3 +177,51 @@ describe('fix 8: idempotency replay — one extra request decides the verdict', 
   });
 });
 
+
+describe('fix 6 (WAF fingerprint): the detector names the wall it hit', () => {
+  /** minimal Page stand-in — only the events DetectorHub.attachPage registers */
+  function fakePage(): Page & { emit: (event: string, arg: unknown) => void } {
+    const listeners = new Map<string, Array<(arg: unknown) => void>>();
+    return {
+      on(event: string, cb: (arg: unknown) => void) {
+        listeners.set(event, [...(listeners.get(event) ?? []), cb]);
+      },
+      emit(event: string, arg: unknown) {
+        for (const cb of listeners.get(event) ?? []) cb(arg);
+      },
+      url: () => 'https://audora.art/',
+    } as unknown as Page & { emit: (event: string, arg: unknown) => void };
+  }
+
+  it('a 403 with cf-mitigated: challenge is fingerprinted as a Cloudflare challenge', () => {
+    const hub = new DetectorHub({ appOrigin: 'https://audora.art' });
+    const page = fakePage();
+    hub.attachPage(page);
+    page.emit('response', {
+      status: () => 403,
+      url: () => 'https://audora.art/_app/chunk-a.js',
+      headers: () => ({ 'cf-mitigated': 'challenge', 'cf-ray': '9f2c…' }),
+      request: () => ({ method: () => 'GET', headers: () => ({}) }),
+      text: async () => '<html>challenge</html>',
+    });
+    const findings = hub.take();
+    expect(findings).toHaveLength(1);
+    expect(findings[0]!.type).toBe('failed_request');
+    expect(findings[0]!.evidence.waf).toBe('cloudflare-challenge');
+  });
+
+  it('a plain 403 without challenge headers carries no WAF guess', () => {
+    const hub = new DetectorHub({ appOrigin: 'https://audora.art' });
+    const page = fakePage();
+    hub.attachPage(page);
+    page.emit('response', {
+      status: () => 403,
+      url: () => 'https://audora.art/api/thing',
+      headers: () => ({}),
+      request: () => ({ method: () => 'GET', headers: () => ({}) }),
+      text: async () => 'nope',
+    });
+    const findings = hub.take();
+    expect(findings[0]!.evidence.waf).toBeUndefined();
+  });
+});

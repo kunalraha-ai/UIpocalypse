@@ -21,5 +21,13 @@
          guard). fetch-based like real app submits — a native form POST would
          navigate away on the first click and race the second one away. -->
     <button onclick="fetch('/api/echo', { method: 'POST' }); document.title = 'echoed'">Echo submit</button>
+    <!-- GraphQL: one click fires TWO DIFFERENT mutations at one endpoint.
+         URL-keyed duplicate detection would read this as a double-submit
+         (count=2 on /api/graphql) — a false duplicate. Operation-keyed
+         detection sees IncA:1, IncB:1 — no duplicate. -->
+    <button onclick="fetch('/api/graphql', { method: 'POST', body: JSON.stringify({ operationName: 'IncA', query: 'mutation IncA { incA }' }) }); fetch('/api/graphql', { method: 'POST', body: JSON.stringify({ operationName: 'IncB', query: 'mutation IncB { incB }' }) })">Fire two ops</button>
+    <!-- GraphQL submit-like control the Double-Clicker double-fires: a TRUE
+         duplicate, now keyed and reported by operation name, not just URL. -->
+    <button onclick="fetch('/api/graphql', { method: 'POST', body: JSON.stringify({ operationName: 'EchoMut', query: 'mutation EchoMut { echo }' }) }); document.title = 'gql echoed'">GraphQL submit</button>
   </body>
 </html>
