@@ -86,6 +86,8 @@ export type SwarmOptions = {
     actionLabel: string;
     input?: string;
     contexts?: number;
+    /** network barrier for the volley — see runRace (deterministic race reproducer) */
+    barrier?: { pattern?: string };
     /** per-context setup (e.g. log in) before the race URL */
     setup?: (ctx: import('playwright').BrowserContext) => Promise<void>;
   };
@@ -793,6 +795,7 @@ export async function swarm(opts: SwarmOptions): Promise<SwarmResult> {
             config: effectiveConfig,
             logger: opts.logger,
             setup: opts.raceTarget.setup,
+            barrier: opts.raceTarget.barrier,
           },
           { runInvariants: pgInvariantRunner(dbUrl!) },
         );

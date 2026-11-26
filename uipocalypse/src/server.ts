@@ -160,6 +160,16 @@ export function createServer(opts: { workspaceRoot?: string } = {}): ServerConte
             actionLabel: z.string().describe('Action to fire concurrently, e.g. "Redeem coupon"'),
             input: z.string().optional().describe('Value for text inputs, e.g. the coupon code'),
             contexts: z.number().int().min(2).max(50).optional().describe('Concurrent firers (default 20)'),
+            barrier: z
+              .boolean()
+              .optional()
+              .describe(
+                'Deterministic reproducer: hold every matching write at the network boundary until all contexts\' requests have arrived, then release them together. Turns "sometimes the coupon double-fires" into something repeatable. Give barrierPattern for exact matching.',
+              ),
+            barrierPattern: z
+              .string()
+              .optional()
+              .describe('Path substring the barrier holds, e.g. "/api/coupon/redeem". Default: all same-origin writes.'),
           })
           .optional(),
         dbUrl: z
@@ -239,6 +249,7 @@ export function createServer(opts: { workspaceRoot?: string } = {}): ServerConte
                 actionLabel: race.actionLabel,
                 input: race.input,
                 contexts: race.contexts,
+                barrier: race.barrier ? { pattern: race.barrierPattern } : undefined,
               }
             : undefined,
         });

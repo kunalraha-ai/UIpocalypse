@@ -1,4 +1,4 @@
-import type { Browser, BrowserContext, Page } from 'playwright';
+import type { Browser, BrowserContext, Page, Route } from 'playwright';
 import type { UiConfig } from '../config.js';
 import type { Logger } from '../logger.js';
 import { createGuard } from '../guard/index.js';
@@ -57,7 +57,72 @@ export type RaceOptions = {
   abort?: AbortSignal;
   /** per-context setup (e.g. log in) before navigating to the race URL */
   setup?: (ctx: BrowserContext) => Promise<void>;
+  /**
+   * Network barrier (deterministic race reproducer): besides synchronizing
+   * the clicks, hold every matching write at the browser's network boundary
+   * until all contexts' requests have arrived, then release them in one
+   * tick. Matching = non-GET requests on the target origin, narrowed by an
+   * optional path substring. Honest limit: arrival simultaneity at the HTTP
+   * boundary — transaction interleaving still jitters inside the database.
+   */
+  barrier?: { pattern?: string; timeoutMs?: number };
 };
+
+export type RequestBarrier = {
+  intercept: (route: Route, info: { appOrigin: string; pattern?: string }) => void;
+  stats: { held: number; released: boolean };
+};
+
+/**
+ * The network barrier: holds matching requests until `expected` of them have
+ * arrived, then releases them together. A timeout releases whatever arrived —
+ * a straggler (dead context, failed login) can never deadlock the volley.
+ * Pure coordination, no network I/O of its own — unit-testable with fakes.
+ */
+export function createRequestBarrier(expected: number, timeoutMs: number): RequestBarrier {
+  const held: Array<() => void> = [];
+  let arrived = 0;
+  let released = false;
+  const stats = { held: 0, released: false };
+  const release = () => {
+    if (released) return;
+    released = true;
+    stats.released = true;
+    if (timer) clearTimeout(timer);
+    for (const resume of held.splice(0)) resume();
+  };
+  const timer =
+    expected > 0
+      ? (() => {
+          const t = setTimeout(release, timeoutMs);
+          t.unref?.();
+          return t;
+        })()
+      : undefined;
+  return {
+    stats,
+    intercept(route, info) {
+      const req = route.request();
+      const method = req.method();
+      const pass = () => void route.continue().catch(() => {});
+      if (released) return pass();
+      if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') return pass();
+      let url: URL;
+      try {
+        url = new URL(req.url());
+      } catch {
+        return pass();
+      }
+      if (url.origin !== info.appOrigin) return pass();
+      if (info.pattern && !url.pathname.includes(info.pattern)) return pass();
+      if (expected <= 0) return pass();
+      held.push(pass);
+      stats.held++;
+      arrived++;
+      if (arrived >= expected) release();
+    },
+  };
+}
 
 export type RaceResult = {
   fired: number;
@@ -68,6 +133,8 @@ export type RaceResult = {
   /** invariants already failing pre-volley — owned by the duplicate_effect
    * sweep or unrelated to the race; never reported as race_violation */
   preExistingFailures: InvariantResult[];
+  /** network barrier stats, when the deterministic reproducer was used */
+  barrier?: { held: number };
 };
 
 export async function runRace(
@@ -138,7 +205,33 @@ export async function runRace(
       }
     }
 
-    // pass 2: barrier — arm every ready context against one wall-clock target
+    // pass 2: barrier — arm every ready context against one wall-clock target.
+    // With opts.barrier, a SECOND barrier sits at the network boundary: every
+    // matching write is held until all contexts' requests have arrived, then
+    // released in one tick — the volley hits the server as close to
+    // simultaneously as HTTP allows, turning "sometimes it double-fires" into
+    // something repeatable enough to measure.
+    let requestBarrier: RequestBarrier | undefined;
+    if (opts.barrier) {
+      let appOrigin = opts.url;
+      try {
+        appOrigin = new URL(opts.url).origin;
+      } catch {
+        /* keep the raw url — matching falls through */
+      }
+      requestBarrier = createRequestBarrier(ready.length, opts.barrier.timeoutMs ?? 5000);
+      await Promise.all(
+        contexts.map((c) =>
+          c.route('**/*', (route) => requestBarrier!.intercept(route, { appOrigin, pattern: opts.barrier?.pattern })),
+        ),
+      );
+      log.info('network barrier armed', {
+        expected: ready.length,
+        matching: opts.barrier.pattern ?? 'all same-origin writes',
+        timeoutMs: opts.barrier.timeoutMs ?? 5000,
+      });
+    }
+
     const barrierAt = Date.now() + 500;
     await Promise.all(
       ready.map(({ page, id }) =>
@@ -182,7 +275,7 @@ export async function runRace(
               sql: result.sql,
               expected: result.atMost ?? result.expect,
               actual: result.actual,
-              firedAt: `${fired} concurrent "${opts.actionLabel}" against ${opts.url}`,
+              firedAt: `${fired} concurrent "${opts.actionLabel}" against ${opts.url}${requestBarrier ? ` (network barrier: ${requestBarrier.stats.held} request${requestBarrier.stats.held === 1 ? '' : 's'} held and released together)` : ''}`,
             },
             steps: [],
             url: opts.url,
@@ -199,8 +292,9 @@ export async function runRace(
       fired,
       violations: violations.length,
       preExistingFailures: preExistingFailures.length,
+      barrier: requestBarrier?.stats,
     });
-    return { fired, invariants, violations, preExistingFailures };
+    return { fired, invariants, violations, preExistingFailures, barrier: requestBarrier ? { held: requestBarrier.stats.held } : undefined };
   } finally {
     await Promise.allSettled(contexts.map((c) => c.close()));
   }
