@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Replay Fixture — fixed variant</title>
+  </head>
+  <body>
+    <h1>Replay fixture (fixed)</h1>
+    <!-- the dead control now works -->
+    <button id="dead" onclick="document.title = 'submitted ' + Date.now()">Dead submit</button>
+    <!-- the uncaught reference is gone -->
+    <!-- the referenced resource now exists (logo.png is served) -->
+    <img src="/logo.png" alt="logo" />
+    <!-- the crash page now renders real content -->
+    <a href="crash.html">Go to crash page</a>
+  </body>
+</html>

@@ -794,6 +794,7 @@ function RunReport({shared=false}:{shared?:boolean}) {
     {report?.skippedActions&&report.skippedActions.length>0&&<Card><div className="card-head"><h2>Skipped by safety policy ({report.skippedActions.length}) — not tested</h2></div>{report.skippedActions.map(s=><div className="finding-preview" key={s.label}><Badge tone="neutral">Skipped</Badge><div><b>{s.label}</b><small>{s.reason}</small></div></div>)}</Card>}
     <div className="report-list"><div className="card-head"><h2>Findings by cluster</h2><div><Badge tone="neutral">Severity ↓</Badge><Badge tone="good">real data</Badge></div></div>
       {issues.map(i=>{const v=issueVerdicts(i);const markers=[
+        v.fixVerified&&(v.fixVerified.verdict==='fixed'?'fix verified ✓':v.fixVerified.verdict==='still-broken'?'still broken after fix':'fix check: '+v.fixVerified.verdict),
         v.reproduced===true&&'reproduced on retry',
         v.reproduced===false&&'flaky — downgraded',
         v.reproduced==='unverifiable'&&'not re-verifiable',
@@ -825,14 +826,37 @@ function FindingDetail() {
   const findingKey=query.get('key')??''
   const [report,setReport]=useState<Report|null>(null)
   const [verdict,setVerdict]=useState('unsure'); const [toast,setToast]=useState(false)
+  const [verifying,setVerifying]=useState<'idle'|'running'|'done'>('idle')
+  const [verifyError,setVerifyError]=useState('')
   useEffect(()=>{ if(runId) api.report(runId).then(r=>setReport(r.report)).catch(()=>{}) },[runId])
   const issue=report?.issues.find(i=>i.key===findingKey)??null
+  const verifyFix=async()=>{
+    if(!runId) return
+    setVerifying('running'); setVerifyError('')
+    try{
+      await api.verifyFix(runId, findingKey)
+      // poll until the replay finishes, then refetch — the verdict rides on the issue
+      for(let i=0;i<60;i++){
+        await new Promise(r=>setTimeout(r,2000))
+        const st=await api.verifyStatus(runId)
+        if(st.status==='done'){
+          if(st.error) setVerifyError(st.error)
+          setVerifying('done')
+          api.report(runId).then(r=>setReport(r.report)).catch(()=>{})
+          return
+        }
+        if(st.status==='never'){ setVerifyError('verification did not start'); setVerifying('idle'); return }
+      }
+      setVerifyError('verification timed out'); setVerifying('idle')
+    }catch(e){ setVerifyError(String(e instanceof Error?e.message:e)); setVerifying('idle') }
+  }
   if(report&&!issue) return <div className="app-page"><AppPageHead title="Finding not found" copy={`No finding with key ${findingKey} in run #${runId}.`}/><Button to={`/app/report?run=${runId}`} variant="secondary">Back to report</Button></div>
   if(!report) return <div className="app-page"><AppPageHead title="Loading finding…"/></div>
   const sevTone=(s:string)=>s==='high'?'high':s==='critical'?'critical':s==='medium'?'medium':'neutral'
   const copyPrompt=()=>{ navigator.clipboard?.writeText(issue!.fixPrompt); setToast(true); setTimeout(()=>setToast(false),1800) }
   const v=issueVerdicts(issue!)
-  return <div className="app-page"><AppPageHead title={issue!.title} copy={`Run #${runId} · ${issue!.observations} observations`} actions={<Button icon="copy" onClick={copyPrompt}>Copy fix prompt</Button>}/>
+  const fv=v.fixVerified
+  return <div className="app-page"><AppPageHead title={issue!.title} copy={`Run #${runId} · ${issue!.observations} observations`} actions={<><Button icon="copy" onClick={copyPrompt}>Copy fix prompt</Button><Button variant="secondary" icon="check" disabled={verifying==='running'} onClick={verifyFix}>{verifying==='running'?'Verifying…':'Verify fix'}</Button></>}/>
     <div className="finding-badges"><Badge tone={sevTone(issue!.severity) as 'critical'|'high'|'medium'|'neutral'}>{issue!.severity}</Badge><Badge tone="good">{issue!.confidence} confidence</Badge>{issue!.types.slice(0,2).map(t=><Badge tone="blue" key={t}>{t.replace(/_/g,' ')}</Badge>)}
       {v.reproduced===true&&<Badge tone="good">Reproduced on retry</Badge>}
       {v.reproduced===false&&<Badge tone="critical">Flaky — downgraded</Badge>}
@@ -841,7 +865,13 @@ function FindingDetail() {
       {v.idempotency==='idempotent'&&<Badge tone="good">Idempotent — absorbed</Badge>}
       {v.idempotency==='harmful'&&<Badge tone="critical">Damage confirmed</Badge>}
       {v.operation&&<Badge tone="neutral">{v.operation}</Badge>}
+      {fv&&<Badge tone={fv.verdict==='fixed'?'good':fv.verdict==='still-broken'?'critical':'neutral'}>{fv.verdict === 'still-broken' ? 'Still broken' : fv.verdict==='fixed' ? 'Fixed ✓ verified' : fv.verdict}</Badge>}
       <Badge tone="neutral">Real data</Badge></div>
+    {(verifying==='running')&&<Callout tone="info" title="Replaying the finding against the app now">A fresh browser is re-running exactly what the swarm recorded. The verdict lands here when it finishes.</Callout>}
+    {verifyError&&<Callout tone="warn" title="Verification failed">{verifyError}</Callout>}
+    {fv&&<Callout tone={fv.verdict==='fixed'?'safe':fv.verdict==='still-broken'?'warn':'info'} title={`Fix verification — ${fv.verdict === 'still-broken' ? 'still broken' : fv.verdict}`}>
+      {fv.note}<small style={{display:'block',marginTop:6,opacity:.6}}>verified {new Date(fv.verifiedAt).toLocaleString()} — replayed against the app as it was at that moment. Verify again after any further change.</small>
+    </Callout>}
     {(v.reproNote||v.idempotencyNote||v.corroboration)&&<Callout tone="info" title="How this verdict was reached">
       {v.reproNote&&<p style={{margin:'0 0 6px'}}>{v.reproNote}</p>}
       {v.idempotencyNote&&<p style={{margin:'0 0 6px'}}>{v.idempotencyNote}</p>}

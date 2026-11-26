@@ -32,6 +32,8 @@ export type ReportIssue = {
   line?: number
   evidence: Array<Record<string, unknown>>
   steps: string[]
+  /** verified-fix verdict, attached at report read time from fix_verdicts */
+  fixVerified?: { verdict: string; note: string; verifiedAt: string }
 }
 
 /**
@@ -49,6 +51,8 @@ export type IssueVerdicts = {
   idempotencyNote?: string
   /** GraphQL/Server-Action operation the duplicate keyed on (e.g. graphql:EchoMut) */
   operation?: string
+  /** verified-fix loop: the latest replay verdict for this cluster */
+  fixVerified?: { verdict: string; note: string; verifiedAt: string }
 }
 
 export function issueVerdicts(issue: ReportIssue): IssueVerdicts {
@@ -62,6 +66,7 @@ export function issueVerdicts(issue: ReportIssue): IssueVerdicts {
     idempotency: str(ev.idempotency),
     idempotencyNote: str(ev.idempotencyNote),
     operation: str(ev.operation),
+    fixVerified: issue.fixVerified,
   }
 }
 
@@ -178,6 +183,12 @@ export const api = {
     post<{ ignored: { id: number; cluster_key: string } }>(`/api/runs/${runId}/ignore`, { key, reason }),
   ignored: () => get<{ ignored: Array<{ id: number; cluster_key: string; title: string | null; reason: string | null; created_at: string }> }>('/api/ignored'),
   unignore: (id: number) => fetch(`/api/ignored/${id}`, { method: 'DELETE' }).then((r) => r.json()),
+
+  // ---- verified-fix loop
+  verifyFix: (runId: number, key?: string) =>
+    post<{ started: boolean }>(`/api/runs/${runId}/verify`, key ? { key } : {}),
+  verifyStatus: (runId: number) =>
+    get<{ status: 'never' | 'running' | 'done'; results: Array<{ key: string; type: string; verdict: string; note: string }>; error?: string }>(`/api/runs/${runId}/verify`),
 
   // ---- monitors
   monitors: () => get<{ monitors: Monitor[] }>('/api/monitors'),

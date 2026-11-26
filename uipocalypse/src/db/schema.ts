@@ -93,6 +93,18 @@ CREATE INDEX IF NOT EXISTS idx_transitions_from ON transitions(from_state);
 -- known/false, keyed by the cluster fingerprint so future runs of the same
 -- site stay silenced. Filtered at report READ time — stored reports are never
 -- rewritten, and un-ignore restores the issue instantly.
+-- fix verification verdicts (the verified-fix loop): the latest replay
+-- result per cluster, attached to reports at read time (cached report files
+-- are never rewritten — same contract as acknowledged findings).
+CREATE TABLE IF NOT EXISTS fix_verdicts (
+  run_id INTEGER NOT NULL,
+  cluster_key TEXT NOT NULL,
+  verdict TEXT NOT NULL,
+  note TEXT NOT NULL,
+  verified_at TEXT NOT NULL,
+  PRIMARY KEY(run_id, cluster_key)
+);
+
 CREATE TABLE IF NOT EXISTS ignored_findings (
   id INTEGER PRIMARY KEY,
   cluster_key TEXT UNIQUE NOT NULL,

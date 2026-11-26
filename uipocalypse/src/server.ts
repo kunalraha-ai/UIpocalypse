@@ -3,7 +3,8 @@ import { z } from 'zod';
 import { join, resolve } from 'node:path';
 import { initWorkspace } from './workspace.js';
 import { createLogger } from './logger.js';
-import { openDb, listRuns, type Db } from './db/index.js';
+import { openDb, listRuns, getRun, type Db } from './db/index.js';
+import { verifyRunFixes } from './browser/replay.js';
 import { scanCodebase } from './tools/scan-codebase.js';
 import { loadConfig } from './config.js';
 import { createLlm, createLlmSet, healthCheck, llmModeLine } from './llm/index.js';
@@ -304,6 +305,45 @@ export function createServer(opts: { workspaceRoot?: string } = {}): ServerConte
         findings: (db.prepare('SELECT COUNT(*) AS n FROM findings WHERE run_id = ?').get(r.id) as { n: number }).n,
       }));
       return text(runs);
+    },
+  );
+
+  server.registerTool(
+    'verify_fix',
+    {
+      title: 'Verify a fix',
+      description:
+        'Replay recorded findings against the app as it is NOW and report fixed / still broken / stale / intermittent / unverifiable — never a binary guess. THE CLOSED LOOP: apply the fix with your coding agent, then call this instead of re-running the whole swarm. Dead clicks, console/page errors, failed requests, navigation errors and stuck spinners replay directly; duplicate and race findings honestly say they need a swarm re-run. The verdict (with note and timestamp) is stamped into each finding\'s evidence.',
+      inputSchema: {
+        runId: z.number().int().min(1).describe('Run id whose findings to verify'),
+        key: z.string().optional().describe('Cluster key to verify (default: all replayable findings of the run)'),
+        url: z.string().optional().describe('Where the app lives now (default: the run\'s target URL)'),
+      },
+    },
+    async ({ runId, key, url }) => {
+      try {
+        const run = getRun(db, runId);
+        if (!run) {
+          return { isError: true, content: [{ type: 'text' as const, text: `Run ${runId} not found.` }] };
+        }
+        const summary = await verifyRunFixes({
+          db,
+          runId,
+          baseUrl: url ?? run.target_url,
+          keys: key ? [key] : undefined,
+          logger,
+        });
+        const lines = [
+          `verify_fix: run ${runId} against ${url ?? run.target_url} — ${summary.verified} verified`,
+          '',
+          ...summary.results.map(
+            (r) => `${r.verdict === 'fixed' ? '✔' : r.verdict === 'still-broken' ? '✖' : '•'} ${r.verdict.padEnd(13)} ${r.type.padEnd(18)} ${r.key}\n  ${r.note}`,
+          ),
+        ];
+        return text(lines.join('\n'));
+      } catch (e) {
+        return { isError: true, content: [{ type: 'text' as const, text: `${e}` }] };
+      }
     },
   );
 

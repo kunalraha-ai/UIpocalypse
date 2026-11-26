@@ -7,6 +7,7 @@ import { createLlmSet, llmModeLine } from '../llm/index.js';
 import { loadConfig } from '../config.js';
 import { initWorkspace, type Workspace } from '../workspace.js';
 import { findDueMonitors, stampMonitorLaunched, stampMonitorRunId } from './monitors.js';
+import { verifyRunFixes } from '../browser/replay.js';
 import { openDb, listRuns, getRun, addIgnoredFinding, listIgnoredFindings, removeIgnoredFinding, type Db } from '../db/index.js';
 import { createLogger, type Logger } from '../logger.js';
 import { scanCodebase } from '../tools/scan-codebase.js';
@@ -148,6 +149,8 @@ export async function startWebServer(opts: {
   // ---------------------------------------------------------------- jobs
   let nextJobId = 1;
   const jobs = new Map<number, Job>();
+  /** verified-fix loop state per run (POST /api/runs/:id/verify) */
+  const verifyJobs = new Map<number, { status: 'running' | 'done'; startedAt: number; results: Array<{ key: string; type: string; verdict: string; note: string }>; error?: string }>();
 
   function emit(job: Job, type: string, payload: Record<string, unknown> = {}): void {
     const ev: WebJobEvent = { at: Date.now(), type, ...payload };
@@ -437,6 +440,20 @@ export async function startWebServer(opts: {
             // report immediately and un-ignore restores the issue instantly
             const ignored = new Map(listIgnoredFindings(db).map((i) => [i.cluster_key, i] as const));
             const issues = report.issues.filter((i) => !ignored.has(i.key));
+            // verified-fix verdicts attach at read time — the cached report is
+            // never rewritten; the fix_verdicts table holds the latest replay
+            const fixVerdicts = new Map(
+              (db.prepare('SELECT cluster_key, verdict, note, verified_at FROM fix_verdicts WHERE run_id = ?').all(runId) as Array<{
+                cluster_key: string;
+                verdict: string;
+                note: string;
+                verified_at: string;
+              }>).map((v) => [v.cluster_key, { verdict: v.verdict, note: v.note, verifiedAt: v.verified_at }] as const),
+            );
+            const issuesWithVerdicts = issues.map((i) => {
+              const fixVerified = fixVerdicts.get(i.key);
+              return fixVerified ? { ...i, fixVerified } : i;
+            });
             const knownIssues = report.issues
               .filter((i) => ignored.has(i.key))
               .map((i) => ({
@@ -447,7 +464,7 @@ export async function startWebServer(opts: {
                 reason: ignored.get(i.key)!.reason,
                 ignoredAt: ignored.get(i.key)!.created_at,
               }));
-            return send(200, { report: { ...report, issues, knownIssues } });
+            return send(200, { report: { ...report, issues: issuesWithVerdicts, knownIssues } });
           }
 
           // ---- acknowledged findings (the triage loop)
@@ -475,6 +492,40 @@ export async function startWebServer(opts: {
             const removed = removeIgnoredFinding(db, Number(unignoreMatch[1]));
             if (!removed) return send(404, { error: 'no such acknowledged finding' });
             return send(200, { removed: true });
+          }
+
+          // ---- verified-fix loop: replay a run's findings against the app NOW
+          const verifyMatch = /^\/api\/runs\/(\d+)\/verify$/.exec(url.pathname);
+          if (verifyMatch) {
+            const runId = Number(verifyMatch[1]);
+            const run = getRun(db, runId);
+            if (!run) return send(404, { error: 'no such run' });
+            if (req.method === 'POST') {
+              if (hasRunningJob()) return send(409, { error: 'a run is already in progress' });
+              if (verifyJobs.has(runId) && verifyJobs.get(runId)!.status === 'running') {
+                return send(409, { error: 'a verification is already running for this run' });
+              }
+              const body = (await readBody().catch(() => ({}))) as { key?: string };
+              // the operator asking is the same consent the gated run had —
+              // replay only navigates recorded pages and re-clicks controls
+              // the swarm already clicked (safe class, same policy as the sweep)
+              verifyJobs.set(runId, { status: 'running', startedAt: Date.now(), results: [] });
+              const target = run.target_url;
+              void (async () => {
+                try {
+                  const summary = await verifyRunFixes({ db, runId, baseUrl: target, keys: body.key ? [body.key] : undefined, logger });
+                  verifyJobs.set(runId, { status: 'done', startedAt: Date.now(), results: summary.results });
+                } catch (e) {
+                  verifyJobs.set(runId, { status: 'done', startedAt: Date.now(), results: [], error: String(e) });
+                }
+              })();
+              return send(202, { started: true });
+            }
+            if (req.method === 'GET') {
+              const job = verifyJobs.get(runId);
+              if (!job) return send(200, { status: 'never' });
+              return send(200, { status: job.status, results: job.results, error: job.error });
+            }
           }
 
           const graphMatch = /^\/api\/runs\/(\d+)\/graph$/.exec(url.pathname);

@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Replay Fixture — broken variant</title>
+  </head>
+  <body>
+    <h1>Replay fixture (broken)</h1>
+    <!-- dead control: the classic confirmed bug -->
+    <button id="dead">Dead submit</button>
+    <!-- console error + page error on load: an uncaught reference in a late script -->
+    <script>
+      setTimeout(function () { notAFunction(); }, 300);
+    </script>
+    <!-- failed request: a referenced resource that does not exist here -->
+    <img src="/missing.png" alt="missing" />
+    <!-- navigation error target: this page is deliberately blank -->
+    <a href="crash.html">Go to crash page</a>
+  </body>
+</html>
