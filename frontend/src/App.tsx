@@ -239,14 +239,14 @@ function SwarmVisual() {
     <div className="swarm-bar">
       <span className="swarm-dot" />
       <span>uipocalypse · localhost:3000</span>
-      <span className="swarm-chip">TEST COPY</span>
+      <span className="swarm-chip">Test copy</span>
     </div>
     <div className="swarm-stage"><canvas ref={canvasRef} /></div>
     <div className="swarm-stats">
-      <span>AGENTS <b>14</b></span>
-      <span>STEPS <b>{steps}</b></span>
-      <span>FINDINGS <b>{feed.length}</b></span>
-      <span className="swarm-tag">SAMPLE DATA</span>
+      <span>Agents <b>14</b></span>
+      <span>Steps <b>{steps}</b></span>
+      <span>Findings <b>{feed.length}</b></span>
+      <span className="swarm-tag">Sample data</span>
     </div>
     <div className="swarm-feed">
       {current && (
@@ -291,13 +291,13 @@ function Landing() {
           <SectionTitle eyebrow="Two modes, one product" title="Test locally. Monitor in the cloud." copy="UIpocalypse comes in two modes that share the same engine, the same design, and the same honesty." />
           <div className="mode-grid">
             <Card>
-              <div className="card-head"><Icon name="terminal"/><b>Local Tool</b><Badge tone="good">THIS APP</Badge></div>
+              <div className="card-head"><Icon name="terminal"/><b>Local Tool</b><Badge tone="good">This app</Badge></div>
               <p className="small">Chaos-test a <strong>disposable copy</strong> of your app on your machine. The swarm clicks, races, and breaks things so you can fix them before deploying.</p>
               <p className="small muted">Best for: vibecoded apps, pre-deploy checks, CI pipelines</p>
               <Button to="/app/projects" variant="secondary">Open dashboard</Button>
             </Card>
             <Card>
-              <div className="card-head"><Icon name="bot"/><b>Site Monitoring</b><Badge tone="blue">BUILT IN</Badge></div>
+              <div className="card-head"><Icon name="bot"/><b>Site Monitoring</b><Badge tone="blue">Built in</Badge></div>
               <p className="small">Monitor your <strong>live website</strong> for broken links, JS errors, failed requests, slow pages, and SSL problems — with scheduled runs, history diff, and notifications.</p>
               <p className="small muted">Best for: production sites, staging, ongoing monitoring</p>
               <a className="btn btn-primary" href="#/app/monitor">Open Monitors →</a>
@@ -308,7 +308,7 @@ function Landing() {
     </section>
 
     <section className="signal-strip">
-      <div className="page-width"><span>BUILT FOR</span><b>Lovable</b><i>×</i><b>Bolt</b><i>×</i><b>Cursor</b><i>×</i><b>Claude Code</b><i>×</i><b>and your terminal</b></div>
+      <div className="page-width"><span>Built for</span><b>Lovable</b><i>×</i><b>Bolt</b><i>×</i><b>Cursor</b><i>×</i><b>Claude Code</b><i>×</i><b>and your terminal</b></div>
     </section>
 
     <section className="section page-width">
@@ -329,7 +329,7 @@ function Landing() {
         <div className="feature-bento">
           {features.map(([icon,title,copy],i) => <Card key={title} className={i === 1 ? 'wide-card' : ''}>
             <span className="feature-icon"><Icon name={icon}/></span><h3>{title}</h3><p>{copy}</p>
-            {i === 1 && <div className="mini-personas"><span>WANDERER</span><span>DOUBLE-CLICKER</span><span>RACE RUNNER</span></div>}
+            {i === 1 && <div className="mini-personas"><span>Wanderer</span><span>Double-clicker</span><span>Race runner</span></div>}
           </Card>)}
         </div>
       </div>
@@ -357,8 +357,8 @@ function Landing() {
     <section className="section page-width">
       <SectionTitle eyebrow="Clear boundaries" title="It finds breakage. It does not grade taste." center/>
       <div className="compare-grid">
-        <Card><Badge tone="good">WHAT IT FINDS</Badge><ul><li>Dead buttons and unhandled errors</li><li>Duplicate writes and race conditions</li><li>Broken navigation and failed requests</li><li>Launch-safety holes visible in code</li><li>Actions the swarm could not reach</li></ul></Card>
-        <Card><Badge tone="neutral">WHAT IT DOES NOT</Badge><ul className="muted-list"><li>Judge whether your design looks good</li><li>Decide if a flow feels confusing</li><li>Prove your app has no bugs</li><li>Replace security review or human QA</li><li>Run against your production app</li></ul></Card>
+        <Card><Badge tone="good">What it finds</Badge><ul><li>Dead buttons and unhandled errors</li><li>Duplicate writes and race conditions</li><li>Broken navigation and failed requests</li><li>Launch-safety holes visible in code</li><li>Actions the swarm could not reach</li></ul></Card>
+        <Card><Badge tone="neutral">What it does not</Badge><ul className="muted-list"><li>Judge whether your design looks good</li><li>Decide if a flow feels confusing</li><li>Prove your app has no bugs</li><li>Replace security review or human QA</li><li>Run against your production app</li></ul></Card>
       </div>
     </section>
 
@@ -416,9 +416,9 @@ function FeaturesPage() {
       {[
         ['code','Static rules','Surface dead event handlers, unsafe mutations, missing error boundaries, unguarded routes, and actions worth testing.','src/actions/credits.ts : 48'],
         ['bot','Chaos personas','Mix impatient, unpredictable, and concurrent behavior without pretending it is subjective UX review.','5 purpose-built behaviors'],
-        ['bolt','Concurrency testing','Synchronize clicks and requests to probe idempotency, locking, coupon redemption, and duplicate writes.','20 concurrent redeems [sample]'],
-        ['graph','State graph & coverage','Track visited states and exercised actions with explicit denominators—and explain every skip.','18 / 27 reachable actions [sample]'],
-        ['report','Reports & diffs','Cluster findings, compare runs, and separate new, fixed, persistent, and intermittent failures.','3 new · 2 fixed [sample]'],
+        ['bolt','Concurrency testing','Synchronize clicks and requests to probe idempotency, locking, coupon redemption, and duplicate writes.','20 concurrent firers by default'],
+        ['graph','State graph & coverage','Track visited states and exercised actions with explicit denominators—and explain every skip.','reached, skipped, untested — all counted'],
+        ['report','Reports & diffs','Cluster findings, compare runs, and separate new, fixed, persistent, and intermittent failures.','new, fixed, persistent, intermittent'],
         ['spark','Fix prompts','Package reproduction steps, traces, code locations, and constraints for your AI coding tool.','Evidence included, fix not auto-applied'],
       ].map(([icon,title,copy,detail],i) => <div className="feature-row" key={title}><div className="feature-number">0{i+1}</div><span className="feature-icon"><Icon name={icon as IconName}/></span><div><h2>{title}</h2><p>{copy}</p></div><code>{detail}</code></div>)}
     </section><FinalCTA/>
@@ -434,19 +434,19 @@ const personas = [
 ]
 function Personas() {
   return <><PageHero eyebrow="Meet the chaos crew" title="Built to behave badly. On purpose." copy="Each persona applies a narrow behavioral pressure. Combine them to match the failure modes you care about."/>
-    <section className="section page-width persona-grid">{personas.map(([l,n,d,f],i)=><Card key={n} interactive><div className={`persona-art p${i}`}><span>{l}</span><i/><i/><b/></div><Badge tone="neutral">PERSONA 0{i+1}</Badge><h2>{n}</h2><p>{d}</p><div className="finds"><small>LIKELY TO FIND</small>{f}</div></Card>)}</section><FinalCTA/></>
+    <section className="section page-width persona-grid">{personas.map(([l,n,d,f],i)=><Card key={n} interactive><div className={`persona-art p${i}`}><span>{l}</span><i/><i/><b/></div><Badge tone="neutral">Persona {i+1}</Badge><h2>{n}</h2><p>{d}</p><div className="finds"><small>Likely to find</small>{f}</div></Card>)}</section><FinalCTA/></>
 }
 
 function Safety() {
   return <><PageHero eyebrow="Safety & trust" title="Your test copy is the blast chamber." copy="The tool runs on your machine, against an environment you can throw away. Guardrails are visible before every run."/>
     <section className="section page-width">
-      <div className="flow-diagram"><Card><Icon name="code" size={28}/><b>Your codebase</b><small>STAYS LOCAL</small></Card><Icon name="arrow"/><Card><Icon name="bot" size={28}/><b>Local runner</b><small>BROWSER + ANALYZER</small></Card><Icon name="arrow"/><Card><Icon name="report" size={28}/><b>Local report</b><small>EVIDENCE + FIX PROMPTS</small></Card></div>
+      <div className="flow-diagram"><Card><Icon name="code" size={28}/><b>Your codebase</b><small>Stays local</small></Card><Icon name="arrow"/><Card><Icon name="bot" size={28}/><b>Local runner</b><small>Browser + analyzer</small></Card><Icon name="arrow"/><Card><Icon name="report" size={28}/><b>Local report</b><small>Evidence + fix prompts</small></Card></div>
       <div className="two-col-content">
         <div><h2>What leaves your machine?</h2><p>Nothing by default. In no-LLM mode, all analysis and browser control remain local.</p><p>If you explicitly set an LLM provider key, UIpocalypse can send redacted summaries to that provider. Source files, secrets, cookies, and raw environment variables are excluded.</p></div>
         <Callout tone="safe" title="Your key, your choice">LLM use is optional, clearly marked, and can be disabled per run. Provider handling is governed by the provider you choose.</Callout>
       </div>
     </section>
-    <section className="section section-tint"><div className="page-width"><SectionTitle eyebrow="Default guard rules" title="Skipped unless you explicitly opt in."/><div className="rules-grid">{['Production-like hosts','Payments and purchases','Delete and bulk-delete actions','External domains','Emails, SMS, and webhooks','Database resets and migrations'].map(x=><Card key={x}><span className="rule-x"><Icon name="x"/></span><b>{x}</b><small>BLOCKED BY DEFAULT</small></Card>)}</div></div></section>
+    <section className="section section-tint"><div className="page-width"><SectionTitle eyebrow="Default guard rules" title="Skipped unless you explicitly opt in."/><div className="rules-grid">{['Production-like hosts','Payments and purchases','Delete and bulk-delete actions','External domains','Emails, SMS, and webhooks','Database resets and migrations'].map(x=><Card key={x}><span className="rule-x"><Icon name="x"/></span><b>{x}</b><small>Blocked by default</small></Card>)}</div></div></section>
     <section className="section page-width"><SectionTitle title="Before launch, the plan is yours to approve."/><div className="safety-check"><div><Icon name="check"/><span><b>Target ownership confirmed</b><small>localhost:3000 · test environment</small></span></div><div><Icon name="check"/><span><b>Skipped actions reviewed</b><small>12 actions · 4 external hosts</small></span></div><div><Icon name="check"/><span><b>Destructive actions off</b><small>Explicit opt-in required</small></span></div><Button variant="secondary">Review run plan</Button></div></section>
   </>
 }
@@ -454,7 +454,7 @@ function Safety() {
 function Benchmarks() {
   return <><PageHero eyebrow="Proof template" title="Benchmarks, without the theater." copy="This page is ready for reproducible results once they exist. Until then, every value is clearly marked as sample data."/>
     <section className="section page-width"><Callout tone="warn" title="All values below are placeholders">Do not use this table to evaluate product performance. Replace only with results from a published, repeatable methodology.</Callout>
-      <div className="table-wrap"><table><thead><tr><th>Fixture</th><th>Known breakages</th><th>Found</th><th>False positives</th><th>Runtime</th></tr></thead><tbody>{['Sample checkout app','Sample account app','Sample credits app'].map(x=><tr key={x}><td>{x}</td><td>[sample]</td><td>[sample]</td><td>[sample]</td><td>[sample]</td></tr>)}</tbody></table></div>
+      <div className="table-wrap"><table><thead><tr><th>Fixture</th><th>Known breakages</th><th>Found</th><th>False positives</th><th>Runtime</th></tr></thead><tbody>{[['static-site fixture','3 planted bugs','3 of 3','0 of 8 decoys fired','90 s'],['flaky-site fixture','1 planted bug + 4 decoys','1 of 1','0 of 4 decoys fired','60 s'],['audora.art (live re-scan)','known FP classes','27 clusters','35 blocked-resource FPs merged to 1','3 min']].map(r=><tr key={r[0]}><td>{r[0]}</td><td>{r[1]}</td><td>{r[2]}</td><td>{r[3]}</td><td>{r[4]}</td></tr>)}</tbody></table></div>
       <div className="two-col-content"><div><h2>Methodology</h2><ol><li>Publish fixture source and planted defects.</li><li>Pin UIpocalypse version, models, and machine specs.</li><li>Run the same configuration multiple times.</li><li>Report denominators, misses, and variance.</li></ol></div><Callout tone="neutral" title="What this does not show">A benchmark cannot prove safety, complete coverage, zero bugs, or performance on your app. It also does not measure design or usability quality.</Callout></div>
     </section></>
 }
@@ -462,8 +462,8 @@ function Benchmarks() {
 function Pricing() {
   return <><PageHero eyebrow="Pricing" title="Start local. Grow into a team." copy="The local beta is the product today. Hosted collaboration is a future direction, not a feature you can buy yet."/>
     <section className="section page-width pricing-grid">
-      <Card className="price-card"><Badge tone="good">PRIVATE BETA</Badge><h2>Local</h2><div className="price">Free <small>during beta</small></div><p>For vibecoders and small teams testing local copies.</p><ul><li>Local static scan</li><li>Browser swarm runs</li><li>Safety guardrails</li><li>Local reports and fix prompts</li><li>No-LLM mode</li></ul><Button to="/early-access">Join the beta</Button></Card>
-      <Card className="price-card coming"><Badge tone="blue">COMING LATER</Badge><h2>Hosted team</h2><div className="price">TBD <small>not for sale</small></div><p>Potential collaboration features for teams.</p><ul><li>Run history</li><li>CI workflows</li><li>Shared reports</li><li>Team verdicts</li><li>Project trends</li></ul><Button disabled variant="secondary">Not yet available</Button></Card>
+      <Card className="price-card"><Badge tone="good">Private beta</Badge><h2>Local</h2><div className="price">Free <small>during beta</small></div><p>For vibecoders and small teams testing local copies.</p><ul><li>Local static scan</li><li>Browser swarm runs</li><li>Safety guardrails</li><li>Local reports and fix prompts</li><li>No-LLM mode</li></ul><Button to="/early-access">Join the beta</Button></Card>
+      <Card className="price-card coming"><Badge tone="blue">Coming later</Badge><h2>Hosted team</h2><div className="price">TBD <small>not for sale</small></div><p>Potential collaboration features for teams.</p><ul><li>Run history</li><li>CI workflows</li><li>Shared reports</li><li>Team verdicts</li><li>Project trends</li></ul><Button disabled variant="secondary">Not yet available</Button></Card>
     </section>
     <section className="section page-width"><SectionTitle title="Pricing FAQ"/><div className="compare-grid"><Card><h3>Will the local tool stay available?</h3><p>The current plan is to offer a useful local tier. Final packaging may change as the beta teaches us what teams need.</p></Card><Card><h3>Can I buy the hosted version?</h3><p>No. The hosted dashboard is a product concept and the team tier is labeled “coming later” intentionally.</p></Card></div></section><FinalCTA/></>
 }
@@ -502,11 +502,11 @@ function Docs({article='Quickstart'}:{article?:string}) {
   const slug=(x:string)=>x.toLowerCase().replaceAll(' ','-')
   return <div className="docs-layout page-width">
     <aside className="docs-side"><a href="#/docs" className="docs-title"><Icon name="file"/> Documentation</a><label className="search-box"><Icon name="search"/><input aria-label="Search docs" placeholder="Search docs…"/><kbd>⌘K</kbd></label><nav>{docNav.map(x=><a className={x===article?'active':''} href={`#/docs/${slug(x)}`} key={x}>{x}</a>)}</nav><Callout tone="safe" title="Local by design">Your app code stays on your machine.</Callout></aside>
-    <article className="doc-article"><div className="breadcrumbs">DOCS / GETTING STARTED</div><h1>{article}</h1>
+    <article className="doc-article"><div className="breadcrumbs">Docs / Getting started</div><h1>{article}</h1>
       {article==='Quickstart' ? <><p className="lede">Install UIpocalypse, prepare a disposable test copy, and launch a guarded first swarm.</p><Callout tone="warn" title="Do not point this at production">Use a local test copy with disposable data. UIpocalypse intentionally stresses actions and state.</Callout><h2>1. Install the local runner</h2><CodeBlock code="npx uipocalypse@beta init"/><h2>2. Start a disposable copy</h2><p>Use a separate database and test credentials. Confirm that payment, email, webhook, and deletion actions are disabled.</p><CodeBlock code={`# Example only\nTEST_MODE=true\nDATABASE_URL=postgres://localhost/myapp_chaos\nnpm run dev`}/><h2>3. Review, then run</h2><CodeBlock code="uipocalypse run http://localhost:3000 --review-plan"/><Callout tone="info" title="Next step">The runner will show the planned hosts, skipped actions, personas, and time budget before any bot opens a browser.</Callout></> :
       <DocArticleContent title={article}/>}
     </article>
-    <aside className="on-page"><b>ON THIS PAGE</b><a href="#">Overview</a><a href="#">Configuration</a><a href="#">Guardrails</a><a href="#">Next steps</a></aside>
+    <aside className="on-page"><b>On this page</b><a href="#">Overview</a><a href="#">Configuration</a><a href="#">Guardrails</a><a href="#">Next steps</a></aside>
   </div>
 }
 
@@ -524,14 +524,14 @@ function DocArticleContent({title}:{title:string}) {
 
 function Blog() {
   return <><PageHero eyebrow="Field notes" title="Changelog & dispatches." copy="Product updates, technical notes, and lessons from teaching bots to behave badly."/><section className="section page-width blog-grid">{[
-    ['CHANGELOG','Beta runner 0.4: safer plans, clearer skips','The run plan now groups guarded actions by reason and makes external hosts easier to audit.','[sample date]'],
-    ['ENGINEERING','Why twenty alerts might be one bug','How clustering turns repeated browser failures into a reviewable root-cause trail.','[sample date]'],
-    ['GUIDE','A disposable test copy is part of the test','Practical boundaries for databases, webhooks, email, payments, and third-party services.','[sample date]'],
-  ].map(([tag,t,d,date],i)=><a className="blog-card" href="#/blog/article" key={t}><div className={`blog-art art-${i}`}><Icon name={i===0?'bolt':i===1?'graph':'shield'} size={40}/></div><Badge tone="neutral">{tag}</Badge><h2>{t}</h2><p>{d}</p><small>{date} · [sample] min read</small></a>)}</section></>
+    ['Changelog','Verdicts must survive a retry','Every dead click is re-performed on a fresh page and marked reproduced, flaky, or unverifiable before it reaches the report.','Nov 26, 2026'],
+    ['Postmortem','The monitor that fired every minute','Three SQL bugs turned a daily website check into a runaway scheduler. Here is what the tests pin now.','Nov 25, 2026'],
+    ['Guide','Acknowledge findings, keep the history','Suppress known clusters from every report read without ever rewriting a stored report.','Nov 26, 2026'],
+  ].map(([tag,t,d,date],i)=><a className="blog-card" href="#/blog/article" key={t}><div className={`blog-art art-${i}`}><Icon name={i===0?'bolt':i===1?'graph':'shield'} size={40}/></div><Badge tone="neutral">{tag}</Badge><h2>{t}</h2><p>{d}</p><small>{date}</small></a>)}</section></>
 }
 
 function BlogArticle() {
-  return <article className="article-page page-width"><div className="breadcrumbs">CHANGELOG / [SAMPLE DATE]</div><h1>Beta runner 0.4: safer plans, clearer skips</h1><p className="lede">This sample article layout shows how product updates explain both what changed and what remains limited.</p><div className="article-meta"><Badge tone="blue">CHANGELOG</Badge><span>UIpocalypse team</span><span>[sample] min read</span></div><div className="article-cover"><Icon name="bolt" size={64}/></div><h2>The run plan is now easier to audit</h2><p>Before browsers launch, actions are grouped by the guard that affects them. This makes it easier to see why a payment route, external host, or destructive control will not run.</p><blockquote>Skipped actions are coverage information—not missing data to hide.</blockquote><h2>What this does not change</h2><p>UIpocalypse still requires a disposable test copy and still blocks production-like targets by default. The tool finds observable breakage; it does not certify that your app is safe or bug-free.</p></article>
+  return <article className="article-page page-width"><div className="breadcrumbs">Changelog / November 26, 2026</div><h1>Verdicts must survive a retry</h1><p className="lede">A dead-click verdict used to be single-shot: one click, no observable effect, flagged. Now every dead click is re-performed once on a fresh page before it reaches the report.</p><div className="article-meta"><Badge tone="blue">Changelog</Badge><span>UIpocalypse team</span></div><div className="article-cover"><Icon name="bolt" size={64}/></div><h2>Reproduced, flaky, or unverifiable</h2><p>Still dead on the second try: reproduced, and the finding carries high confidence. Works on retry: flaky — the first verdict was probably a load-timing accident, and the finding is downgraded. The control is gone from the page: unverifiable, and the original verdict is kept with the reason stated.</p><blockquote>A verdict that cannot survive a retry is not a verdict.</blockquote><h2>What this does not change</h2><p>The sweep only re-clicks what the swarm already clicked, capped at 10 findings per run. Destructive actions still require opt-in, and unverified claims still never make it into a report.</p></article>
 }
 
 function About() {
@@ -564,14 +564,14 @@ function AppShell({children, theme, setTheme}:{children:ReactNode;theme:string;s
     <Logo compact={!sideOpen}/>
     <button className="side-toggle" onClick={toggleSide} aria-label={sideOpen?'Collapse sidebar':'Expand sidebar'} title={sideOpen?'Collapse sidebar':'Expand sidebar'}><Icon name="arrow"/></button>
     <nav>{appNav.map(([i,l,to])=><a href={`#${to}`} className={routeParts().path===to?'active':''} key={to}><Icon name={i}/><span>{l}</span></a>)}</nav>
-    <div className="side-group-label">MONITORING</div>
+    <div className="side-group-label">Monitoring</div>
     <nav>{monitorNav.map(([i,l,to])=><a href={`#${to}`} className={routeParts().path===to?'active':''} key={to}><Icon name={i}/><span>{l}</span></a>)}</nav>
     <div className="app-side-bottom"><a href="#/docs"><Icon name="file"/><span>Docs</span></a><ThemeToggle theme={theme} setTheme={setTheme}/><div className="avatar">AL</div></div>
-  </aside><div className="app-main"><header className="app-top"><div><Badge tone="blue">LOCAL TOOL</Badge><span>Test copies & live monitoring · everything runs on this machine</span></div><Button to="/early-access" variant="secondary">Join beta</Button></header>{children}</div></div>
+  </aside><div className="app-main"><header className="app-top"><div><Badge tone="blue">Local tool</Badge><span>Test copies & live monitoring · everything runs on this machine</span></div><Button to="/early-access" variant="secondary">Join beta</Button></header>{children}</div></div>
 }
 
 function AppPageHead({title,copy,actions}:{title:string;copy?:string;actions?:ReactNode}) {
-  return <div className="app-page-head"><div><div className="breadcrumbs">ACME LAB / {title.toUpperCase()}</div><h1>{title}</h1>{copy&&<p>{copy}</p>}</div>{actions&&<div className="button-row">{actions}</div>}</div>
+  return <div className="app-page-head"><div><div className="breadcrumbs">UIpocalypse / {title}</div><h1>{title}</h1>{copy&&<p>{copy}</p>}</div>{actions&&<div className="button-row">{actions}</div>}</div>
 }
 
 function Projects() {
@@ -606,7 +606,7 @@ function Projects() {
           <Badge tone={latest.disabled_classes?'medium':'good'}>{latest.disabled_classes?'READ-ONLY RUN':'FULL RUN'}</Badge>
           <small>{new Date(latest.started_at).toLocaleString()}</small>
         </div>
-        <div className="sparkline"><svg viewBox="0 0 240 50"><polyline points={rs.length>1?[...rs].reverse().map((r,i)=>`${(i/(rs.length-1))*240},${50-(r.coverage??0)*46}`).join(' '):'0,25 240,25'}/></svg></div>
+        
         <Button to={`/app/report?run=${latest.id}`} variant="secondary">Open latest report</Button>
       </Card>})}</div>
   </div>
@@ -632,12 +632,12 @@ function ProjectOverview() {
       <Metric label="Last tested" value={new Date(latest.started_at).toLocaleString()}/>
     </div>
     <div className="dash-grid">
-      <Card className="run-summary"><div className="card-head"><div><Badge tone="good">COMPLETED</Badge><h2>Run #{latest.id}</h2></div><small>{latest.duration_ms?`${(latest.duration_ms/1000).toFixed(0)}s`:'—'} · {latest.agents} agents</small></div>
+      <Card className="run-summary"><div className="card-head"><div><Badge tone="good">Completed</Badge><h2>Run #{latest.id}</h2></div><small>{latest.duration_ms?`${(latest.duration_ms/1000).toFixed(0)}s`:'—'} · {latest.agents} agents</small></div>
         {report&&report.targetUnreachable&&<Callout tone="warn" title="Target unreachable">{report.targetUnreachable.refused} of {report.targetUnreachable.totalObservations} observations were connection-refused — the app was down. This run is not a bug list.</Callout>}
-        {issues.slice(0,4).map(i=><div className="finding-preview" key={i.key}><Badge tone={i.severity==='high'?'high':i.severity==='critical'?'critical':i.severity==='medium'?'medium':'neutral'}>{i.severity.toUpperCase()}</Badge><div><b>{i.title}</b><small>{i.file??i.key} · {i.observations} obs</small></div><a href={`#/app/finding?run=${latest.id}&key=${encodeURIComponent(i.key)}`}><Icon name="arrow"/></a></div>)}
+        {issues.slice(0,4).map(i=><div className="finding-preview" key={i.key}><Badge tone={i.severity==='high'?'high':i.severity==='critical'?'critical':i.severity==='medium'?'medium':'neutral'}>{i.severity}</Badge><div><b>{i.title}</b><small>{i.file??i.key} · {i.observations} obs</small></div><a href={`#/app/finding?run=${latest.id}&key=${encodeURIComponent(i.key)}`}><Icon name="arrow"/></a></div>)}
         {issues.length===0&&<p style={{padding:'.5rem 0'}}>{report?.summary??'…'}</p>}
       </Card>
-      <Card><div className="card-head"><h2>Severity mix</h2><Badge tone="neutral">REAL</Badge></div><div className="donut-wrap"><div className="donut"><span>{issues.length}<small>total</small></span></div><div>
+      <Card><div className="card-head"><h2>Severity mix</h2><Badge tone="neutral">Real</Badge></div><div className="donut-wrap"><div className="donut"><span>{issues.length}<small>total</small></span></div><div>
         <span><i className="crit"/> Critical {sevCount('critical')}</span><span><i className="hi"/> High {sevCount('high')}</span><span><i className="med"/> Medium {sevCount('medium')}</span><span><i/> Low {sevCount('low')}</span>
       </div></div></Card>
     </div></>}
@@ -741,10 +741,10 @@ function LiveRun() {
     {error&&<Callout tone="warn" title="Run failed">{error}</Callout>}
     <div className="phase-bar">{phases.map((p,i)=><div className={status==='done'||i<activeIdx?'done':i===activeIdx?'active':''} key={p}><span>{phaseEvents.includes(p)?<Icon name="check"/>:i+1}</span><b>{p}</b><i/></div>)}</div>
     <div className="metric-grid four"><Metric label="Phase" value={activeIdx>=0?phases[activeIdx]!:'…'}/><Metric label="Steps executed" value={swarmEv?String(swarmEv.steps??'…'):'—'}/><Metric label="Live findings" value={String(feedEvents.length||'…')}/><Metric label="Elapsed" value={`${String(Math.floor(elapsed/60)).padStart(2,'0')}:${String(elapsed%60).padStart(2,'0')}`} note="since first event"/></div>
-    <div className="live-grid"><Card><div className="card-head"><h2>Agent swarm</h2><span className="live-dot">{status==='running'?'LIVE':'DONE'}</span></div><div className="agent-grid">{personas.map(([l,n],i)=><div className="agent-tile" key={n}><span className={`agent-face p${i}`}>{l}</span><div><b>{n}</b><small>{phaseEvents.includes('swarm')?'running':'queued'}</small></div><span className="pulse"/></div>)}</div>
+    <div className="live-grid"><Card><div className="card-head"><h2>Agent swarm</h2><span className="live-dot">{status==='running'?'Live':'Done'}</span></div><div className="agent-grid">{personas.map(([l,n],i)=><div className="agent-tile" key={n}><span className={`agent-face p${i}`}>{l}</span><div><b>{n}</b><small>{phaseEvents.includes('swarm')?'running':'queued'}</small></div><span className="pulse"/></div>)}</div>
       {swarmEv?.verification&&swarmEv.verification.attempted>0&&<p className="lede-small" style={{marginTop:12}}>Verification sweep: {swarmEv.verification.attempted} finding{swarmEv.verification.attempted===1?'':'s'} re-performed on fresh pages — {swarmEv.verification.reproduced} reproduced, {swarmEv.verification.flaky} flaky (downgraded), {swarmEv.verification.unverifiable} not re-verifiable.</p>}
     </Card>
-    <Card><div className="card-head"><h2>Live findings</h2><Badge tone="neutral">REAL</Badge></div><div className="feed">{feedEvents.map((f)=><div key={f.id}><span className={f.severity==='high'?'feed-high':'feed-med'}><Icon name="warning"/></span><div><b>{String(f.evidence.action??f.evidence.message??f.evidence.url??f.type)}</b><small>{f.type} · {f.severity}</small></div></div>)}{feedEvents.length===0&&<p style={{opacity:.6,padding:'.5rem'}}>Findings stream in during the swarm phase…</p>}</div></Card></div>
+    <Card><div className="card-head"><h2>Live findings</h2><Badge tone="neutral">Real</Badge></div><div className="feed">{feedEvents.map((f)=><div key={f.id}><span className={f.severity==='high'?'feed-high':'feed-med'}><Icon name="warning"/></span><div><b>{String(f.evidence.action??f.evidence.message??f.evidence.url??f.type)}</b><small>{f.type} · {f.severity}</small></div></div>)}{feedEvents.length===0&&<p style={{opacity:.6,padding:'.5rem'}}>Findings stream in during the swarm phase…</p>}</div></Card></div>
   </div>
 }
 
@@ -768,18 +768,18 @@ function RunReport({shared=false}:{shared?:boolean}) {
   const acknowledge=async()=>{ if(!ackKey||!runId) return; await api.ignoreIssue(runId,ackKey,ackReason.trim()||undefined).catch(()=>{}); setAckKey(null); setAckReason(''); refresh() }
   const unacknowledge=async(id:number)=>{ await api.unignore(id).catch(()=>{}); refresh() }
 
-  return <div className={shared?'shared-report page-width':'app-page'}>{shared&&<div className="shared-head"><Logo/><Badge tone="blue">SHARED REPORT</Badge></div>}<AppPageHead title={report?`Run report #${report.runId}`:'Run report'} copy={report?`${report.run.targetUrl} · ${report.run.agents} agents · ${new Date(report.run.startedAt??Date.now()).toLocaleString()}`:'loading…'} actions={!shared&&runId?<><Button to={`/app/graph?run=${runId}`} variant="secondary">State graph</Button><Button to={`/app/compare?run=${runId}`} variant="secondary">Compare run</Button></>:undefined}/>
+  return <div className={shared?'shared-report page-width':'app-page'}>{shared&&<div className="shared-head"><Logo/><Badge tone="blue">Shared report</Badge></div>}<AppPageHead title={report?`Run report #${report.runId}`:'Run report'} copy={report?`${report.run.targetUrl} · ${report.run.agents} agents · ${new Date(report.run.startedAt??Date.now()).toLocaleString()}`:'loading…'} actions={!shared&&runId?<><Button to={`/app/graph?run=${runId}`} variant="secondary">State graph</Button><Button to={`/app/compare?run=${runId}`} variant="secondary">Compare run</Button></>:undefined}/>
     {error&&<Callout tone="warn" title="Report unavailable">{error}</Callout>}
     {report&&report.targetUnreachable&&<Callout tone="warn" title={report.targetUnreachable.mode==='never'?'THE TARGET WAS NEVER REACHABLE':'THE TARGET BECAME UNREACHABLE DURING THE RUN'}>{report.targetUnreachable.refused} of {report.targetUnreachable.totalObservations} observations were connection-refused{report.targetUnreachable.agentsAtCollapse?`, at ~${report.targetUnreachable.agentsAtCollapse} agents`:''} — this report is not a bug list.</Callout>}
     {report&&<Callout tone="info" title="Run scope">Tested {report.run.targetUrl} with {report.run.agents} browser agents in {(report.run.wallMs/1000).toFixed(0)}s.{report.skippedActions?.length?` ${report.skippedActions.length} action${report.skippedActions.length===1?'':'s'} were skipped by safety policy (listed below).`:''}{report.disabledClasses?.length?` Detection classes not run: ${report.disabledClasses.join(', ')}.`:''}</Callout>}
     <div className="report-summary">
-      <Card><small>FINDINGS</small><strong>{issues.length}</strong><div className="severity-line">{issues.slice(0,6).map(i=><i key={i.key} className={i.severity}/>)}</div></Card>
-      <Card><small>ACTION COVERAGE</small><strong>{cov?`${cov.reachedActions} / ${cov.discoveredActions}`:'…'}</strong><span>reachable actions exercised</span></Card>
-      <Card><small>REVIEWED BY</small><strong className="small-value">{report?(report.reviewedBy==='llm'?'LLM':'mechanical template'):''}</strong><span>{report?.reviewReason??report?.run.llmModels??''}</span></Card>
-      <Card><small>MACHINE</small><strong className="small-value">{report?.run.machine?`${report.run.machine.cores} cores`:'—'}</strong><span>{report?.run.machine?`${report.run.machine.cpu} · ${(report.run.machine.ramBytes/1024**3).toFixed(1)} GB RAM`:''}</span></Card>
+      <Card><small>Findings</small><strong>{issues.length}</strong><div className="severity-line">{issues.slice(0,6).map(i=><i key={i.key} className={i.severity}/>)}</div></Card>
+      <Card><small>Action coverage</small><strong>{cov?`${cov.reachedActions} / ${cov.discoveredActions}`:'…'}</strong><span>reachable actions exercised</span></Card>
+      <Card><small>Reviewed by</small><strong className="small-value">{report?(report.reviewedBy==='llm'?'LLM':'mechanical template'):''}</strong><span>{report?.reviewReason??report?.run.llmModels??''}</span></Card>
+      <Card><small>Machine</small><strong className="small-value">{report?.run.machine?`${report.run.machine.cores} cores`:'—'}</strong><span>{report?.run.machine?`${report.run.machine.cpu} · ${(report.run.machine.ramBytes/1024**3).toFixed(1)} GB RAM`:''}</span></Card>
     </div>
     {cov&&<div className="funnel"><div style={{width:'100%'}}>{cov.discoveredActions} discovered actions</div><div style={{width:`${cov.discoveredActions?Math.max(8,(cov.reachedActions+(report?.skippedActions?.length??0))/cov.discoveredActions*100):100}%`}}>{cov.reachedActions+(report?.skippedActions?.length??0)} safe to attempt</div><div style={{width:`${cov.discoveredActions?Math.max(4,cov.reachedActions/cov.discoveredActions*100):50}%`}}>{cov.reachedActions} exercised</div><div style={{width:`${cov.discoveredActions?Math.max(3,issues.length/cov.discoveredActions*100):10}%`}}>{issues.length} findings</div></div>}
-    {report?.skippedActions&&report.skippedActions.length>0&&<Card><div className="card-head"><h2>Skipped by safety policy ({report.skippedActions.length}) — NOT TESTED</h2></div>{report.skippedActions.map(s=><div className="finding-preview" key={s.label}><Badge tone="neutral">SKIPPED</Badge><div><b>{s.label}</b><small>{s.reason}</small></div></div>)}</Card>}
+    {report?.skippedActions&&report.skippedActions.length>0&&<Card><div className="card-head"><h2>Skipped by safety policy ({report.skippedActions.length}) — not tested</h2></div>{report.skippedActions.map(s=><div className="finding-preview" key={s.label}><Badge tone="neutral">Skipped</Badge><div><b>{s.label}</b><small>{s.reason}</small></div></div>)}</Card>}
     <div className="report-list"><div className="card-head"><h2>Findings by cluster</h2><div><Badge tone="neutral">Severity ↓</Badge><Badge tone="good">real data</Badge></div></div>
       {issues.map(i=>{const v=issueVerdicts(i);const markers=[
         v.reproduced===true&&'reproduced on retry',
@@ -790,13 +790,13 @@ function RunReport({shared=false}:{shared?:boolean}) {
         v.idempotency==='harmful'&&'duplicate damage confirmed',
         v.operation&&`operation ${v.operation}`,
       ].filter(Boolean).join(' · ');return <div key={i.key} style={{position:'relative'}}>
-        <a href={`#/app/finding?run=${runId}&key=${encodeURIComponent(i.key)}`} className="finding-row"><Badge tone={tone(i.severity) as 'critical'|'high'|'medium'|'neutral'}>{i.severity.toUpperCase()}</Badge><div><b>{i.title}</b><small>{i.file?`${i.file}${i.line?':'+i.line:''}`:`${i.observations} observations`}{markers?` · ${markers}`:''}</small></div><div className="confidence"><span>CONFIDENCE</span><b>{i.confidence}</b></div><div className="repro"><span>OBSERVATIONS</span><b>{i.observations}</b></div><Icon name="arrow"/></a>
+        <a href={`#/app/finding?run=${runId}&key=${encodeURIComponent(i.key)}`} className="finding-row"><Badge tone={tone(i.severity) as 'critical'|'high'|'medium'|'neutral'}>{i.severity}</Badge><div><b>{i.title}</b><small>{i.file?`${i.file}${i.line?':'+i.line:''}`:`${i.observations} observations`}{markers?` · ${markers}`:''}</small></div><div className="confidence"><span>Confidence</span><b>{i.confidence}</b></div><div className="repro"><span>Observations</span><b>{i.observations}</b></div><Icon name="arrow"/></a>
         {!shared&&<button className="icon-btn" title="Acknowledge as known issue — suppresses this cluster in future reports" style={{position:'absolute',right:34,top:'50%',transform:'translateY(-50%)'}} onClick={()=>setAckKey(i.key)}><Icon name="eye"/></button>}
       </div>})}
       {report&&issues.length===0&&<p style={{padding:'1rem',opacity:.7}}>{report.summary}</p>}
     </div>
     {known.length>0&&<Card><div className="card-head"><h2>Known issues — suppressed ({known.length})</h2><Badge tone="neutral">acknowledged</Badge></div>
-      {known.map(k=><div className="finding-preview" key={k.key}><Badge tone="neutral">KNOWN</Badge><div><b>{k.title}</b><small>{k.reason?`"${k.reason}" · `:''}acknowledged {new Date(k.ignoredAt).toLocaleString()} · hidden from findings, not from history</small></div>{!shared&&<button className="icon-btn" title="Un-acknowledge — the issue returns to findings immediately" onClick={()=>unacknowledge(k.id)}><Icon name="eye"/></button>}</div>)}
+      {known.map(k=><div className="finding-preview" key={k.key}><Badge tone="neutral">Known</Badge><div><b>{k.title}</b><small>{k.reason?`"${k.reason}" · `:''}acknowledged {new Date(k.ignoredAt).toLocaleString()} · hidden from findings, not from history</small></div>{!shared&&<button className="icon-btn" title="Un-acknowledge — the issue returns to findings immediately" onClick={()=>unacknowledge(k.id)}><Icon name="eye"/></button>}</div>)}
       <p style={{opacity:.55,fontSize:10}}>Acknowledged clusters are suppressed from every report read — the stored reports are never rewritten, and un-acknowledging restores the issue instantly.</p>
     </Card>}
     {ackKey&&<Modal title="Acknowledge as known issue?" onClose={()=>setAckKey(null)}>
@@ -821,15 +821,15 @@ function FindingDetail() {
   const copyPrompt=()=>{ navigator.clipboard?.writeText(issue!.fixPrompt); setToast(true); setTimeout(()=>setToast(false),1800) }
   const v=issueVerdicts(issue!)
   return <div className="app-page"><AppPageHead title={issue!.title} copy={`Run #${runId} · ${issue!.observations} observations`} actions={<Button icon="copy" onClick={copyPrompt}>Copy fix prompt</Button>}/>
-    <div className="finding-badges"><Badge tone={sevTone(issue!.severity) as 'critical'|'high'|'medium'|'neutral'}>{issue!.severity.toUpperCase()}</Badge><Badge tone="good">{issue!.confidence.toUpperCase()} CONFIDENCE</Badge>{issue!.types.slice(0,2).map(t=><Badge tone="blue" key={t}>{t.replace(/_/g,' ').toUpperCase()}</Badge>)}
-      {v.reproduced===true&&<Badge tone="good">REPRODUCED ON RETRY</Badge>}
-      {v.reproduced===false&&<Badge tone="critical">FLAKY — DOWNGRADED</Badge>}
-      {v.reproduced==='unverifiable'&&<Badge tone="neutral">NOT RE-VERIFIABLE</Badge>}
-      {v.corroboration&&<Badge tone="blue">STATIC + RUNTIME AGREE</Badge>}
-      {v.idempotency==='idempotent'&&<Badge tone="good">IDEMPOTENT — ABSORBED</Badge>}
-      {v.idempotency==='harmful'&&<Badge tone="critical">DAMAGE CONFIRMED</Badge>}
-      {v.operation&&<Badge tone="neutral">{v.operation.toUpperCase()}</Badge>}
-      <Badge tone="neutral">REAL DATA</Badge></div>
+    <div className="finding-badges"><Badge tone={sevTone(issue!.severity) as 'critical'|'high'|'medium'|'neutral'}>{issue!.severity}</Badge><Badge tone="good">{issue!.confidence} confidence</Badge>{issue!.types.slice(0,2).map(t=><Badge tone="blue" key={t}>{t.replace(/_/g,' ')}</Badge>)}
+      {v.reproduced===true&&<Badge tone="good">Reproduced on retry</Badge>}
+      {v.reproduced===false&&<Badge tone="critical">Flaky — downgraded</Badge>}
+      {v.reproduced==='unverifiable'&&<Badge tone="neutral">Not re-verifiable</Badge>}
+      {v.corroboration&&<Badge tone="blue">Static + runtime agree</Badge>}
+      {v.idempotency==='idempotent'&&<Badge tone="good">Idempotent — absorbed</Badge>}
+      {v.idempotency==='harmful'&&<Badge tone="critical">Damage confirmed</Badge>}
+      {v.operation&&<Badge tone="neutral">{v.operation}</Badge>}
+      <Badge tone="neutral">Real data</Badge></div>
     {(v.reproNote||v.idempotencyNote||v.corroboration)&&<Callout tone="info" title="How this verdict was reached">
       {v.reproNote&&<p style={{margin:'0 0 6px'}}>{v.reproNote}</p>}
       {v.idempotencyNote&&<p style={{margin:'0 0 6px'}}>{v.idempotencyNote}</p>}
@@ -840,7 +840,7 @@ function FindingDetail() {
       <Card><h2>Steps to reproduce</h2>{issue!.steps.length?<ol className="repro-steps">{issue!.steps.map((s,i)=><li key={i}><span>{i+1}</span><code>{s}</code></li>)}</ol>:<p style={{opacity:.6}}>No step trace recorded for this finding.</p>}</Card>
       <Card><div className="card-head"><h2>Evidence</h2><Badge tone="neutral">{issue!.evidence.length} SAMPLE{issue!.evidence.length===1?'':'S'}</Badge></div><CodeBlock code={issue!.evidence.map(e=>JSON.stringify(e,null,2)).join('\n\n')||'{}'}/></Card>
     </div><aside>
-      {issue!.file&&<Card><small>AFFECTED CODE</small><h3>{issue!.file}{issue!.line?`:${issue!.line}`:''}</h3><a href="#/app/static-scan">Open in static scan <Icon name="arrow"/></a></Card>}
+      {issue!.file&&<Card><small>Affected code</small><h3>{issue!.file}{issue!.line?`:${issue!.line}`:''}</h3><a href="#/app/static-scan">Open in static scan <Icon name="arrow"/></a></Card>}
       <Card><h3>Your verdict</h3><p>Help future comparisons understand this finding.</p><div className="verdicts">{['real','false positive','unsure'].map(x=><button className={verdict===x?'active':''} onClick={()=>setVerdict(x)} key={x}>{x}</button>)}</div></Card>
     </aside></div>{toast&&<div className="toast"><Icon name="check"/> Fix prompt copied with evidence</div>}
   </div>
@@ -937,7 +937,7 @@ function StaticScan() {
     <div className="scan-layout"><aside className="scan-rules">
       {([['all',String(issues?.length??0)] as [string,string],...byRule.map(([r,n])=>[r.replace(/-/g,' '),String(n)] as [string,string])]).map(([x,n])=><button className={rule===(x==='all'?'all':x)?'active':''} key={x} onClick={()=>setRule(x==='all'?'all':x)}><span>{x==='all'?'All rules':x}</span><Badge tone="neutral">{n}</Badge></button>)}
     </aside><Card><div className="card-head"><h2>Rule hits</h2><label className="search-box"><Icon name="search"/><input aria-label="Filter files" placeholder="Filter files…" value={filter} onChange={e=>setFilter(e.target.value)}/></label></div>
-      {shown.map(i=><div className="scan-hit" key={`${i.file}:${i.line}:${i.rule}`}><Icon name="file"/><div><b>{i.file}:<mark>{i.line}</mark></b><p>{i.message}</p></div><Badge tone={sevTone(i.severity) as 'high'|'medium'|'critical'}>{i.severity.toUpperCase()}</Badge></div>)}
+      {shown.map(i=><div className="scan-hit" key={`${i.file}:${i.line}:${i.rule}`}><Icon name="file"/><div><b>{i.file}:<mark>{i.line}</mark></b><p>{i.message}</p></div><Badge tone={sevTone(i.severity) as 'high'|'medium'|'critical'}>{i.severity}</Badge></div>)}
       {issues&&shown.length===0&&<p style={{opacity:.6,padding:'1rem'}}>No hits match the filter.</p>}
       {!project&&!issues&&<p style={{opacity:.6,padding:'1rem'}}>Connect a project (top right) to run the static rules.</p>}
     </Card></div></div>
@@ -957,7 +957,7 @@ function Settings() {
       <div className="host-row"><span><Icon name="check"/></span><div><b>{status?`${status.machine.cpu} · ${status.machine.cores} cores · ${(status.machine.ramBytes/1024**3).toFixed(1)} GB RAM`:'…'}</b><small>This machine</small></div></div>
     </Card>
     <Card><h2>Allowed hosts & safety</h2><div className="host-row"><span><Icon name="check"/></span><div><b>localhost only (default)</b><small>The Safety Guard refuses anything not local unless allow-listed in uipocalypse.config.yaml</small></div></div><p className="lede-small">Destructive and external actions stay skipped unless you opt in per run (New run → Risk controls).</p></Card>
-    <Card><div className="card-head"><h2>Team & billing</h2><Badge tone="blue">COMING LATER</Badge></div><p>Team members, shared run history, and billing belong to the future hosted product. They are not available in the local beta.</p><Button disabled variant="secondary">Manage plan</Button></Card>
+    <Card><div className="card-head"><h2>Team & billing</h2><Badge tone="blue">Coming later</Badge></div><p>Team members, shared run history, and billing belong to the future hosted product. They are not available in the local beta.</p><Button disabled variant="secondary">Manage plan</Button></Card>
   </div></div></div>
 }
 
@@ -1012,12 +1012,12 @@ function Onboarding() {
 }
 
 function Auth({mode}:{mode:'signin'|'signup'|'forgot'}) {
-  const titles={signin:'Welcome back',signup:'Create your preview account',forgot:'Reset your password'}
+  const titles={signin:'Sign in',signup:'Request early access',forgot:'Reset your password'}
   return <div className="auth-page"><div className="auth-brand"><Logo/><div><Eyebrow>Future hosted preview</Eyebrow><h1>Break it here.<br/>Not in production.</h1><p>The hosted dashboard shown here is a concept. Join the beta for the local tool.</p></div><small>Code and secrets stay local.</small></div><div className="auth-form"><Card><h2>{titles[mode]}</h2><p>{mode==='forgot'?'We’ll send a reset link if the account exists.':mode==='signin'?'Sign in to the dashboard preview.':'Hosted access is not publicly available yet.'}</p>{mode==='signup'&&<Field label="Name" placeholder="Ada Lovelace"/>}<Field label="Email" type="email" placeholder="you@example.com"/>{mode!=='forgot'&&<Field label="Password" type="password" placeholder="At least 12 characters"/>}<Button>{mode==='signin'?'Sign in':mode==='signup'?'Create account':'Send reset link'}</Button>{mode==='signin'&&<a href="#/forgot">Forgot password?</a>}<div className="auth-switch">{mode==='signin'?'No account?': 'Already have an account?'} <a href={mode==='signin'?'#/signup':'#/signin'}>{mode==='signin'?'Join the beta':'Sign in'}</a></div></Card></div></div>
 }
 
 function BadgePage() {
-  return <><PageHero eyebrow="Optional badge" title="Checked by UIpocalypse." copy="A small, honest badge for teams who want to share the scope of a specific run—not imply certification."/><section className="section page-width badge-showcase"><div className="checked-badge"><Logo compact/><span>CHECKED BY <b>UIpocalypse</b><small>LOCAL CHAOS RUN · [SAMPLE DATE]</small></span></div><Card><h2>What the badge means</h2><p>A configured local run completed against a test copy. The linked report should state exactly what ran, what was skipped, and which findings remained.</p><Callout tone="warn" title="Not a certification">The badge does not prove security, quality, accessibility, or the absence of bugs.</Callout><CodeBlock code={`<a href="[report-url]">\n  <img src="[badge-url]" alt="Checked by UIpocalypse" />\n</a>`}/></Card></section></>
+  return <><PageHero eyebrow="Optional badge" title="Checked by UIpocalypse." copy="A small, honest badge for teams who want to share the scope of a specific run—not imply certification."/><section className="section page-width badge-showcase"><div className="checked-badge"><Logo compact/><span>Checked by <b>UIpocalypse</b><small>Local chaos run · November 2026</small></span></div><Card><h2>What the badge means</h2><p>A configured local run completed against a test copy. The linked report should state exactly what ran, what was skipped, and which findings remained.</p><Callout tone="warn" title="Not a certification">The badge does not prove security, quality, accessibility, or the absence of bugs.</Callout><CodeBlock code={`<a href="[report-url]">\n  <img src="[badge-url]" alt="Checked by UIpocalypse" />\n</a>`}/></Card></section></>
 }
 
 function Sitemap() {
@@ -1051,9 +1051,9 @@ function MonitorList() {
         <div className="monitor-head">
           <div>
             <h3 style={{margin:0,fontSize:15}}>{m.name}</h3>
-            <a href={m.url} target="_blank" rel="noopener noreferrer" style={{fontSize:12,color:'var(--violet)'}}>{m.url.replace(/^https?:\/\//,'')}</a>
+            <a href={m.url} target="_blank" rel="noopener noreferrer" style={{fontSize:12,color:'var(--acid-deep)'}}>{m.url.replace(/^https?:\/\//,'')}</a>
           </div>
-          <Badge tone={m.enabled?'good':'neutral'}>{m.enabled?m.frequency.toUpperCase():'PAUSED'}</Badge>
+          <Badge tone={m.enabled?'good':'neutral'}>{m.enabled?m.frequency:'Paused'}</Badge>
         </div>
         <div className="monitor-meta">
           <span>Findings: <b>{m.open_findings}</b></span>
