@@ -284,7 +284,14 @@ export async function startWebServer(opts: {
             appMap: path ? appMap : undefined,
             staticIssues: path ? staticIssues : undefined,
           });
-          emit(job, 'swarm', { steps: swarmResult.steps, findings: swarmResult.findingCounts, coverage: swarmResult.coverage });
+          emit(job, 'swarm', {
+            steps: swarmResult.steps,
+            findings: swarmResult.findingCounts,
+            coverage: swarmResult.coverage,
+            // reproducibility sweep tally — every dead/inconsistent finding is
+            // re-performed once; reproduced = confirmed, flaky = downgraded
+            verification: swarmResult.verification,
+          });
         } finally {
           clearInterval(feed);
         }

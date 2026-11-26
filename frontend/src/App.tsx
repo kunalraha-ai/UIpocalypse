@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { api, loadProject, saveProject, routeParts, isLocalTarget, targetHost, looksLikeProdTarget, type Report, type RunRow, type Status, type StaticIssue, type Graph, type Diff, type JobEvent, type Monitor } from './api'
+import { api, loadProject, saveProject, routeParts, isLocalTarget, targetHost, looksLikeProdTarget, issueVerdicts, type Report, type RunRow, type Status, type StaticIssue, type Graph, type Diff, type JobEvent, type Monitor } from './api'
 
 type IconName =
   | 'arrow' | 'bolt' | 'bot' | 'check' | 'code' | 'copy' | 'eye' | 'file'
@@ -732,7 +732,7 @@ function LiveRun() {
   const [now,setNow]=useState(Date.now())
   useEffect(()=>{ const t=setInterval(()=>setNow(Date.now()),1000); return ()=>clearInterval(t) },[])
   const elapsed=started?Math.max(0,Math.round((now-started)/1000)):0
-  const swarmEv=events.find(e=>e.type==='swarm') as {steps?:number}|undefined
+  const swarmEv=events.find(e=>e.type==='swarm') as {steps?:number; verification?:{attempted:number;reproduced:number;flaky:number;unverifiable:number}}|undefined
   const feedEvents=events.filter(e=>e.type==='findings').slice(-1).flatMap(e=>(e as unknown as {findings:Array<{id:number;type:string;severity:string;evidence:Record<string,unknown>}>}).findings).slice(0,6)
 
   if(!jobId) return <div className="app-page"><AppPageHead title="No live run" copy="Start one from New run."/><Card><p style={{padding:'1rem'}}><a href="#/app/new-run">Configure a run</a> to watch it live.</p></Card></div>
@@ -741,7 +741,9 @@ function LiveRun() {
     {error&&<Callout tone="warn" title="Run failed">{error}</Callout>}
     <div className="phase-bar">{phases.map((p,i)=><div className={status==='done'||i<activeIdx?'done':i===activeIdx?'active':''} key={p}><span>{phaseEvents.includes(p)?<Icon name="check"/>:i+1}</span><b>{p}</b><i/></div>)}</div>
     <div className="metric-grid four"><Metric label="Phase" value={activeIdx>=0?phases[activeIdx]!:'…'}/><Metric label="Steps executed" value={swarmEv?String(swarmEv.steps??'…'):'—'}/><Metric label="Live findings" value={String(feedEvents.length||'…')}/><Metric label="Elapsed" value={`${String(Math.floor(elapsed/60)).padStart(2,'0')}:${String(elapsed%60).padStart(2,'0')}`} note="since first event"/></div>
-    <div className="live-grid"><Card><div className="card-head"><h2>Agent swarm</h2><span className="live-dot">{status==='running'?'LIVE':'DONE'}</span></div><div className="agent-grid">{personas.map(([l,n],i)=><div className="agent-tile" key={n}><span className={`agent-face p${i}`}>{l}</span><div><b>{n}</b><small>{phaseEvents.includes('swarm')?'running':'queued'}</small></div><span className="pulse"/></div>)}</div></Card>
+    <div className="live-grid"><Card><div className="card-head"><h2>Agent swarm</h2><span className="live-dot">{status==='running'?'LIVE':'DONE'}</span></div><div className="agent-grid">{personas.map(([l,n],i)=><div className="agent-tile" key={n}><span className={`agent-face p${i}`}>{l}</span><div><b>{n}</b><small>{phaseEvents.includes('swarm')?'running':'queued'}</small></div><span className="pulse"/></div>)}</div>
+      {swarmEv?.verification&&swarmEv.verification.attempted>0&&<p className="lede-small" style={{marginTop:12}}>Verification sweep: {swarmEv.verification.attempted} finding{swarmEv.verification.attempted===1?'':'s'} re-performed on fresh pages — {swarmEv.verification.reproduced} reproduced, {swarmEv.verification.flaky} flaky (downgraded), {swarmEv.verification.unverifiable} not re-verifiable.</p>}
+    </Card>
     <Card><div className="card-head"><h2>Live findings</h2><Badge tone="neutral">REAL</Badge></div><div className="feed">{feedEvents.map((f)=><div key={f.id}><span className={f.severity==='high'?'feed-high':'feed-med'}><Icon name="warning"/></span><div><b>{String(f.evidence.action??f.evidence.message??f.evidence.url??f.type)}</b><small>{f.type} · {f.severity}</small></div></div>)}{feedEvents.length===0&&<p style={{opacity:.6,padding:'.5rem'}}>Findings stream in during the swarm phase…</p>}</div></Card></div>
   </div>
 }
@@ -779,10 +781,18 @@ function RunReport({shared=false}:{shared?:boolean}) {
     {cov&&<div className="funnel"><div style={{width:'100%'}}>{cov.discoveredActions} discovered actions</div><div style={{width:`${cov.discoveredActions?Math.max(8,(cov.reachedActions+(report?.skippedActions?.length??0))/cov.discoveredActions*100):100}%`}}>{cov.reachedActions+(report?.skippedActions?.length??0)} safe to attempt</div><div style={{width:`${cov.discoveredActions?Math.max(4,cov.reachedActions/cov.discoveredActions*100):50}%`}}>{cov.reachedActions} exercised</div><div style={{width:`${cov.discoveredActions?Math.max(3,issues.length/cov.discoveredActions*100):10}%`}}>{issues.length} findings</div></div>}
     {report?.skippedActions&&report.skippedActions.length>0&&<Card><div className="card-head"><h2>Skipped by safety policy ({report.skippedActions.length}) — NOT TESTED</h2></div>{report.skippedActions.map(s=><div className="finding-preview" key={s.label}><Badge tone="neutral">SKIPPED</Badge><div><b>{s.label}</b><small>{s.reason}</small></div></div>)}</Card>}
     <div className="report-list"><div className="card-head"><h2>Findings by cluster</h2><div><Badge tone="neutral">Severity ↓</Badge><Badge tone="good">real data</Badge></div></div>
-      {issues.map(i=><div key={i.key} style={{position:'relative'}}>
-        <a href={`#/app/finding?run=${runId}&key=${encodeURIComponent(i.key)}`} className="finding-row"><Badge tone={tone(i.severity) as 'critical'|'high'|'medium'|'neutral'}>{i.severity.toUpperCase()}</Badge><div><b>{i.title}</b><small>{i.file?`${i.file}${i.line?':'+i.line:''}`:`${i.observations} observations`}</small></div><div className="confidence"><span>CONFIDENCE</span><b>{i.confidence}</b></div><div className="repro"><span>OBSERVATIONS</span><b>{i.observations}</b></div><Icon name="arrow"/></a>
+      {issues.map(i=>{const v=issueVerdicts(i);const markers=[
+        v.reproduced===true&&'reproduced on retry',
+        v.reproduced===false&&'flaky — downgraded',
+        v.reproduced==='unverifiable'&&'not re-verifiable',
+        v.corroboration&&'static + runtime agree',
+        v.idempotency==='idempotent'&&'server absorbs repeats',
+        v.idempotency==='harmful'&&'duplicate damage confirmed',
+        v.operation&&`operation ${v.operation}`,
+      ].filter(Boolean).join(' · ');return <div key={i.key} style={{position:'relative'}}>
+        <a href={`#/app/finding?run=${runId}&key=${encodeURIComponent(i.key)}`} className="finding-row"><Badge tone={tone(i.severity) as 'critical'|'high'|'medium'|'neutral'}>{i.severity.toUpperCase()}</Badge><div><b>{i.title}</b><small>{i.file?`${i.file}${i.line?':'+i.line:''}`:`${i.observations} observations`}{markers?` · ${markers}`:''}</small></div><div className="confidence"><span>CONFIDENCE</span><b>{i.confidence}</b></div><div className="repro"><span>OBSERVATIONS</span><b>{i.observations}</b></div><Icon name="arrow"/></a>
         {!shared&&<button className="icon-btn" title="Acknowledge as known issue — suppresses this cluster in future reports" style={{position:'absolute',right:34,top:'50%',transform:'translateY(-50%)'}} onClick={()=>setAckKey(i.key)}><Icon name="eye"/></button>}
-      </div>)}
+      </div>})}
       {report&&issues.length===0&&<p style={{padding:'1rem',opacity:.7}}>{report.summary}</p>}
     </div>
     {known.length>0&&<Card><div className="card-head"><h2>Known issues — suppressed ({known.length})</h2><Badge tone="neutral">acknowledged</Badge></div>
@@ -809,8 +819,22 @@ function FindingDetail() {
   if(!report) return <div className="app-page"><AppPageHead title="Loading finding…"/></div>
   const sevTone=(s:string)=>s==='high'?'high':s==='critical'?'critical':s==='medium'?'medium':'neutral'
   const copyPrompt=()=>{ navigator.clipboard?.writeText(issue!.fixPrompt); setToast(true); setTimeout(()=>setToast(false),1800) }
+  const v=issueVerdicts(issue!)
   return <div className="app-page"><AppPageHead title={issue!.title} copy={`Run #${runId} · ${issue!.observations} observations`} actions={<Button icon="copy" onClick={copyPrompt}>Copy fix prompt</Button>}/>
-    <div className="finding-badges"><Badge tone={sevTone(issue!.severity) as 'critical'|'high'|'medium'|'neutral'}>{issue!.severity.toUpperCase()}</Badge><Badge tone="good">{issue!.confidence.toUpperCase()} CONFIDENCE</Badge>{issue!.types.slice(0,2).map(t=><Badge tone="blue" key={t}>{t.replace(/_/g,' ').toUpperCase()}</Badge>)}<Badge tone="neutral">REAL DATA</Badge></div>
+    <div className="finding-badges"><Badge tone={sevTone(issue!.severity) as 'critical'|'high'|'medium'|'neutral'}>{issue!.severity.toUpperCase()}</Badge><Badge tone="good">{issue!.confidence.toUpperCase()} CONFIDENCE</Badge>{issue!.types.slice(0,2).map(t=><Badge tone="blue" key={t}>{t.replace(/_/g,' ').toUpperCase()}</Badge>)}
+      {v.reproduced===true&&<Badge tone="good">REPRODUCED ON RETRY</Badge>}
+      {v.reproduced===false&&<Badge tone="critical">FLAKY — DOWNGRADED</Badge>}
+      {v.reproduced==='unverifiable'&&<Badge tone="neutral">NOT RE-VERIFIABLE</Badge>}
+      {v.corroboration&&<Badge tone="blue">STATIC + RUNTIME AGREE</Badge>}
+      {v.idempotency==='idempotent'&&<Badge tone="good">IDEMPOTENT — ABSORBED</Badge>}
+      {v.idempotency==='harmful'&&<Badge tone="critical">DAMAGE CONFIRMED</Badge>}
+      {v.operation&&<Badge tone="neutral">{v.operation.toUpperCase()}</Badge>}
+      <Badge tone="neutral">REAL DATA</Badge></div>
+    {(v.reproNote||v.idempotencyNote||v.corroboration)&&<Callout tone="info" title="How this verdict was reached">
+      {v.reproNote&&<p style={{margin:'0 0 6px'}}>{v.reproNote}</p>}
+      {v.idempotencyNote&&<p style={{margin:'0 0 6px'}}>{v.idempotencyNote}</p>}
+      {v.corroboration&&<p style={{margin:0}}>{v.corroboration}</p>}
+    </Callout>}
     <div className="finding-layout"><div>
       <Card><h2>What broke</h2><p>{issue!.rootCause}</p><Callout tone="warn" title="Paste into your coding agent">The fix prompt below carries the evidence your agent needs.</Callout><CodeBlock code={issue!.fixPrompt}/></Card>
       <Card><h2>Steps to reproduce</h2>{issue!.steps.length?<ol className="repro-steps">{issue!.steps.map((s,i)=><li key={i}><span>{i+1}</span><code>{s}</code></li>)}</ol>:<p style={{opacity:.6}}>No step trace recorded for this finding.</p>}</Card>

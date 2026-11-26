@@ -34,6 +34,37 @@ export type ReportIssue = {
   steps: string[]
 }
 
+/**
+ * Evidence-level verdicts the backend records on findings (surfaced in the
+ * first evidence sample). Extracted here so the UI never greps raw JSON.
+ */
+export type IssueVerdicts = {
+  /** verification sweep: still dead on retry (true), worked on retry — flaky (false), control gone (unverifiable) */
+  reproduced?: boolean | 'unverifiable'
+  reproNote?: string
+  /** static dead-handler issue flags the same control */
+  corroboration?: string
+  /** idempotency replay (opt-in): 'idempotent' | 'harmful' | 'unknown' | 'skipped' */
+  idempotency?: string
+  idempotencyNote?: string
+  /** GraphQL/Server-Action operation the duplicate keyed on (e.g. graphql:EchoMut) */
+  operation?: string
+}
+
+export function issueVerdicts(issue: ReportIssue): IssueVerdicts {
+  const ev = issue.evidence[0] ?? {}
+  const str = (v: unknown) => (typeof v === 'string' && v ? v : undefined)
+  const rep = ev.reproduced
+  return {
+    reproduced: rep === true || rep === false || rep === 'unverifiable' ? rep : undefined,
+    reproNote: str(ev.reproNote),
+    corroboration: str(ev.corroboration),
+    idempotency: str(ev.idempotency),
+    idempotencyNote: str(ev.idempotencyNote),
+    operation: str(ev.operation),
+  }
+}
+
 export type Report = {
   runId: number
   generatedAt: string
