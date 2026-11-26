@@ -196,6 +196,12 @@ export const api = {
     post<{ clone: { name: string; url: string }; droppedPrevious?: string; instructions: string }>('/api/db/clone', { sourceUrl }),
   dropClone: (name: string) => fetch(`/api/db/clones/${name}`, { method: 'DELETE' }).then((r) => r.json()),
 
+  // ---- cross-user authorization audit
+  authzProfiles: () => get<{ profiles: Array<{ name: string; hasState: boolean }> }>('/api/authz/profiles'),
+  authzAudit: (url: string) => post<{ started: boolean; profiles: string[] }>('/api/authz/audit', { url }),
+  authzStatus: () =>
+    get<{ status: 'running' | 'done'; result: { runId: number; crawled: number; tested: number; exposures: number; target: string } | null; error?: string }>('/api/authz/audit'),
+
   // ---- bugs become permanent tests
   exportTest: (runId: number, key?: string, stress?: number) =>
     post<{ files: Array<{ filename: string; content: string }>; skipped: Array<{ key: string; reason: string }> }>(`/api/runs/${runId}/export-test`, { key, stress }),

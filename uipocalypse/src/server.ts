@@ -7,6 +7,8 @@ import { openDb, listRuns, getRun, type Db } from './db/index.js';
 import { verifyRunFixes } from './browser/replay.js';
 import { cloneLocalPostgres, dropClone } from './tools/clone-db.js';
 import { exportRunTests } from './tools/export-test.js';
+import { auditAuthorization } from './browser/authz.js';
+import { resolvedAuthProfiles } from './config.js';
 import { scanCodebase } from './tools/scan-codebase.js';
 import { loadConfig } from './config.js';
 import { createLlm, createLlmSet, healthCheck, llmModeLine } from './llm/index.js';
@@ -325,6 +327,56 @@ export function createServer(opts: { workspaceRoot?: string } = {}): ServerConte
         findings: (db.prepare('SELECT COUNT(*) AS n FROM findings WHERE run_id = ?').get(r.id) as { n: number }).n,
       }));
       return text(runs);
+    },
+  );
+
+  server.registerTool(
+    'audit_authorization',
+    {
+      title: 'Audit cross-user authorization',
+      description:
+        'The most valuable bug class for vibecoded apps: missing ownership checks. Crawls the app as the first configured login profile (auth.profiles in uipocalypse.config.yaml), then replays every resource URL that profile saw as every other profile plus a guest — read-only GETs — and classifies each answer: EXPOSED (200 with the same body the owner received), possible (200 with different content on an id-scoped resource — inspect), guarded (401/403/404 — the check exists). Findings land on their own run (type authorization_exposure) with a generated report. Needs at least one authenticated profile configured.',
+      inputSchema: {
+        url: z.string().describe('The app to audit, e.g. http://localhost:3000 — must be running'),
+      },
+    },
+    async ({ url }) => {
+      try {
+        const { config } = loadConfig();
+        const profiles = resolvedAuthProfiles(config);
+        if (profiles.length === 0) {
+          return {
+            isError: true,
+            content: [
+              {
+                type: 'text' as const,
+                text:
+                  'No login profiles configured. Add auth.profiles to uipocalypse.config.yaml, e.g.\nauth:\n  profiles:\n    - { name: alice, storageState: .auth/alice.json }\n    - { name: bob, storageState: .auth/bob.json }\nStorage-state files are Playwright exports (npx playwright codegen --save-storage=state.json logs in and writes one).',
+              },
+            ],
+          };
+        }
+        const { chromium } = await import('playwright');
+        const browser = await chromium.launch();
+        try {
+          const result = await auditAuthorization({ browser, url, db, profiles, logger });
+          const lines = [
+            `Authorization audit of ${url} as ${profiles.map((p) => p.name).join(', ')} + guest — ${result.tested} replays, ${result.exposures} flagged.`,
+            '',
+            ...result.results.map(
+              (r) =>
+                `${r.classification === 'exposed' ? '‼' : r.classification === 'possible' ? '?' : r.classification === 'guarded' ? '✓' : '·'} ${r.classification.padEnd(9)} as ${r.profile.padEnd(8)} HTTP ${String(r.status).padEnd(4)} ${r.url.slice(0, 80)}\n    ${r.note}`,
+            ),
+            '',
+            `Run #${result.runId} carries the findings; get_report ${result.runId} for the clustered view.`,
+          ];
+          return text(lines.join('\n'));
+        } finally {
+          await browser.close().catch(() => {});
+        }
+      } catch (e) {
+        return { isError: true, content: [{ type: 'text' as const, text: `${e}` }] };
+      }
     },
   );
 

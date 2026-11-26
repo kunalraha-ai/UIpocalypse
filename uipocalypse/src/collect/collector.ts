@@ -166,6 +166,14 @@ export function fingerprint(f: FindingRow, routes: string[], routeSet: Set<strin
     const core = messageCore(String(ev.message ?? ev.text ?? '?'));
     key = `ep:${subject}:${type === 'page_error' ? 'page' : 'console'}:${core}`;
     title = `${type === 'page_error' ? 'page crash' : 'console error'} on ${subject}: ${core}`;
+  } else if (type === 'authorization_exposure') {
+    // cross-user authorization audit: someone else's resource, readable
+    const profile = String(ev.profile ?? '?');
+    const idScoped = ev.idScoped === true;
+    family = 'endpoint';
+    key = `authz:${subject}:${profile}`;
+    title = `authorization exposure on ${subject} as ${profile}`;
+    if (!idScoped) severity = 'low';
   } else if (type === 'failed_request') {
     family = 'endpoint';
     const status = Number(ev.status ?? 0);

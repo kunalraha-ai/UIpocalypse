@@ -27,6 +27,22 @@ export const ConfigSchema = z.object({
     .object({
       storageState: z.string().optional(),
       loginScript: z.string().optional(),
+      /**
+       * Named login profiles for the cross-user authorization audit (the
+       * single storageState above still works and becomes one 'default'
+       * profile). Each profile is a Playwright storage-state file; the
+       * audit crawls as the first profile and replays its resource URLs as
+       * every other profile plus a fresh guest context.
+       */
+      profiles: z
+        .array(
+          z.object({
+            name: z.string().min(1),
+            storageState: z.string().optional(),
+            loginScript: z.string().optional(),
+          }),
+        )
+        .optional(),
     })
     .optional(),
   skipActions: z.array(z.string()).default([]),
@@ -116,4 +132,14 @@ export function loadConfig(explicitPath?: string): {
     throw new Error(`Config file not found: ${explicitPath}`);
   }
   return { config: ConfigSchema.parse({}), source: 'defaults' };
+}
+
+/** Login profiles for the authorization audit: explicit auth.profiles win;
+ *  a legacy single storageState/loginScript becomes one 'default' profile. */
+export function resolvedAuthProfiles(config: UiConfig): Array<{ name: string; storageState?: string; loginScript?: string }> {
+  if (config.auth?.profiles && config.auth.profiles.length > 0) return config.auth.profiles;
+  if (config.auth?.storageState || config.auth?.loginScript) {
+    return [{ name: 'default', storageState: config.auth.storageState, loginScript: config.auth.loginScript }];
+  }
+  return [];
 }

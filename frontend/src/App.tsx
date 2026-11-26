@@ -549,7 +549,7 @@ function NotFound({error=false}:{error?:boolean}) {
 // PRODUCT APP
 const appNav = [
   ['grid','Projects','/app/projects'],['play','New run','/app/new-run'],['report','Reports','/app/report'],
-  ['graph','State graph','/app/graph'],['code','Static scan','/app/static-scan'],['settings','Settings','/app/settings'],
+  ['graph','State graph','/app/graph'],['code','Static scan','/app/static-scan'],['shield','Auth check','/app/authz'],['settings','Settings','/app/settings'],
 ] as const
 
 /** monitoring nav (second group in the sidebar) */
@@ -738,6 +738,54 @@ function Toggle({label,warning,value,setValue,defaultOn}:{label:string;warning:s
 
 function Modal({title,children,onClose}:{title:string;children:ReactNode;onClose:()=>void}) {
   return <div className="modal-backdrop" role="presentation" onMouseDown={e=>{if(e.currentTarget===e.target)onClose()}}><div className="modal" role="dialog" aria-modal="true" aria-label={title}><div className="card-head"><h2>{title}</h2><button className="icon-btn" onClick={onClose}><Icon name="x"/></button></div>{children}</div></div>
+}
+
+function AuthzAudit() {
+  const project=loadProject()
+  const [url,setUrl]=useState(project?.url??'http://localhost:3000')
+  const [profiles,setProfiles]=useState<Array<{name:string;hasState:boolean}>>([])
+  const [status,setStatus]=useState<'idle'|'running'|'done'>('idle')
+  const [result,setResult]=useState<{runId:number;crawled:number;tested:number;exposures:number;target:string}|null>(null)
+  const [error,setError]=useState('')
+  useEffect(()=>{ api.authzProfiles().then(r=>setProfiles(r.profiles)).catch(()=>{}) },[])
+  const run=async()=>{
+    if(!url.trim()) return
+    setStatus('running'); setError(''); setResult(null)
+    try{
+      await api.authzAudit(url.trim())
+      for(let i=0;i<90;i++){
+        await new Promise(r=>setTimeout(r,2000))
+        const st=await api.authzStatus()
+        if(st.status==='done'){
+          if(st.error) setError(st.error)
+          if(st.result) setResult(st.result)
+          setStatus('done')
+          return
+        }
+      }
+      setError('audit timed out'); setStatus('idle')
+    }catch(e){ setError(String(e instanceof Error?e.message:e)); setStatus('idle') }
+  }
+  const tone=(c:string)=>c==='exposed'?'critical':c==='possible'?'high':c==='guarded'?'good':'neutral'
+  return <div className="app-page narrow-app"><AppPageHead title="Authorization check" copy="Log in as user A, replay A's resources as user B and a guest — flag any data that crosses the line."/>
+    <Card><h2>Target</h2>
+      <label className="field"><span>App URL (must be running)</span><input value={url} onChange={e=>setUrl(e.target.value)} placeholder="http://localhost:3000"/></label>
+      {profiles.length>0
+        ? <Callout tone="safe" title={`${profiles.length} login profile${profiles.length===1?'':'s'} configured`}>Crawling as <b>{profiles[0]!.name}</b>{profiles.length>1?`, replaying as ${profiles.slice(1).map(p=>p.name).join(', ')} and a guest`:' and a guest'} — read-only GETs only.</Callout>
+        : <Callout tone="warn" title="No login profiles configured">Add <code>auth.profiles</code> to <code>uipocalypse.config.yaml</code> — named Playwright storage-state files. The audit needs at least one authenticated user to crawl as.<CodeBlock code={`auth:\n  profiles:\n    - { name: alice, storageState: .auth/alice.json }\n    - { name: bob,   storageState: .auth/bob.json }`}/></Callout>}
+      <div className="button-row" style={{marginTop:12}}><Button icon="play" disabled={status==='running'||profiles.length===0} onClick={run}>{status==='running'?'Auditing…':'Run authorization audit'}</Button></div>
+      {error&&<Callout tone="warn" title="Audit failed">{error}</Callout>}
+    </Card>
+    {result&&<Card><div className="card-head"><h2>Audit result</h2><Badge tone={result.exposures>0?'critical':'good'}>{result.exposures===0?'No exposures':`${result.exposures} flagged`}</Badge></div>
+      <div className="metric-grid three">
+        <Card><small>URLs crawled</small><strong>{result.crawled}</strong></Card>
+        <Card><small>Replays</small><strong>{result.tested}</strong></Card>
+        <Card><small>Flagged</small><strong>{result.exposures}</strong></Card>
+      </div>
+      <p className="lede-small">Exposed = a 200 with the same body the owner received. Possible = a 200 with different content on an id-scoped resource. Guarded = the check exists. Every flag is on run #{result.runId} with its own report.</p>
+      <Button to={`/app/report?run=${result.runId}`} icon="report">Open the report</Button>
+    </Card>}
+  </div>
 }
 
 function LiveRun() {
@@ -1246,7 +1294,7 @@ function App() {
   if(path==='/signin'||path==='/signup'||path==='/forgot') return <Auth mode={path.slice(1) as 'signin'|'signup'|'forgot'}/>
   if(path==='/app/onboarding') return <Onboarding/>
   if(path.startsWith('/app')||path==='/share/report') {
-    const page=path==='/app/projects'?<Projects/>:path==='/app/project'?<ProjectOverview/>:path==='/app/new-run'?<NewRun/>:path==='/app/live-run'?<LiveRun/>:path==='/app/report'?<RunReport/>:path==='/app/finding'?<FindingDetail/>:path==='/app/graph'?<StateGraph/>:path==='/app/compare'?<CompareRuns/>:path==='/app/static-scan'?<StaticScan/>:path==='/app/settings'?<Settings/>:path==='/app/monitor'?<MonitorList/>:path==='/app/monitor/new'?<MonitorNew/>:<Projects/>
+    const page=path==='/app/projects'?<Projects/>:path==='/app/project'?<ProjectOverview/>:path==='/app/new-run'?<NewRun/>:path==='/app/live-run'?<LiveRun/>:path==='/app/report'?<RunReport/>:path==='/app/finding'?<FindingDetail/>:path==='/app/graph'?<StateGraph/>:path==='/app/compare'?<CompareRuns/>:path==='/app/static-scan'?<StaticScan/>:path==='/app/authz'?<AuthzAudit/>:path==='/app/settings'?<Settings/>:path==='/app/monitor'?<MonitorList/>:path==='/app/monitor/new'?<MonitorNew/>:<Projects/>
     return path==='/share/report'?<RunReport shared/>:<AppShell theme={theme} setTheme={setTheme}>{page}</AppShell>
   }
   return <MarketingShell theme={theme} setTheme={setTheme}>{content||<NotFound/>}</MarketingShell>

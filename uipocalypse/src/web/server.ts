@@ -10,6 +10,8 @@ import { findDueMonitors, stampMonitorLaunched, stampMonitorRunId } from './moni
 import { verifyRunFixes } from '../browser/replay.js';
 import { cloneLocalPostgres, dropClone, listClones } from '../tools/clone-db.js';
 import { exportRunTests } from '../tools/export-test.js';
+import { auditAuthorization } from '../browser/authz.js';
+import { resolvedAuthProfiles } from '../config.js';
 import { openDb, listRuns, getRun, addIgnoredFinding, listIgnoredFindings, removeIgnoredFinding, type Db } from '../db/index.js';
 import { createLogger, type Logger } from '../logger.js';
 import { scanCodebase } from '../tools/scan-codebase.js';
@@ -153,6 +155,8 @@ export async function startWebServer(opts: {
   const jobs = new Map<number, Job>();
   /** verified-fix loop state per run (POST /api/runs/:id/verify) */
   const verifyJobs = new Map<number, { status: 'running' | 'done'; startedAt: number; results: Array<{ key: string; type: string; verdict: string; note: string }>; error?: string }>();
+  /** authorization audit state (POST /api/authz/audit) */
+  let authzAudit: { status: 'running' | 'done'; startedAt: number; result: { runId: number; crawled: number; tested: number; exposures: number; target: string } | null; error?: string } = { status: 'done', startedAt: 0, result: null };
 
   function emit(job: Job, type: string, payload: Record<string, unknown> = {}): void {
     const ev: WebJobEvent = { at: Date.now(), type, ...payload };
@@ -498,6 +502,52 @@ export async function startWebServer(opts: {
             const removed = removeIgnoredFinding(db, Number(unignoreMatch[1]));
             if (!removed) return send(404, { error: 'no such acknowledged finding' });
             return send(200, { removed: true });
+          }
+
+          // ---- cross-user authorization audit (planted-leak class: missing ownership checks)
+          if (url.pathname === '/api/authz/profiles' && req.method === 'GET') {
+            return send(200, { profiles: resolvedAuthProfiles(config).map((p) => ({ name: p.name, hasState: !!p.storageState })) });
+          }
+
+          if (url.pathname === '/api/authz/audit' && req.method === 'POST') {
+            if (hasRunningJob()) return send(409, { error: 'a run is already in progress' });
+            if (authzAudit.status === 'running') return send(409, { error: 'an authorization audit is already running' });
+            const body = (await readBody()) as { url?: string };
+            if (typeof body.url !== 'string' || !body.url.trim()) return send(400, { error: '"url" (the app to audit) is required' });
+            const profiles = resolvedAuthProfiles(config);
+            if (profiles.length === 0) {
+              return send(422, {
+                error:
+                  'no login profiles configured — add auth.profiles (named Playwright storage-state files) to uipocalypse.config.yaml. The audit crawls as the first profile and replays as the others plus a guest.',
+              });
+            }
+            // operator-initiated, read-only: replay requests are GETs from
+            // logged-in contexts — the same risk class as a read-only run
+            authzAudit = { status: 'running', startedAt: Date.now(), result: null };
+            const target = body.url.trim();
+            void (async () => {
+              try {
+                const { chromium } = await import('playwright');
+                const browser = await chromium.launch();
+                try {
+                  const result = await auditAuthorization({ browser, url: target, db, profiles, logger });
+                  // a mechanical report makes the audit a first-class run:
+                  // report page, findings, acknowledge, diff — all reuse
+                  const auditLlms = createLlmSet(opts.llmEnv);
+                  await generateReport({ db, runId: result.runId, appMap: EMPTY_APP_MAP, llm: auditLlms.planner, runsDir: workspace.runs }).catch(() => {});
+                  authzAudit = { status: 'done', startedAt: Date.now(), result: { ...result, target } };
+                } finally {
+                  await browser.close().catch(() => {});
+                }
+              } catch (e) {
+                authzAudit = { status: 'done', startedAt: Date.now(), result: null, error: String(e) };
+              }
+            })();
+            return send(202, { started: true, profiles: profiles.map((p) => p.name) });
+          }
+
+          if (url.pathname === '/api/authz/audit' && req.method === 'GET') {
+            return send(200, authzAudit);
           }
 
           // ---- bugs become permanent tests: export fixed findings as Playwright specs
