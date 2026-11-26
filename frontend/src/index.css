@@ -165,3 +165,17 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
 .monitor-meta a{color:var(--acid-deep)}
 .monitor-actions{display:flex;gap:8px;margin-top:auto;padding-top:8px;border-top:1px solid var(--line)}
 .monitor-actions .btn{padding:6px 12px;font-size:11px}
+
+/* ---- swarm camera: live frames from the agents' real browsers ----
+   Ephemeral SSE frames, latest-only in React state; overlay names the agent,
+   its persona and the page it is on. Dark frame bed matches the code block. */
+.camera{position:relative;aspect-ratio:16/9;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#0d0f0d;display:grid;place-items:center;margin-bottom:16px}
+.camera img{width:100%;height:100%;object-fit:cover;display:block}
+.camera-overlay{position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;gap:8px;padding:8px 12px;background:rgba(13,15,13,.88);border-top:1px solid #30332c;color:#f4f5ed;font:500 10px 'JetBrains Mono'}
+.camera-overlay b{white-space:nowrap}
+.camera-overlay span{white-space:nowrap;color:#c8ff2e}
+.camera-overlay small{color:#9fa297;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
+.cam-dot{width:6px;height:6px;border-radius:50%;background:#51d39b;flex:none;animation:pulse 1.2s infinite}
+.camera-empty{display:flex;flex-direction:column;align-items:center;gap:8px;color:var(--muted);padding:24px;text-align:center}
+.camera-empty small{font-size:11px;max-width:320px}
+.camera-empty svg{opacity:.5}

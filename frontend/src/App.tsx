@@ -708,6 +708,7 @@ function LiveRun() {
   const {query}=routeParts()
   const jobId=Number(query.get('job')??0)
   const [events,setEvents]=useState<JobEvent[]>([])
+  const [frame,setFrame]=useState<{agent:number;persona:string;url:string;at:number;data:string}|null>(null)
   const [status,setStatus]=useState<'running'|'done'|'error'|'unknown'>('unknown')
   const [runId,setRunId]=useState<number|null>(null)
   const [error,setError]=useState('')
@@ -717,6 +718,8 @@ function LiveRun() {
     if(!jobId) return
     setStatus('running')
     const off=api.events(jobId,(ev)=>{
+      // camera frames are ephemeral: keep only the latest, never accumulate
+      if(ev.type==='frame'){ setFrame(ev as unknown as {agent:number;persona:string;url:string;at:number;data:string}); return }
       setEvents(prev=>[...prev,ev])
       if(ev.type==='done'){ setStatus('done'); setRunId(ev.runId as number) }
       if(ev.type==='error'){ setStatus('error'); setError(String(ev.error)) }
@@ -741,7 +744,16 @@ function LiveRun() {
     {error&&<Callout tone="warn" title="Run failed">{error}</Callout>}
     <div className="phase-bar">{phases.map((p,i)=><div className={status==='done'||i<activeIdx?'done':i===activeIdx?'active':''} key={p}><span>{phaseEvents.includes(p)?<Icon name="check"/>:i+1}</span><b>{p}</b><i/></div>)}</div>
     <div className="metric-grid four"><Metric label="Phase" value={activeIdx>=0?phases[activeIdx]!:'…'}/><Metric label="Steps executed" value={swarmEv?String(swarmEv.steps??'…'):'—'}/><Metric label="Live findings" value={String(feedEvents.length||'…')}/><Metric label="Elapsed" value={`${String(Math.floor(elapsed/60)).padStart(2,'0')}:${String(elapsed%60).padStart(2,'0')}`} note="since first event"/></div>
-    <div className="live-grid"><Card><div className="card-head"><h2>Agent swarm</h2><span className="live-dot">{status==='running'?'Live':'Done'}</span></div><div className="agent-grid">{personas.map(([l,n],i)=><div className="agent-tile" key={n}><span className={`agent-face p${i}`}>{l}</span><div><b>{n}</b><small>{phaseEvents.includes('swarm')?'running':'queued'}</small></div><span className="pulse"/></div>)}</div>
+    <div className="live-grid"><Card><div className="card-head"><h2>Agent swarm</h2><span className="live-dot">{status==='running'?'Live':'Done'}</span></div>
+      <div className="camera">
+        {frame
+          ? <>
+            <img src={`data:image/jpeg;base64,${frame.data}`} alt={`Live view of agent ${frame.agent+1} (${frame.persona})`}/>
+            <div className="camera-overlay"><span className="cam-dot" title="This is a real frame from an agent's browser"/><b>Agent {frame.agent+1}</b><span>{frame.persona}</span><small>{frame.url}</small></div>
+          </>
+          : <div className="camera-empty"><Icon name="eye" size={28}/><small>{status==='running'?'Waiting for the swarm phase — the camera follows the busiest agent…':'Frames stream here while the swarm runs.'}</small></div>}
+      </div>
+      <div className="agent-grid">{personas.map(([l,n],i)=><div className="agent-tile" key={n}><span className={`agent-face p${i}`}>{l}</span><div><b>{n}</b><small>{phaseEvents.includes('swarm')?'running':'queued'}</small></div><span className="pulse"/></div>)}</div>
       {swarmEv?.verification&&swarmEv.verification.attempted>0&&<p className="lede-small" style={{marginTop:12}}>Verification sweep: {swarmEv.verification.attempted} finding{swarmEv.verification.attempted===1?'':'s'} re-performed on fresh pages — {swarmEv.verification.reproduced} reproduced, {swarmEv.verification.flaky} flaky (downgraded), {swarmEv.verification.unverifiable} not re-verifiable.</p>}
     </Card>
     <Card><div className="card-head"><h2>Live findings</h2><Badge tone="neutral">Real</Badge></div><div className="feed">{feedEvents.map((f)=><div key={f.id}><span className={f.severity==='high'?'feed-high':'feed-med'}><Icon name="warning"/></span><div><b>{String(f.evidence.action??f.evidence.message??f.evidence.url??f.type)}</b><small>{f.type} · {f.severity}</small></div></div>)}{feedEvents.length===0&&<p style={{opacity:.6,padding:'.5rem'}}>Findings stream in during the swarm phase…</p>}</div></Card></div>

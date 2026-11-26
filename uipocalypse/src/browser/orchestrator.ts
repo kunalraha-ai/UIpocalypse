@@ -30,6 +30,16 @@ import { addFinding, createRun, finishRun, type Db } from '../db/index.js';
  * aborts cleanly on Ctrl-C (SIGINT) with a partial report (SAFETY.md §6 row 7).
  */
 
+/** One camera frame from the swarm: what an agent's real browser showed. */
+export type SwarmFrame = {
+  agent: number;
+  persona: string;
+  url: string;
+  at: number;
+  /** base64-encoded JPEG */
+  data: string;
+};
+
 export type SwarmOptions = {
   url: string;
   config: UiConfig;
@@ -56,6 +66,15 @@ export type SwarmOptions = {
   staticIssues?: Issue[];
   /** directory for failure screenshots (workspace.screenshots) — omit to skip */
   screenshotDir?: string;
+  /**
+   * Swarm camera: sample JPEG frames from the agents' live pages so the web
+   * UI can show the swarm working. Frames flow to onFrame only while
+   * cameraActive() returns true (no viewers → no sampling work at all).
+   */
+  onFrame?: (frame: SwarmFrame) => void;
+  cameraActive?: () => boolean;
+  /** camera sampling interval (default 1000 ms) */
+  frameIntervalMs?: number;
   raceTarget?: {
     url: string;
     actionLabel: string;
@@ -199,6 +218,8 @@ export async function swarm(opts: SwarmOptions): Promise<SwarmResult> {
     respawns: number;
     /** the agent's most recent graph state ID (for policy-based stall handling) */
     graphStateId: number;
+    /** wall time of the last completed step — the camera follows the busiest agent */
+    lastStepAt: number;
   };
 
   const agents: Agent[] = [];
@@ -216,6 +237,7 @@ export async function swarm(opts: SwarmOptions): Promise<SwarmResult> {
       escalated: false,
       respawns: 0,
       graphStateId: 0,
+      lastStepAt: 0,
     });
   }
 
@@ -589,6 +611,7 @@ export async function swarm(opts: SwarmOptions): Promise<SwarmResult> {
       const progressed = await agentStep(agent);
       agent.steps++;
       stepsCounter.n++;
+      agent.lastStepAt = Date.now();
       if (!progressed) break;
 
       // FR-W3 escalation (revised, phase 6): agents on known states do NOT
@@ -626,8 +649,45 @@ export async function swarm(opts: SwarmOptions): Promise<SwarmResult> {
 
   const abortedBeforeStart = opts.abort?.aborted;
   const agentPhaseStart = Date.now();
+
+  // ---- swarm camera: sample JPEG frames from the agents' live pages while
+  // someone is watching (cameraActive). Follows the busiest agent — the one
+  // that most recently completed a step — so the view shows real actions.
+  // Cleared with the agent phase: frames never leak into later stages.
+  let cameraBusy = false;
+  const cameraActive = () => opts.onFrame !== undefined && (opts.cameraActive?.() ?? true);
+  const cameraTimer = setInterval(async () => {
+    if (!cameraActive() || cameraBusy || opts.abort?.aborted) return;
+    const live = agents.filter((a) => a.page);
+    if (live.length === 0) return;
+    const target = live.reduce((best, a) => (a.lastStepAt > best.lastStepAt ? a : best), live[0]!);
+    cameraBusy = true;
+    try {
+      const shot = await target.page!.screenshot({ type: 'jpeg', quality: 50 });
+      if (cameraActive()) {
+        opts.onFrame!({
+          agent: target.index,
+          persona: target.persona.id,
+          url: target.page!.url(),
+          at: Date.now(),
+          data: shot.toString('base64'),
+        });
+      }
+    } catch {
+      /* page died mid-shot — the next tick picks another agent */
+    } finally {
+      cameraBusy = false;
+    }
+  }, opts.frameIntervalMs ?? 1000);
+
   if (!abortedBeforeStart) {
-    await Promise.all(agents.map((a) => agentLoop(a)));
+    try {
+      await Promise.all(agents.map((a) => agentLoop(a)));
+    } finally {
+      clearInterval(cameraTimer);
+    }
+  } else {
+    clearInterval(cameraTimer);
   }
   const agentWallMs = Date.now() - agentPhaseStart;
 

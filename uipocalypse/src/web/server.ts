@@ -155,6 +155,14 @@ export async function startWebServer(opts: {
     for (const w of [...job.waiters]) w(ev);
   }
 
+  /** Ephemeral events (swarm camera frames): live viewers only, never
+   *  buffered into job.events — a reconnecting viewer simply waits for the
+   *  next frame (<= one camera interval) and memory stays flat. */
+  function emitVolatile(job: Job, type: string, payload: Record<string, unknown> = {}): void {
+    const ev: WebJobEvent = { at: Date.now(), type, ...payload };
+    for (const w of [...job.waiters]) w(ev);
+  }
+
   async function startRun(input: { path?: string; url: string; agents?: number; budgetSeconds?: number; optIn?: { destructive?: boolean; externalSideEffects?: boolean; idempotencyReplay?: boolean }; liveTarget?: { attested?: boolean; ownershipToken?: string; prodOverride?: boolean }; onJobDone?: (job: Job) => void }): Promise<number> {
     // live-target handling FIRST — before the job is registered, so a refusal
     // can never leave a zombie "running" job blocking the queue. Non-local
@@ -283,6 +291,9 @@ export async function startWebServer(opts: {
             optIn: input.optIn,
             appMap: path ? appMap : undefined,
             staticIssues: path ? staticIssues : undefined,
+            // swarm camera: stream frames to whoever is watching the live run
+            onFrame: (frame) => emitVolatile(job, 'frame', frame),
+            cameraActive: () => job.waiters.length > 0,
           });
           emit(job, 'swarm', {
             steps: swarmResult.steps,
